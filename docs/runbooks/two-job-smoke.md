@@ -61,6 +61,36 @@ The smoke script records deterministic worker evidence (`exitCode`, `timedOut`, 
 
 2026-06-06 host result: passed with global cap `2`. Claude Code and Codex both exited `0`, worktree paths were distinct, provider usage stayed within cap, and gate evidence was deterministic exit-code JSON.
 
+## Host full daemon contract smoke
+
+Use this PR 1 contract before live full-daemon workers. It runs exactly two `pando` brief jobs through `runDaemonOnce` with the real host worktree provisioner, checked-in stage config, real `ClaudeCodeEngine`/`CodexEngine` adapter classes, and deterministic package-action gate classes. In `contract` mode, worker and gate process runners are injected fakes, so this path does not call Claude/Codex or judge LLM output text.
+
+```bash
+RUN_ID="contract-$(date +%Y%m%d-%H%M%S)"
+ROOT="/tmp/pando-full-daemon-smoke-$RUN_ID"
+
+pnpm smoke:full-daemon -- \
+  --mode contract \
+  --global-concurrency 2 \
+  --worktree-root "$ROOT/worktrees" \
+  --db "$ROOT/pando.sqlite" \
+  --evidence "$ROOT/full-daemon-smoke.json" \
+  --run-id "$RUN_ID"
+```
+
+Success criteria:
+
+- `mode` is `contract`.
+- `jobs` contains exactly `PANDO-FULL-SMOKE-1` and `PANDO-FULL-SMOKE-2`.
+- both jobs finish `DONE`.
+- `checks.twoJobsClaimed.actual` is `2`.
+- `checks.globalConcurrency.value` is `2` or `3`, and `withinLiveCap` is `true`.
+- `checks.worktreeCollision.pass` is `true`.
+- `checks.providerCap.pass` is `true`.
+- `checks.gateEvidence.pass` is `true`, with structured JSON evidence from `test`, `lint`, and `types` package-action gates.
+
+2026-06-07 host contract result: passed with global cap `2`. Evidence: `/tmp/pando-full-daemon-smoke-contract-20260607-002546/full-daemon-smoke.json`. Both pando brief jobs finished `DONE`, worktree paths were distinct, provider usage was `{}`, and each job recorded three structured gate evidence entries. This is still a contract smoke; live full-daemon worker execution with real Claude/Codex remains the next integration step.
+
 ## Docker worker readiness
 
 After building the image, run a one-off container with the mount contract:

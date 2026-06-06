@@ -13,7 +13,10 @@ describe("createPackageActionGate", () => {
       return { exitCode: 0, stderr: "", stdout: "ok\n" };
     });
 
-    await expect(gate.check(context())).resolves.toEqual({ pass: true });
+    await expect(gate.check(context())).resolves.toEqual({
+      evidence: '{"command":"pnpm test","exitCode":0}',
+      pass: true,
+    });
     expect(calls).toEqual([["pnpm test", { cwd: "/worktree" }]]);
   });
 
@@ -73,7 +76,10 @@ describe("createPackageActionGate", () => {
       },
     );
 
-    await expect(gate.check(context())).resolves.toEqual({ pass: true });
+    await expect(gate.check(context())).resolves.toEqual({
+      evidence: '{"command":"pnpm test --filter changed","exitCode":0}',
+      pass: true,
+    });
     expect(calls[0]?.[0]).toBe("pnpm test --filter changed");
   });
 });

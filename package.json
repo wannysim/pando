@@ -25,6 +25,7 @@
     "types": "tsc --noEmit",
     "verify:core": "pnpm coverage && pnpm lint && pnpm types",
     "verify": "pnpm verify:core && pnpm --filter @pando/dashboard verify",
+    "smoke:full-daemon": "tsx scripts/full-daemon-smoke.ts",
     "smoke:two-job": "node scripts/two-job-smoke.mjs",
     "prepare": "husky"
   },

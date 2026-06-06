@@ -12,6 +12,7 @@ repos:
       providers: [confluence, figma]
       policy_refs: []
     conventions: acme-conventions
+    package_manager: yarn
     setup: install # web은 yarn@1 모노레포 (W1 검증에서 확인)
     gates:
       test: test
@@ -42,4 +43,26 @@ repos:
     port_range: [3200, 3299]
     guards:
       protected_branches: [main]
+      forbid_test_edit_in_impl: true
+
+  pando:
+    path: ~/Github/pando
+    scope: external
+    base_branch: develop
+    intake:
+      sources: [brief]
+    context:
+      providers: []
+      policy_refs: []
+    conventions: repo-local
+    package_manager: pnpm
+    setup: install
+    gates:
+      test: test
+      lint: lint
+      types: typecheck
+    concurrency: 2
+    port_range: [3300, 3399]
+    guards:
+      protected_branches: [main, develop, "release/*"]
       forbid_test_edit_in_impl: true
