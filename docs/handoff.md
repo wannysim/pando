@@ -37,13 +37,13 @@
 | 입력 | 상태 | 현재 반영 |
 |---|---|---|
 | base branch 동적 결정 | ⬜ 미해결 | `RepoProfile.baseBranch` 고정값만 있음. 티켓 fixVersion → `release/*` 매핑과 `WorkItem.baseBranch` override는 별도 ADR/계약 변경 필요 |
-| Bash 화이트리스트 재설계 | 🟨 일부 완료 | `WorkerRunOptions.allowedTools`와 Claude Code 기본값 도입. stage/profile별 preset 설정화는 다음 작업 |
+| Bash 화이트리스트 재설계 | ✅ 완료(기본형) | `WorkerRunOptions.allowedTools`, Claude Code 기본값, `config/stages.yaml` stage별 `allowed_tools` preset 도입 |
 | flock 외부 의존 제거 | ✅ 완료 | `src/worktree/manager.ts`가 `.git/.dispatch.lock` atomic file lock 사용. 외부 `flock` 의존 없음 |
 | allowedTools 필수값 | ✅ 완료 | Claude Code 기본 allowedTools에 `Task`, `mcp__claude_ai_Atlassian` 포함 |
-| PLAN `[Blocker]` 파싱 | 🟨 일부 완료 | `src/core/artifacts.ts`가 Open Questions `[Blocker]`를 구조화. pipeline gate 연결과 `BLOCKING_QUESTIONS` 전이는 다음 작업 |
-| 게이트 스코핑 | ⬜ 미해결 | `config/repos.yaml`의 PM 하드코딩은 제거했지만, 변경 workspace/file scope 기반 gate 실행은 아직 미구현 |
+| PLAN `[Blocker]` 파싱 | ✅ 완료(기본형) | `artifacts.ts` 파싱 + `pipeline/gates/artifact-schema.ts` 연결 + runner가 `failureKind=blocking-questions`를 `BLOCKING_QUESTIONS` 전이로 매핑 |
+| 게이트 스코핑 | 🟨 일부 완료 | PM-agnostic exit-code gate와 command builder hook 도입. 변경 workspace/file 감지는 아직 미구현 |
 | PM 자동감지 1급화 | ✅ 완료 | `src/core/config.ts`가 lockfile 감지(yarn→pnpm→npm), `package_manager` fallback, PM-agnostic action 지원 |
-| ai-skills anti-corruption | 🟨 일부 완료 | `artifacts.ts`가 PLAN 계약 소유, sanitized legacy fixture로 drift 감지. skill-name 설정화/stage config loader와 규약 버전핀 목록은 다음 작업 |
+| ai-skills anti-corruption | ✅ 완료(기본형) | `artifacts.ts`가 PLAN 계약 소유, sanitized legacy fixture로 drift 감지, `stage-config.ts`가 stage→skill/source별 skill 설정을 타입 검증 |
 | PLAN 커밋 분해 단위 검사 | ✅ 완료 | valid PLAN은 `Implementation Roadmap`의 `Commit N` 단위를 요구. legacy `Stacked PR Roadmap`은 파싱 가능하지만 현재 계약상 invalid |
 
 ## 로드맵 현재 위치
@@ -52,8 +52,8 @@
 |---|---|---|
 | W1: 헤드리스 검증 | ✅ 완료 | worktree 생성, Claude PLAN, Codex IMPL, 수동 게이트 리스크 검증 완료 |
 | W2-A: 데몬 기반 계약/어댑터 | ✅ 완료 | config loader, artifact schema, worktree manager, Claude/Codex engine adapter 구현. `pnpm verify` 통과 |
-| W2-B: 파이프라인 결합 | ⬅️ **다음 작업** | stage config loader, artifact/exit-code gate, pipeline runner skeleton, fake engine e2e |
-| W2-C: 상태 저장/운영 루프 | ⬜ 예정 | SQLite job/event 저장, retry budget persistence, daemon/agentctl 최소 루프 |
+| W2-B: 파이프라인 결합 | ✅ 완료 | stage config loader, artifact/exit-code gate, pipeline runner skeleton, fake engine happy path/blocked/fail coverage |
+| W2-C: 상태 저장/운영 루프 | ⬅️ **다음 작업** | SQLite job/event 저장, retry budget persistence, daemon/agentctl 최소 루프 |
 | W3: brief 경로 | ⬜ 예정 | brief intake + personal-site 프로파일 E2E |
 | W4: n×n 병렬 | ⬜ 예정 | global/per-repo/per-provider 세마포어, 포트/캐시 격리, 병렬 스케줄링 |
 | W5: 통제·운영 | ⬜ 예정 | diff/checksum gate 강화, 리뷰어 모델 분리, 비용 추적, 웹 대시보드/원격 투입 |
@@ -67,14 +67,18 @@
 - `src/worktree/manager.ts` — W2 3단계 완료. `01-worktree.sh` TS 이식, origin base 직접 분기, `~/.worktrees/{repo}/{branch-slug}` 규약, `.git/.dispatch.lock` atomic file lock, env copy/setup hook. 진짜 git integration 테스트 포함
 - `src/engines/claude-code.ts` — W2 4단계 완료. `claude -p`, JSON output, allowedTools 기본값(`Task`, `mcp__claude_ai_Atlassian` 포함), ADR-004에 따라 `--mcp-config` 거부
 - `src/engines/codex.ts` — W2 5단계 완료. `codex exec --json --sandbox workspace-write --model`, JSON-lines session/cost/output 파싱
-- 검증: `pnpm verify` 통과(2026-06-06, `feat/w2-config-loader`, 6 files / 49 tests)
+- `src/core/stage-config.ts` — W2-B 완료. `config/stages.yaml` engine/model/skill/source별 skills/allowedTools/env/defaults 검증
+- `src/pipeline/gates/artifact-schema.ts` — W2-B 완료. `_spec.md`/`PLAN.md` artifact schema gate. PLAN blocker는 `failureKind: "blocking-questions"`로 보고
+- `src/pipeline/gates/exit-code.ts` — W2-B 완료. `RepoProfile.gates` PM-agnostic action을 package-manager command로 변환하고 exit code만 판정. workspace scope용 command builder hook 포함
+- `src/pipeline/runner.ts` — W2-B 완료. fake engine/gate 기반 runner skeleton. `SPEC→PLAN→TEST→IMPL→REVIEW→PR→DONE`, blocker→ESCALATED, gate retry budget→FAILED 테스트 포함
+- 검증: `pnpm verify` 통과(2026-06-06, `feat/w2-stage-config-loader`, 10 files / 67 tests)
 - 공개 repo hygiene: `tests/` 표면(`describe`/`it`, fixture 문구)은 영어로 정리. 실제 회사 티켓 키는 커밋하지 않고 `DEMO-1234` 같은 가상 키만 사용. `docs/`는 작업자용이라 한글 유지 허용
 
-**다음 세션 시작점 — W2-B 파이프라인 결합.** 권장 순서(TDD):
-1. **stage config loader** — `config/stages.yaml`의 engine/model/skill/allowedTools preset을 타입 검증하고 ADR-006의 skill-name 설정화를 마무리
-2. **PLAN/SPEC artifact gates** — `artifacts.ts`를 `pipeline/gates/artifact-schema.ts`에 연결. blocking questions면 상태머신 `BLOCKING_QUESTIONS` 이벤트로 ESCALATED
-3. **exit-code gates with PM scope** — `RepoProfile`의 PM-agnostic gates를 `packageCommand()`로 실행하되 변경 workspace/file scope를 도입(W2 입력 6)
-4. **pipeline runner skeleton** — fake engine으로 `SPEC→PLAN→TEST→IMPL→REVIEW→PR` happy path와 null-agent gate fail e2e를 먼저 구성
+**다음 세션 시작점 — W2-C 상태 저장/운영 루프.** 권장 순서(TDD):
+1. **SQLite schema + repository** — jobs/events/repos 최소 테이블, WAL, job 상태 저장/조회. fake clock 없이 결정적으로 테스트
+2. **pipeline runner persistence** — 단계 시작/완료/gate event를 events에 기록하고 crash 후 stage 단위 재개 가능하게 job status 저장
+3. **daemon 최소 루프** — 단일 in-flight로 queued job 1개를 가져와 worktree→runner→DONE/FAILED/ESCALATED까지 실행
+4. **agentctl 최소 CLI** — `submit brief|jira`, `show`, `retry` 중 W2-C에 필요한 최소 surface만 구현
 5. scheduler 세마포어는 n×n(W4) 전까지 단일 in-flight로 미뤄도 됨
 
 ## 참조 문서 지도
