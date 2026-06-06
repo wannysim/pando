@@ -53,6 +53,29 @@ describe("SqliteJobStore", () => {
     store.close();
   });
 
+  it("lists jobs by updated time with deterministic status filtering", () => {
+    const store = createSqliteJobStore({
+      path: ":memory:",
+      now: fixedClock([
+        "2026-06-06T00:00:00.000Z",
+        "2026-06-06T00:01:00.000Z",
+        "2026-06-06T00:02:00.000Z",
+        "2026-06-06T00:03:00.000Z",
+        "2026-06-06T00:04:00.000Z",
+      ]),
+    });
+
+    store.enqueueJob({ item: workItem("DEMO-1012"), retryBudget: 1 });
+    store.enqueueJob({ item: workItem("DEMO-1013"), retryBudget: 1 });
+    store.updateJobStatus({ attemptsLeft: 0, jobId: "DEMO-1012", status: "FAILED" });
+    store.updateJobStatus({ attemptsLeft: 1, jobId: "DEMO-1013", status: "DONE" });
+
+    expect(store.listJobs().map((job) => job.item.id)).toEqual(["DEMO-1013", "DEMO-1012"]);
+    expect(store.listJobs({ status: "FAILED" }).map((job) => job.item.id)).toEqual(["DEMO-1012"]);
+
+    store.close();
+  });
+
   it("persists events in insertion order with structured details", () => {
     const store = createSqliteJobStore({
       path: ":memory:",

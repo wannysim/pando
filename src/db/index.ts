@@ -66,6 +66,10 @@ export interface ClaimNextRunnableInput {
   excludeJobIds?: readonly string[];
 }
 
+export interface ListJobsInput {
+  status?: JobStatus;
+}
+
 export interface AppendJobEventInput {
   jobId: string;
   type: string;
@@ -104,6 +108,7 @@ export interface JobEventRecord {
 
 export interface JobStore {
   enqueueJob(input: EnqueueJobInput): JobRecord;
+  listJobs(input?: ListJobsInput): JobRecord[];
   claimNextRunnable(input?: ClaimNextRunnableInput): JobRecord | undefined;
   getJob(jobId: string): JobRecord | undefined;
   updateJobStatus(input: UpdateJobStatusInput): JobRecord;
@@ -164,6 +169,19 @@ class SqliteJobStore implements JobStore {
       );
 
     return this.requiredJob(input.item.id);
+  }
+
+  listJobs(input?: ListJobsInput): JobRecord[] {
+    const where = input?.status === undefined ? "" : "WHERE status = ?";
+    const values = input?.status === undefined ? [] : [input.status];
+    return this.selectAll(
+      `
+        SELECT * FROM jobs
+        ${where}
+        ORDER BY updated_at DESC, created_at DESC, id ASC
+      `,
+      values,
+    ).map(deserializeJob);
   }
 
   claimNextRunnable(input?: ClaimNextRunnableInput): JobRecord | undefined {

@@ -444,6 +444,12 @@ class AgentctlMemoryStore implements JobStore {
     return job;
   }
 
+  listJobs(input?: Parameters<JobStore["listJobs"]>[0]): JobRecord[] {
+    return [...this.jobs.values()].filter(
+      (job) => input?.status === undefined || job.status === input.status,
+    );
+  }
+
   claimNextRunnable(): JobRecord | undefined {
     return undefined;
   }
