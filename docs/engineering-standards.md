@@ -100,7 +100,7 @@ push/PR마다: `pnpm verify` + 커버리지 임계치. Shift Left(agent-skills c
 ## 5. 구조 설계 문서에 반영할 변경분 (이번 결정 통합)
 
 1. **briefs/ 커밋** — gitignore 안 함 (확정)
-2. **dashboard = 웹** — 데몬이 HTTP API(Hono 추천: 가볍고 Node/Bun/Workers 호환)를 서빙, `dashboard/`는 React SPA. Tailscale로 폰에서 접속해 brief 투입·진행 확인·retry까지. `agentctl`은 같은 API의 CLI 클라이언트로 재정의 (API가 단일 진실원 — 웹/CLI가 같은 API)
+2. **dashboard = 웹** — 데몬이 HTTP API(Hono)를 서빙, `dashboard/`는 ADR-009에 따라 Vite React SPA. Tailscale로 폰에서 접속해 brief 투입·진행 확인·retry까지. `agentctl`은 같은 API의 CLI 클라이언트로 재정의 (API가 단일 진실원 — 웹/CLI가 같은 API)
 3. **tests/ 추가**:
    ```
    tests/

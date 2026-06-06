@@ -18,6 +18,7 @@
 | `~/.ai-skills` 결합 = 스킬명 설정화 + **PLAN.md 계약을 pando가 소유**(골든 계약테스트) + 의존 규약 버전핀 | ADR-006 ← 평가 |
 | PLAN 산출 = **작업단위 커밋 분할이 기본**, Stacked PR은 net 1000줄 초과 시에만 제안 | ADR-007 (ai-skills 스킬 + pando 문서 양쪽 반영) |
 | RepoProfile은 intake source와 context source를 분리. 실제 회사 Jira/Confluence/Figma 설정은 private local config에만 둠 | ADR-008 |
+| W5 대시보드는 Vite React SPA + Hono API, 단일 daemon/container 배포로 시작 | ADR-009 |
 | 게이트 = 결정적 신호만 (exit code/아티팩트/체크섬). LLM output은 Gate 컨텍스트에서 타입 제외 | CLAUDE.md 규율 5 |
 | 개발 = TDD 강제, `pnpm verify`(커버리지 85%+/core 95%+), core·pipeline·scheduler 순수 계층(oxlint 강제) | engineering-standards |
 | worktree 규약 = `~/.worktrees/{repo}/{slug}`, origin ref 직접 분기(원본 무간섭), `.dispatch.lock` 공유 | design-v2 §3.2, `~/.ai-skills` 호환 |
@@ -85,6 +86,8 @@
 
 **다음 세션 시작점 — W5 통제·운영.**
 
+W5 착수 전 반드시 `docs/w5-operational-readiness.md`와 ADR-009를 읽는다. W5는 "대시보드 MVP"가 아니라 "실제로 맡길 수 있는 운영성"을 만드는 단계이며, dashboard는 API가 안정된 뒤 최소 기능만 붙인다.
+
 W4 완료 판정:
 - ✅ scheduler/semaphore 계약: global / per-repo / per-provider cap 테스트 완료
 - ✅ provider cap 매핑: `RepoProfile.context.providers`와 `config/orchestrator.yaml` provider key를 사용. brief-only profile은 MCP provider cap을 소비하지 않음
@@ -100,17 +103,18 @@ W4에서 의도적으로 남긴 것:
 
 W5 우선순위(TDD):
 1. **Safety gates** — checksum/diff gate를 강화한다. TEST 단계 산출물 불변성, IMPL 단계 금지 경로/테스트 수정 정책, 변경 workspace/file scoping을 결정적 신호로 고정한다
-2. **Review separation** — REVIEW 단계가 IMPL과 다른 모델/엔진 설정을 쓰는 계약을 stage config와 테스트로 명확히 한다
-3. **Cost and run telemetry** — worker result의 `costUsd`, stage duration, retry/failure reason을 SQLite events에 구조화해 show/list에서 볼 수 있게 한다
-4. **Operational CLI** — `agentctl list`, `cancel`, `cleanup`, `daemon`을 추가한다. W5의 "실제로 맡길 수 있음" 기준은 최소한 여러 job 상태를 보고, 중단하고, worktree를 정리할 수 있어야 한다
-5. **Two-job live smoke** — 회사/개인 실제 CLI smoke는 global 2~3으로 낮춰 2개 job만 돌린다. 성공 조건은 worktree 충돌 없음, provider cap 준수, deterministic gates 통과/실패 기록 확인
-6. **Dashboard/API start** — ADR-003에 따라 Hono HTTP API를 먼저 열고, 웹 대시보드는 API 위에 얹는다. GitHub Issue write-back/Stacked PR 자동화는 W5 후반 또는 이후로 미룬다
+2. **Lifecycle controls** — cancel/cleanup/resume 시나리오를 DB/daemon/CLI 계약으로 고정한다
+3. **Review separation + telemetry** — REVIEW 단계가 IMPL과 다른 모델/엔진 설정을 쓰는 계약, cost/duration/retry/failure reason event schema를 테스트로 고정한다
+4. **Hono API + Operational CLI** — `/health`, `/jobs`, retry/cancel/cleanup API와 `agentctl list/cancel/cleanup/daemon`을 추가한다. CLI와 dashboard는 같은 API client를 쓴다
+5. **Minimal dashboard** — Vite React SPA로 jobs list/detail/actions/brief submit/health만 만든다. chart/analytics/batch UI는 W6 이후
+6. **Docker + two-job smoke** — single-container skeleton과 global 2~3 live smoke. 성공 조건은 worktree 충돌 없음, provider cap 준수, deterministic gates 통과/실패 기록 확인
 
 ## 참조 문서 지도
 
 - `docs/research-v1.md` — 도구/패턴 리서치 (모델명·가격은 2차 소스, 재확인 필요)
 - `docs/design-v2-multi-repo.md` — n×n 설계, `~/.ai-skills` 자산 매핑 (§4·§7 PLAN은 ADR-007 반영됨)
-- `docs/adr/` — 001~008. **005**(레포 컨텍스트 격리)·**006**(ai-skills 결합 최소화)·**007**(PLAN 커밋분할)·**008**(intake/context source 분리)이 이번 평가·피드백 산출. 바꾸려면 새 ADR 먼저
+- `docs/w5-operational-readiness.md` — W5 테스트 시나리오 매트릭스, dashboard/API MVP, Docker shape, W5/W6 경계
+- `docs/adr/` — 001~009. **009**는 W5 dashboard/API/deploy 기본값(Vite React SPA + Hono + single container)을 고정한다. 바꾸려면 새 ADR 먼저
 - `docs/repo-structure.md` — 구조·인터페이스
 - `docs/engineering-standards.md` — 개발 방법론 (superpowers + agent-skills 채택분)
 - `docs/w1-runbook.md` — W1 절차 + 실행 로그
