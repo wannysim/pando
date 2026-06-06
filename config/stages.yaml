@@ -1,0 +1,14 @@
+# 단계별 엔진·모델 매핑 — docs/design-v2-multi-repo.md §4
+# 전역 기본값. 레포별 오버라이드는 repos.yaml의 stages 키로 (추후).
+# 모델명은 구축 시점 리더보드 확인 후 확정할 것 (research-v1 §5 주의사항)
+
+stages:
+  spec:   { engine: claude-code, model: sonnet }   # MCP 의존(Atlassian/Figma) → Claude Code
+  plan:   { engine: claude-code, model: opus }     # /implement-jira --batch
+  test:   { engine: codex,       model: gpt-5-codex }
+  impl:   { engine: codex,       model: gpt-5-codex }
+  review: { engine: claude-code, model: opus }     # 구현과 다른 모델 — 기만 방지 (research-v1 §3.2)
+
+defaults:
+  retry_budget: 10
+  timeout_minutes: 30

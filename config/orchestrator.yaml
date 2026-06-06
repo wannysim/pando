@@ -1,0 +1,16 @@
+# 오케스트레이터 전역 설정 — docs/design-v2-multi-repo.md §3.1
+
+global_concurrency: 6          # 전체 in-flight 상한 (LLM 비용/머신 리소스)
+worktree_root: ~/.worktrees    # .ai-skills worktree-dispatch §1 규약과 동일
+skills_root: ~/.ai-skills
+
+intake:
+  jira_poll_interval_sec: 60
+  jira_jql: 'assignee = currentUser() AND status = "To Do" AND labels = agent-ready'
+  briefs_dir: ./briefs
+
+providers:
+  atlassian-mcp: { max_concurrent: 3 }   # dispatch-batch 설계노트 §6 rate 리스크
+  figma-mcp: { max_concurrent: 2 }
+
+db: ./pando.sqlite
