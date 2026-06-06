@@ -3,8 +3,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { runAgentctl } from "../../src/cli/agentctl";
+import type { PandoApiClient } from "../../src/api/client";
+import type { ApiHealth, ApiJobSummary } from "../../src/api/schema";
 import type { JobEventRecord, JobRecord, JobStore, RetryJobInput } from "../../src/db/index";
-import type { RepoProfile, WorkItem } from "../../src/core/types";
+import type { JobStatus, RepoProfile, WorkItem } from "../../src/core/types";
 
 describe("runAgentctl", () => {
   it("submits a jira work item", async () => {
@@ -245,6 +247,98 @@ describe("runAgentctl", () => {
     ]);
   });
 
+  it("lists jobs from the API client with operational fields", async () => {
+    const output: string[] = [];
+
+    const exitCode = await runAgentctl(["list"], {
+      apiClient: new AgentctlApiClient({
+        jobs: [
+          apiJob("DEMO-3101", {
+            attemptsLeft: 2,
+            cancelRequestedAt: null,
+            createdAt: "2026-06-06T00:00:00.000Z",
+            finishedAt: null,
+            repo: "web",
+            source: "jira",
+            startedAt: "2026-06-06T00:00:10.000Z",
+            status: "IMPL",
+            updatedAt: "2026-06-06T00:02:00.000Z",
+            worktreePath: "/worktrees/web/feat-DEMO-3101",
+          }),
+          apiJob("DEMO-3102", {
+            attemptsLeft: 1,
+            cancelRequestedAt: "2026-06-06T00:03:00.000Z",
+            createdAt: "2026-06-06T00:01:00.000Z",
+            finishedAt: null,
+            repo: "docs",
+            source: "brief",
+            startedAt: null,
+            status: "QUEUED",
+            updatedAt: "2026-06-06T00:03:00.000Z",
+            worktreePath: null,
+          }),
+        ],
+      }),
+      store: new AgentctlMemoryStore(),
+      stdout: (line) => output.push(line),
+    });
+
+    expect(exitCode).toBe(0);
+    expect(output).toEqual([
+      "DEMO-3101 IMPL repo=web source=jira attemptsLeft=2 createdAt=2026-06-06T00:00:00.000Z updatedAt=2026-06-06T00:02:00.000Z startedAt=2026-06-06T00:00:10.000Z finishedAt=- worktreePath=/worktrees/web/feat-DEMO-3101 cancelRequestedAt=-",
+      "DEMO-3102 QUEUED repo=docs source=brief attemptsLeft=1 createdAt=2026-06-06T00:01:00.000Z updatedAt=2026-06-06T00:03:00.000Z startedAt=- finishedAt=- worktreePath=- cancelRequestedAt=2026-06-06T00:03:00.000Z",
+    ]);
+  });
+
+  it("filters list jobs via the API client and rejects invalid status", async () => {
+    const apiClient = new AgentctlApiClient({ jobs: [] });
+    const stderr: string[] = [];
+
+    await expect(
+      runAgentctl(["list", "--status", "FAILED"], {
+        apiClient,
+        store: new AgentctlMemoryStore(),
+      }),
+    ).resolves.toBe(0);
+    await expect(
+      runAgentctl(["list", "--status", "UNKNOWN"], {
+        apiClient,
+        stderr: (line) => stderr.push(line),
+        store: new AgentctlMemoryStore(),
+      }),
+    ).resolves.toBe(1);
+
+    expect(apiClient.listRequests).toEqual([{ status: "FAILED" }]);
+    expect(stderr).toEqual([
+      "--status: expected one of QUEUED, SPEC, PLAN, TEST, IMPL, REVIEW, PR, DONE, FAILED, ESCALATED, CANCELED",
+    ]);
+  });
+
+  it("renders daemon health and the private-network auth assumption", async () => {
+    const output: string[] = [];
+
+    const exitCode = await runAgentctl(["daemon", "status"], {
+      apiClient: new AgentctlApiClient({
+        health: {
+          apiVersion: "v1",
+          auth: { mode: "private-network" },
+          daemon: { status: "ok" },
+          service: "pando",
+          status: "ok",
+          store: { jobCount: 7, status: "ok" },
+        },
+      }),
+      store: new AgentctlMemoryStore(),
+      stdout: (line) => output.push(line),
+    });
+
+    expect(exitCode).toBe(0);
+    expect(output).toEqual([
+      "pando ok apiVersion=v1 daemon=ok store=ok jobCount=7 auth=private-network",
+      "auth assumption: private network boundary; do not expose publicly without a new ADR",
+    ]);
+  });
+
   it("returns a non-zero exit code when a job is missing", async () => {
     const stderr: string[] = [];
 
@@ -271,6 +365,34 @@ describe("runAgentctl", () => {
     expect(exitCode).toBe(0);
     expect(store.retries).toEqual([{ attemptsLeft: 4, from: "IMPL", jobId: "DEMO-3003" }]);
     expect(output).toEqual(["retry queued DEMO-3003 from IMPL"]);
+  });
+
+  it("retries through the API client when an API base URL is configured", async () => {
+    const output: string[] = [];
+    const apiClient = new AgentctlApiClient({
+      jobs: [
+        apiJob("DEMO-3110", {
+          attemptsLeft: 4,
+          status: "IMPL",
+        }),
+      ],
+    });
+
+    const exitCode = await runAgentctl(
+      ["retry", "DEMO-3110", "--from", "IMPL", "--attempts", "4"],
+      {
+        apiBaseUrl: "http://pando.local",
+        apiClient,
+        store: new AgentctlMemoryStore(),
+        stdout: (line) => output.push(line),
+      },
+    );
+
+    expect(exitCode).toBe(0);
+    expect(apiClient.retryRequests).toEqual([
+      { attemptsLeft: 4, from: "IMPL", jobId: "DEMO-3110" },
+    ]);
+    expect(output).toEqual(["retry queued DEMO-3110 from IMPL"]);
   });
 
   it("cancels queued jobs from the CLI", async () => {
@@ -316,6 +438,29 @@ describe("runAgentctl", () => {
       type: "cancel-requested",
     });
     expect(output).toEqual(["cancel requested DEMO-3005"]);
+  });
+
+  it("cancels through the API client when an API base URL is configured", async () => {
+    const output: string[] = [];
+    const apiClient = new AgentctlApiClient({
+      jobs: [
+        apiJob("DEMO-3111", {
+          attemptsLeft: 2,
+          status: "IMPL",
+        }),
+      ],
+    });
+
+    const exitCode = await runAgentctl(["cancel", "DEMO-3111"], {
+      apiBaseUrl: "http://pando.local",
+      apiClient,
+      store: new AgentctlMemoryStore(),
+      stdout: (line) => output.push(line),
+    });
+
+    expect(exitCode).toBe(0);
+    expect(apiClient.cancelRequests).toEqual([{ jobId: "DEMO-3111" }]);
+    expect(output).toEqual(["cancel requested DEMO-3111"]);
   });
 
   it("cleans up terminal job worktrees from the CLI", async () => {
@@ -405,11 +550,30 @@ describe("runAgentctl", () => {
     ]);
   });
 
+  it("renders API client errors without stack traces", async () => {
+    const stderr: string[] = [];
+
+    const exitCode = await runAgentctl(["list"], {
+      apiClient: new AgentctlApiClient({
+        error: Object.assign(new Error("job not found: DEMO-404"), {
+          code: "job_not_found",
+          status: 404,
+        }),
+      }),
+      stderr: (line) => stderr.push(line),
+      store: new AgentctlMemoryStore(),
+    });
+
+    expect(exitCode).toBe(1);
+    expect(stderr).toEqual(["api error 404 job_not_found: job not found: DEMO-404"]);
+    expect(stderr.join("\n")).not.toContain("stack");
+  });
+
   it("prints usage for unknown commands and rejects missing option values", async () => {
     const stderr: string[] = [];
 
     await expect(
-      runAgentctl(["list"], {
+      runAgentctl(["unknown"], {
         stderr: (line) => stderr.push(line),
         store: new AgentctlMemoryStore(),
       }),
@@ -425,6 +589,100 @@ describe("runAgentctl", () => {
     expect(stderr[1]).toBe("--repo: expected value");
   });
 });
+
+class AgentctlApiClient implements PandoApiClient {
+  readonly cancelRequests: Array<{ jobId: string; reason?: string }> = [];
+  readonly listRequests: Array<{ status?: JobStatus } | undefined> = [];
+  readonly retryRequests: Array<{ attemptsLeft?: number; from: string; jobId: string }> = [];
+
+  private readonly error?: Error;
+  private readonly healthResponse: ApiHealth;
+  private readonly jobs: ApiJobSummary[];
+
+  constructor(input: { error?: Error; health?: ApiHealth; jobs?: ApiJobSummary[] } = {}) {
+    this.error = input.error;
+    this.healthResponse =
+      input.health ??
+      ({
+        apiVersion: "v1",
+        auth: { mode: "private-network" },
+        daemon: { status: "ok" },
+        service: "pando",
+        status: "ok",
+        store: { jobCount: input.jobs?.length ?? 0, status: "ok" },
+      } satisfies ApiHealth);
+    this.jobs = input.jobs ?? [];
+  }
+
+  async health() {
+    this.throwIfConfigured();
+    return this.healthResponse;
+  }
+
+  async listJobs(input?: { status?: JobStatus }) {
+    this.throwIfConfigured();
+    this.listRequests.push(input);
+    return {
+      jobs: this.jobs.filter((job) => input?.status === undefined || job.status === input.status),
+    };
+  }
+
+  async getJob(): Promise<never> {
+    throw new Error("not used");
+  }
+
+  async listEvents(): Promise<never> {
+    throw new Error("not used");
+  }
+
+  async retryJob(
+    jobId: string,
+    input: {
+      attemptsLeft?: number;
+      from: string;
+    },
+  ) {
+    this.throwIfConfigured();
+    this.retryRequests.push({ attemptsLeft: input.attemptsLeft, from: input.from, jobId });
+    return {
+      action: { status: "retried", type: "retry" } as const,
+      job: this.jobFor(jobId, {
+        attemptsLeft: input.attemptsLeft,
+        status: input.from as JobStatus,
+      }),
+    };
+  }
+
+  async cancelJob(jobId: string, input?: { reason?: string }) {
+    this.throwIfConfigured();
+    this.cancelRequests.push({ jobId, reason: input?.reason });
+    const job = this.jobFor(jobId);
+    const requested = job.status !== "QUEUED";
+    return {
+      action: {
+        status: requested ? "cancel_requested" : "canceled",
+        type: "cancel",
+      } as const,
+      job: { ...job, status: requested ? job.status : "CANCELED" },
+    };
+  }
+
+  private jobFor(
+    jobId: string,
+    overrides: { attemptsLeft?: number; status?: JobStatus } = {},
+  ): ApiJobSummary {
+    const job = this.jobs.find((candidate) => candidate.jobId === jobId) ?? apiJob(jobId);
+    return {
+      ...job,
+      attemptsLeft: overrides.attemptsLeft ?? job.attemptsLeft,
+      status: overrides.status ?? job.status,
+    };
+  }
+
+  private throwIfConfigured(): void {
+    if (this.error !== undefined) throw this.error;
+  }
+}
 
 class AgentctlMemoryStore implements JobStore {
   readonly events = new Map<string, JobEventRecord[]>();
@@ -631,6 +889,26 @@ function workItem(id: string): WorkItem {
     repo: "web",
     source: "jira",
     title: "Example",
+  };
+}
+
+function apiJob(
+  jobId: string,
+  overrides: Partial<ApiJobSummary> & Pick<Partial<ApiJobSummary>, "status"> = {},
+): ApiJobSummary {
+  return {
+    attemptsLeft: overrides.attemptsLeft ?? 1,
+    cancelRequestedAt: overrides.cancelRequestedAt ?? null,
+    createdAt: overrides.createdAt ?? "2026-06-06T00:00:00.000Z",
+    finishedAt: overrides.finishedAt ?? null,
+    jobId,
+    repo: overrides.repo ?? "web",
+    source: overrides.source ?? "jira",
+    startedAt: overrides.startedAt ?? null,
+    status: overrides.status ?? "QUEUED",
+    title: overrides.title ?? "Example",
+    updatedAt: overrides.updatedAt ?? "2026-06-06T00:00:00.000Z",
+    worktreePath: overrides.worktreePath ?? null,
   };
 }
 

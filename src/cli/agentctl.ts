@@ -1,8 +1,10 @@
 import { readFile } from "node:fs/promises";
 import process from "node:process";
 import { pathToFileURL } from "node:url";
+import { createPandoApiClient, type PandoApiClient, type PandoApiFetch } from "../api/client";
+import { formatStatusList, isJobStatus, type ApiHealth, type ApiJobSummary } from "../api/schema";
 import { STAGE_ORDER } from "../core/state-machine";
-import type { StageName, WorkItem } from "../core/types";
+import type { JobStatus, StageName, WorkItem } from "../core/types";
 import type { JobEventRecord, JobStore } from "../db/index";
 import { loadBriefWorkItem, type BriefFileReader } from "../intake/brief";
 import { removeWorktree } from "../worktree/manager";
@@ -20,6 +22,9 @@ export interface WorktreeCleanupInput {
 
 export interface AgentctlOptions {
   store: JobStore;
+  apiBaseUrl?: string;
+  apiClient?: PandoApiClient;
+  apiFetch?: PandoApiFetch;
   briefReader?: BriefFileReader;
   worktreeCleaner?: WorktreeCleaner;
   stdout?: (line: string) => void;
@@ -58,10 +63,34 @@ export async function runAgentctl(args: readonly string[], opts: AgentctlOptions
       return showJob(subcommand, opts.store, stdout, stderr);
     }
 
+    if (command === "list") {
+      const status = statusOption(parsed, "status");
+      const response = await configuredApiClient(opts).listJobs(
+        status === undefined ? undefined : { status },
+      );
+      for (const job of response.jobs) stdout(formatApiJobSummary(job));
+      return 0;
+    }
+
+    if (command === "daemon" && subcommand === "status") {
+      const health = await configuredApiClient(opts).health();
+      for (const line of formatDaemonHealth(health)) stdout(line);
+      return 0;
+    }
+
     if (command === "retry" && subcommand !== undefined) {
       const from = stageOption(parsed, "from");
+      const attemptsLeft = optionInt(parsed, "attempts") ?? opts.defaultRetryBudget ?? 10;
+      if (hasApiConfigured(opts)) {
+        const response = await configuredApiClient(opts).retryJob(subcommand, {
+          attemptsLeft,
+          from,
+        });
+        stdout(`retry queued ${response.job.jobId} from ${from}`);
+        return 0;
+      }
       const job = opts.store.retryJob({
-        attemptsLeft: optionInt(parsed, "attempts") ?? opts.defaultRetryBudget ?? 10,
+        attemptsLeft,
         from,
         jobId: subcommand,
       });
@@ -70,8 +99,19 @@ export async function runAgentctl(args: readonly string[], opts: AgentctlOptions
     }
 
     if (command === "cancel" && subcommand !== undefined) {
+      const reason = optional(parsed, "reason");
+      if (hasApiConfigured(opts)) {
+        const response = await configuredApiClient(opts).cancelJob(subcommand, { reason });
+        stdout(
+          response.action.status === "canceled"
+            ? `canceled ${response.job.jobId}`
+            : `cancel requested ${response.job.jobId}`,
+        );
+        return 0;
+      }
       const job = opts.store.cancelJob({
         jobId: subcommand,
+        reason,
         requestedBy: "agentctl",
       });
       stdout(
@@ -87,7 +127,7 @@ export async function runAgentctl(args: readonly string[], opts: AgentctlOptions
     stderr(usage());
     return 1;
   } catch (error) {
-    stderr(error instanceof Error ? error.message : String(error));
+    stderr(formatCliError(error));
     return 1;
   }
 }
@@ -101,6 +141,7 @@ export async function main(args = process.argv.slice(2)): Promise<number> {
   try {
     return await runAgentctl(args, {
       store,
+      apiBaseUrl: process.env.PANDO_API_URL,
       stderr: (line) => console.error(line),
       stdout: (line) => console.log(line),
       worktreeCleaner: {
@@ -244,6 +285,29 @@ function formatEvent(event: JobEventRecord): string {
     : `#${event.sequence} ${stage} ${event.type} ${detail}`;
 }
 
+function formatApiJobSummary(job: ApiJobSummary): string {
+  return [
+    job.jobId,
+    job.status,
+    `repo=${job.repo}`,
+    `source=${job.source}`,
+    `attemptsLeft=${job.attemptsLeft}`,
+    `createdAt=${job.createdAt}`,
+    `updatedAt=${job.updatedAt}`,
+    `startedAt=${formatNullable(job.startedAt)}`,
+    `finishedAt=${formatNullable(job.finishedAt)}`,
+    `worktreePath=${formatNullable(job.worktreePath)}`,
+    `cancelRequestedAt=${formatNullable(job.cancelRequestedAt)}`,
+  ].join(" ");
+}
+
+function formatDaemonHealth(health: ApiHealth): string[] {
+  return [
+    `${health.service} ${health.status} apiVersion=${health.apiVersion} daemon=${health.daemon.status} store=${health.store.status} jobCount=${health.store.jobCount} auth=${health.auth.mode}`,
+    "auth assumption: private network boundary; do not expose publicly without a new ADR",
+  ];
+}
+
 function formatTelemetryDetails(event: JobEventRecord): string {
   if (Object.keys(event.payload).length === 0) return "";
 
@@ -269,12 +333,50 @@ function formatTelemetryValue(value: unknown): string {
   return JSON.stringify(text);
 }
 
+function statusOption(parsed: ParsedArgs, key: string): JobStatus | undefined {
+  const value = optional(parsed, key);
+  if (value === undefined) return undefined;
+  if (!isJobStatus(value)) {
+    throw new Error(`--${key}: expected one of ${formatStatusList()}`);
+  }
+  return value;
+}
+
 function stageOption(parsed: ParsedArgs, key: string): StageName {
   const value = required(parsed, key);
   if (!(STAGE_ORDER as readonly string[]).includes(value)) {
     throw new Error(`--${key}: expected one of ${STAGE_ORDER.join(", ")}`);
   }
   return value as StageName;
+}
+
+function configuredApiClient(opts: AgentctlOptions): PandoApiClient {
+  if (opts.apiClient !== undefined) return opts.apiClient;
+  if (opts.apiBaseUrl === undefined || opts.apiBaseUrl.length === 0) {
+    throw new Error("PANDO_API_URL is required for API-backed agentctl commands");
+  }
+  return createPandoApiClient({ baseUrl: opts.apiBaseUrl, fetch: opts.apiFetch });
+}
+
+function hasApiConfigured(opts: AgentctlOptions): boolean {
+  return opts.apiClient !== undefined || (opts.apiBaseUrl !== undefined && opts.apiBaseUrl !== "");
+}
+
+function formatNullable(value: string | null): string {
+  return value ?? "-";
+}
+
+function formatCliError(error: unknown): string {
+  if (isApiClientError(error)) {
+    return `api error ${error.status} ${error.code}: ${error.message}`;
+  }
+  return error instanceof Error ? error.message : String(error);
+}
+
+function isApiClientError(error: unknown): error is Error & { code: string; status: number } {
+  if (!(error instanceof Error)) return false;
+  const candidate = error as Partial<{ code: unknown; status: unknown }>;
+  return typeof candidate.code === "string" && typeof candidate.status === "number";
 }
 
 function optionInt(parsed: ParsedArgs, key: string): number | undefined {
@@ -303,9 +405,11 @@ function usage(): string {
     "usage:",
     "agentctl submit jira <ticket> --repo <repo> [--title <title>] [--branch <branch>]",
     "agentctl submit brief --repo <repo> --id <id> [--title <title>] [--brief-path <path>]",
+    "agentctl list [--status <status>]",
+    "agentctl daemon status",
     "agentctl show <job-id>",
     "agentctl retry <job-id> --from <stage> [--attempts <n>]",
-    "agentctl cancel <job-id>",
+    "agentctl cancel <job-id> [--reason <reason>]",
     "agentctl cleanup <job-id>",
   ].join("\n");
 }
