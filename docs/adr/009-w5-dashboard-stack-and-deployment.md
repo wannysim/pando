@@ -28,6 +28,9 @@ W5의 목표는 공개 OSS로서 보기 좋은 운영 도구를 만드는 것이
    - content site가 아니므로 Astro를 쓰지 않는다.
    - dashboard build 산출물은 production에서 Hono가 static asset으로 서빙한다.
    - dev 모드에서는 Vite dev server와 daemon API를 분리해도 된다.
+   - UI 기본값은 **shadcn/ui를 제한적으로 채택**한다. Vite React 지원이 있고 컴포넌트 소스가 repo 안에 생성되므로 공개 OSS에서 직접 소유·수정하기 좋다.
+   - W5에서 허용하는 shadcn/ui 컴포넌트는 운영 화면에 필요한 primitive로 제한한다: `Button`, `Badge`, `Table`, `Tabs`, `Dialog`/`AlertDialog`, `DropdownMenu`, `Input`, `Textarea`, `Select`, `Tooltip`, `Skeleton`, `Sonner`.
+   - W5에서는 `DataTable` 풀세트, chart, command palette, sidebar-heavy layout, 복잡한 form abstraction은 도입하지 않는다.
 
 3. W5는 full-screen TUI를 만들지 않는다.
 
@@ -54,6 +57,7 @@ W5의 목표는 공개 OSS로서 보기 좋은 운영 도구를 만드는 것이
 - API와 static dashboard가 same-origin이면 CORS/auth/session 복잡도를 피할 수 있다.
 - `agentctl`을 API client로 만들면 CLI와 웹의 동작 차이를 줄일 수 있다.
 - 단일 컨테이너는 SQLite, child process worker, worktree mount, dashboard serving을 한 lifecycle로 묶어 운영 부담을 낮춘다.
+- shadcn/ui는 완성형 디자인 시스템을 강제로 끌고 오는 대신 필요한 컴포넌트 소스만 repo에 소유하게 해준다. 다만 Tailwind/shadcn 설정 비용이 생기므로 W5에서는 job 운영 UI에 직접 필요한 primitive만 추가한다.
 
 ## 결과
 
@@ -72,5 +76,8 @@ W5의 목표는 공개 OSS로서 보기 좋은 운영 도구를 만드는 것이
 
 - API response schema는 테스트로 고정한다.
 - dashboard는 API mock 기반 component/unit test와 최소 browser smoke만 둔다.
+- Vitest는 dashboard PR에서 바로 구성한다. API contract, shared API client, React component test를 Vitest로 검증한다.
+- Playwright는 dashboard 화면이 실제로 생긴 PR에서 browser smoke 1개만 둔다. 대상은 jobs list 로딩, job detail 진입, retry/cancel/cleanup 중 하나의 mock action, health strip 표시까지다.
+- Full Playwright regression suite와 cross-browser matrix는 W6 이후 실제 필요가 확인될 때 추가한다.
 - Docker는 image build와 health endpoint smoke를 우선한다.
 - 실제 Claude/Codex live smoke는 dashboard 완성 조건이 아니라 W5 운영 smoke로 별도 수행한다.
