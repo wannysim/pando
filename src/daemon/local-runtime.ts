@@ -207,6 +207,8 @@ Record blockers as [Blocker] open questions only when work cannot continue.`;
     return `${header}
 
 Read PLAN.md and add focused regression tests for the requested behavior.
+Edit files directly in this worktree; do not spawn subagents.
+Before exiting, make sure git diff contains at least one relevant test change.
 Keep the change scoped to this job.`;
   }
 
@@ -214,6 +216,8 @@ Keep the change scoped to this job.`;
     return `${header}
 
 Implement the smallest change that satisfies PLAN.md and the tests.
+Edit files directly in this worktree; do not spawn subagents.
+Before exiting, make sure git diff contains the implementation change.
 Do not modify tests unless PLAN.md explicitly says the tests are wrong.
 Keep unrelated files untouched.`;
   }

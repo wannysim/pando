@@ -24,12 +24,14 @@ stages:
     env:
       IMPLEMENT_JIRA_BATCH: "1"
   test:
-    engine: codex
-    model: gpt-5-codex
+    engine: claude-code
+    model: sonnet
     skill: test-writer
+    allowed_tools: [Read, Glob, Grep, Write, "Bash(git *)", "Bash(pnpm *)"]
   impl:
-    engine: codex
-    model: gpt-5-codex
+    engine: claude-code
+    model: sonnet
+    allowed_tools: [Read, Glob, Grep, Write, "Bash(git *)", "Bash(pnpm *)"]
   review:
     engine: claude-code
     model: opus
@@ -100,6 +102,18 @@ describe("loadStageConfigFromYaml", () => {
     ]);
     expect(resolveStageAllowedTools(config, "spec", "jira")).toContain("mcp__claude_ai_Atlassian");
     expect(resolveStageAllowedTools(config, "plan", "brief")).toContain("Bash(git *)");
+    expect(resolveStageAllowedTools(config, "test", "brief")).toEqual([
+      "Read",
+      "Glob",
+      "Grep",
+      "Write",
+      "Bash(git *)",
+      "Bash(pnpm *)",
+    ]);
+    expect(resolveStageAllowedTools(config, "test", "brief")).not.toContain("Task");
+    expect(resolveStageAllowedTools(config, "impl", "brief")).not.toContain(
+      "mcp__claude_ai_Atlassian",
+    );
   });
 
   it("fails fast when a required worker stage is missing", () => {
@@ -109,9 +123,11 @@ describe("loadStageConfigFromYaml", () => {
   });
 
   it("rejects invalid engines and malformed allowed_tools with field paths", () => {
-    expect(() => loadStageConfigFromYaml(YAML.replace("engine: codex", "engine: aider"))).toThrow(
-      /stages\.test\.engine/i,
-    );
+    expect(() =>
+      loadStageConfigFromYaml(
+        YAML.replace("  test:\n    engine: claude-code", "  test:\n    engine: aider"),
+      ),
+    ).toThrow(/stages\.test\.engine/i);
     expect(() =>
       loadStageConfigFromYaml(YAML.replace("brief: [Read, Glob, Grep, Write]", "brief: Read")),
     ).toThrow(/stages\.spec\.allowed_tools_by_source\.brief/i);

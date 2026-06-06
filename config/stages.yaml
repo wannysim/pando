@@ -25,10 +25,12 @@ stages:
     engine: claude-code
     model: sonnet
     skill: test-writer
+    allowed_tools: [Read, Glob, Grep, Write, "Bash(git *)", "Bash(pnpm *)"]
 
   impl:
     engine: claude-code
     model: sonnet
+    allowed_tools: [Read, Glob, Grep, Write, "Bash(git *)", "Bash(pnpm *)"]
 
   review:
     engine: claude-code
