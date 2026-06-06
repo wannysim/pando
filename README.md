@@ -52,7 +52,14 @@ Follow the [runbook](./docs/runbooks/local-pando-runner.md) "Submit a brief" sec
 
 ### Check status and stop
 
-Run `agentctl list` / `agentctl show <id>` to check progress (see runbook for the full commands). Stop: **Ctrl-C** the `pnpm start` process. Temporary artifacts live under `/tmp` and can be removed afterwards.
+The CLI is named **`pandoctl`** (reserved on [npm](https://www.npmjs.com/package/pandoctl); the bare `pando` name was taken). Locally it runs via the `pandoctl` package script:
+
+```bash
+pnpm pandoctl list          # prefix with PANDO_API_URL=... to reach the running daemon
+pnpm pandoctl show <id>
+```
+
+See the runbook for the full env-var prefixes. Stop: **Ctrl-C** the `pnpm start` process. Temporary artifacts live under `/tmp` and can be removed afterwards.
 
 ## Development
 
