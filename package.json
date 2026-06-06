@@ -22,7 +22,8 @@
     "format": "oxfmt --write .",
     "format:check": "oxfmt --check .",
     "types": "tsc --noEmit",
-    "verify": "pnpm coverage && pnpm lint && pnpm types",
+    "verify:core": "pnpm coverage && pnpm lint && pnpm types",
+    "verify": "pnpm verify:core && pnpm --filter @pando/dashboard verify",
     "prepare": "husky"
   },
   "dependencies": {

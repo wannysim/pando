@@ -90,6 +90,19 @@ export interface ApiJobActionResponse {
   job: ApiJobSummary;
 }
 
+export interface ApiJobCleanupResponse {
+  action: {
+    status: "cleanup_requested";
+    type: "cleanup";
+    worktreePath: string;
+  };
+  job: ApiJobSummary;
+}
+
+export interface ApiBriefSubmitResponse {
+  job: ApiJobSummary;
+}
+
 export function isJobStatus(value: string): value is JobStatus {
   return (JOB_STATUS_VALUES as readonly string[]).includes(value);
 }

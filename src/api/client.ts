@@ -1,8 +1,10 @@
 import type { JobStatus, StageName } from "../core/types";
 import type {
   ApiError,
+  ApiBriefSubmitResponse,
   ApiHealth,
   ApiJobActionResponse,
+  ApiJobCleanupResponse,
   ApiJobDetailResponse,
   ApiJobEventsResponse,
   ApiJobList,
@@ -29,6 +31,14 @@ export interface CancelJobRequest {
   reason?: string;
 }
 
+export interface SubmitBriefRequest {
+  branch?: string;
+  briefPath?: string;
+  id: string;
+  repo: string;
+  title?: string;
+}
+
 export interface PandoApiClient {
   health(): Promise<ApiHealth>;
   listJobs(input?: ListJobsRequest): Promise<ApiJobList>;
@@ -36,6 +46,8 @@ export interface PandoApiClient {
   listEvents(jobId: string): Promise<ApiJobEventsResponse>;
   retryJob(jobId: string, input: RetryJobRequest): Promise<ApiJobActionResponse>;
   cancelJob(jobId: string, input?: CancelJobRequest): Promise<ApiJobActionResponse>;
+  cleanupJob(jobId: string): Promise<ApiJobCleanupResponse>;
+  submitBrief(input: SubmitBriefRequest): Promise<ApiBriefSubmitResponse>;
 }
 
 export class PandoApiClientError extends Error {
@@ -98,6 +110,21 @@ export function createPandoApiClient(opts: PandoApiClientOptions): PandoApiClien
           method: "POST",
         },
       );
+    },
+    async cleanupJob(jobId) {
+      return await request<ApiJobCleanupResponse>(
+        fetcher,
+        baseUrl,
+        `/jobs/${encodePathPart(jobId)}/cleanup`,
+        { method: "POST" },
+      );
+    },
+    async submitBrief(input) {
+      return await request<ApiBriefSubmitResponse>(fetcher, baseUrl, "/briefs", {
+        body: JSON.stringify(input),
+        headers: { "content-type": "application/json" },
+        method: "POST",
+      });
     },
   };
 }

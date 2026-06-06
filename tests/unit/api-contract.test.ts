@@ -1,7 +1,20 @@
 import { describe, expect, it } from "vitest";
 import { createPandoApiApp } from "../../src/api/app";
-import type { ApiJobActionResponse, ApiJobList, ApiResponse } from "../../src/api/schema";
-import type { CancelJobInput, JobEventRecord, JobRecord, RetryJobInput } from "../../src/db/index";
+import type {
+  ApiBriefSubmitResponse,
+  ApiJobActionResponse,
+  ApiJobCleanupResponse,
+  ApiJobList,
+  ApiResponse,
+} from "../../src/api/schema";
+import type {
+  CancelJobInput,
+  EnqueueJobInput,
+  JobEventRecord,
+  JobRecord,
+  RequestJobCleanupInput,
+  RetryJobInput,
+} from "../../src/db/index";
 import type { JobStatus, StageName, WorkItem } from "../../src/core/types";
 
 describe("Pando Hono API", () => {
@@ -334,6 +347,94 @@ describe("Pando Hono API", () => {
     });
   });
 
+  it("requests terminal job cleanup through the store cleanup contract", async () => {
+    const store = new ApiMemoryStore([
+      jobRecord(workItem("DEMO-4010"), {
+        createdAt: "2026-06-06T00:00:00.000Z",
+        status: "DONE",
+        updatedAt: "2026-06-06T00:01:00.000Z",
+        worktreePath: "/worktrees/web/feat-DEMO-4010",
+      }),
+    ]);
+    const app = createPandoApiApp({ store });
+
+    const response = await app.request("/jobs/DEMO-4010/cleanup", { method: "POST" });
+
+    expect(response.status).toBe(202);
+    expect(store.cleanups).toEqual([{ jobId: "DEMO-4010", requestedBy: "api" }]);
+    const body = await responseJson<ApiResponse<ApiJobCleanupResponse>>(response);
+    if (!body.ok) throw new Error(body.error.message);
+    expect(body.data).toEqual({
+      action: {
+        status: "cleanup_requested",
+        type: "cleanup",
+        worktreePath: "/worktrees/web/feat-DEMO-4010",
+      },
+      job: expect.objectContaining({
+        jobId: "DEMO-4010",
+        status: "DONE",
+        worktreePath: "/worktrees/web/feat-DEMO-4010",
+      }),
+    });
+  });
+
+  it("enqueues brief submissions as brief work items", async () => {
+    const store = new ApiMemoryStore([]);
+    const app = createPandoApiApp({ defaultRetryBudget: 7, store });
+
+    const response = await app.request("/briefs", {
+      body: JSON.stringify({
+        branch: "feat/dashboard-brief",
+        briefPath: "briefs/dashboard/brief.md",
+        id: "dashboard-brief",
+        repo: "pando",
+        title: "Dashboard brief",
+      }),
+      method: "POST",
+    });
+
+    expect(response.status).toBe(201);
+    expect(store.enqueues).toEqual([
+      {
+        item: {
+          branch: "feat/dashboard-brief",
+          id: "dashboard-brief",
+          payload: { briefPath: "briefs/dashboard/brief.md", kind: "brief" },
+          repo: "pando",
+          source: "brief",
+          title: "Dashboard brief",
+        },
+        retryBudget: 7,
+      },
+    ]);
+    const body = await responseJson<ApiResponse<ApiBriefSubmitResponse>>(response);
+    if (!body.ok) throw new Error(body.error.message);
+    expect(body.data.job).toMatchObject({
+      jobId: "dashboard-brief",
+      repo: "pando",
+      source: "brief",
+      status: "QUEUED",
+      title: "Dashboard brief",
+    });
+  });
+
+  it("rejects invalid brief submissions before enqueueing", async () => {
+    const store = new ApiMemoryStore([]);
+    const app = createPandoApiApp({ store });
+
+    const response = await app.request("/briefs", {
+      body: JSON.stringify({ id: "missing-repo" }),
+      method: "POST",
+    });
+
+    expect(response.status).toBe(400);
+    expect(store.enqueues).toEqual([]);
+    expect(await response.json()).toEqual({
+      error: { code: "invalid_request", message: "repo is required" },
+      ok: false,
+    });
+  });
+
   it("returns stable JSON errors instead of thrown stack traces", async () => {
     const store = new ApiMemoryStore([
       jobRecord(workItem("DEMO-4009"), {
@@ -376,6 +477,8 @@ describe("Pando Hono API", () => {
 
 class ApiMemoryStore {
   readonly cancellations: CancelJobInput[] = [];
+  readonly cleanups: RequestJobCleanupInput[] = [];
+  readonly enqueues: EnqueueJobInput[] = [];
   readonly retries: RetryJobInput[] = [];
 
   private readonly jobs = new Map<string, JobRecord>();
@@ -444,6 +547,31 @@ class ApiMemoryStore {
           };
     this.jobs.set(input.jobId, next);
     return next;
+  }
+
+  requestJobCleanup(input: RequestJobCleanupInput) {
+    const job = this.requireJob(input.jobId);
+    if (!["DONE", "FAILED", "ESCALATED", "CANCELED"].includes(job.status)) {
+      throw new Error(`job ${input.jobId} is not terminal: ${job.status}`);
+    }
+    if (job.worktreePath === undefined) {
+      throw new Error(`job ${input.jobId} has no worktree path to cleanup`);
+    }
+
+    this.cleanups.push(input);
+    return { job, worktreePath: job.worktreePath };
+  }
+
+  enqueueJob(input: EnqueueJobInput): JobRecord {
+    this.enqueues.push(input);
+    const record = jobRecord(input.item, {
+      attemptsLeft: input.retryBudget,
+      createdAt: "2026-06-06T00:04:00.000Z",
+      status: "QUEUED",
+      updatedAt: "2026-06-06T00:04:00.000Z",
+    });
+    this.jobs.set(input.item.id, record);
+    return record;
   }
 
   private requireJob(jobId: string): JobRecord {
