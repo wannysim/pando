@@ -21,7 +21,7 @@
 
 ```
 ~/Github/{name}/
-├── package.json              # pnpm 11, Node 22.12+, TypeScript strict
+├── package.json              # pnpm 11, Node 22.13+, TypeScript strict
 ├── tsconfig.json
 ├── .github/workflows/ci.yml  # pnpm verify
 ├── .oxlintrc.json            # 계층 경계 포함 lint 규칙
