@@ -423,6 +423,12 @@ class MemoryJobStore implements JobStore {
     throw new Error("not used");
   }
 
+  listJobs(input?: Parameters<JobStore["listJobs"]>[0]): JobRecord[] {
+    if (this.job === undefined) return [];
+    if (input?.status !== undefined && this.job.status !== input.status) return [];
+    return [this.job];
+  }
+
   claimNextRunnable(): JobRecord | undefined {
     if (this.job?.cancelRequestedAt !== undefined) return undefined;
     return this.job;
@@ -521,6 +527,12 @@ class QueueJobStore implements JobStore {
 
   enqueueJob(): JobRecord {
     throw new Error("not used");
+  }
+
+  listJobs(input?: Parameters<JobStore["listJobs"]>[0]): JobRecord[] {
+    return [...this.jobs.values()].filter(
+      (job) => input?.status === undefined || job.status === input.status,
+    );
   }
 
   claimNextRunnable(input?: { excludeJobIds?: readonly string[] }): JobRecord | undefined {
