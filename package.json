@@ -19,6 +19,7 @@
   "scripts": {
     "start": "tsx src/server.ts",
     "pando": "tsx src/cli/pando.ts",
+    "pandoctl": "tsx src/cli/agentctl.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "coverage": "vitest run --coverage",
