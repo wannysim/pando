@@ -17,6 +17,7 @@
 | 레포 환경 컨텍스트 = 선언적 프로파일 + **PM lockfile 자동감지** + SPEC source 분기 + profile fail-fast | ADR-005 ← 평가 |
 | `~/.ai-skills` 결합 = 스킬명 설정화 + **PLAN.md 계약을 pando가 소유**(골든 계약테스트) + 의존 규약 버전핀 | ADR-006 ← 평가 |
 | PLAN 산출 = **작업단위 커밋 분할이 기본**, Stacked PR은 net 1000줄 초과 시에만 제안 | ADR-007 (ai-skills 스킬 + pando 문서 양쪽 반영) |
+| RepoProfile은 intake source와 context source를 분리. 실제 회사 Jira/Confluence/Figma 설정은 private local config에만 둠 | ADR-008 |
 | 게이트 = 결정적 신호만 (exit code/아티팩트/체크섬). LLM output은 Gate 컨텍스트에서 타입 제외 | CLAUDE.md 규율 5 |
 | 개발 = TDD 강제, `pnpm verify`(커버리지 85%+/core 95%+), core·pipeline·scheduler 순수 계층(eslint 강제) | engineering-standards |
 | worktree 규약 = `~/.worktrees/{repo}/{slug}`, origin ref 직접 분기(원본 무간섭), `.dispatch.lock` 공유 | design-v2 §3.2, `~/.ai-skills` 호환 |
@@ -78,18 +79,20 @@
 - 검증: `pnpm verify` 통과(2026-06-06, `feat/w2-stage-config-loader`, 14 files / 92 tests, coverage all statements 92.88% / branches 85.98% / functions 95.97% / lines 94.79%). `node:sqlite` 사용으로 검증 중 ExperimentalWarning 1회 출력됨
 - 공개 repo hygiene: `tests/` 표면(`describe`/`it`, fixture 문구)은 영어로 정리. 실제 회사 티켓 키는 커밋하지 않고 `DEMO-1234` 같은 가상 키만 사용. `docs/`는 작업자용이라 한글 유지 허용
 
-**다음 세션 시작점 — W3 brief 경로.** 권장 순서(TDD):
-1. `briefs/{id}/brief.md` intake template/loader — WorkItem(`source: brief`)으로 정규화
-2. personal-site 프로파일 기반 SPEC gate E2E — Jira/MCP 없이 `_spec.md` 계약을 만족하는지 검증
-3. `agentctl submit brief`와 intake 저장 흐름 연결 — 현재 handler는 이미 brief WorkItem enqueue까지 지원
-4. 개인 레포 1개에서 `runDaemonOnce` dry run/fake engine → 실제 engine 순으로 좁혀 검증
-5. scheduler 세마포어는 n×n(W4) 전까지 단일 in-flight로 유지
+**다음 세션 시작점 — W3 brief 경로.** ADR-008을 먼저 읽고 진행할 것. 권장 순서(TDD):
+1. RepoProfile loader를 `work_item_source` 단수에서 `intake.sources` + `context.providers` 구조로 이행. 하위 호환은 유지
+2. `briefs/{id}/brief.md` intake template/loader — WorkItem(`source: brief`)으로 정규화
+3. brief 필수 섹션(`Goal`, `User Story`, `Acceptance Criteria`, `Screens or Behavior`, `Non-Goals`, `Assets`, `Open Questions`) 검증. `[Blocker]`는 ESCALATED 경로로 연결
+4. personal-site 프로파일 기반 SPEC gate E2E — Jira/MCP 없이 `_spec.md` 계약을 만족하는지 검증
+5. `agentctl submit brief`와 intake 저장 흐름 연결 — 현재 handler는 이미 brief WorkItem enqueue까지 지원
+6. GitHub Issue는 W3에서 구현하지 말고 `WorkItem.source`/설정 확장 여지만 남김
+7. 실제 회사 Jira/Confluence/Figma URL·project key·page id·file id는 public config/docs/test fixture에 커밋하지 않음
 
 ## 참조 문서 지도
 
 - `docs/research-v1.md` — 도구/패턴 리서치 (모델명·가격은 2차 소스, 재확인 필요)
 - `docs/design-v2-multi-repo.md` — n×n 설계, `~/.ai-skills` 자산 매핑 (§4·§7 PLAN은 ADR-007 반영됨)
-- `docs/adr/` — 001~007. **005**(레포 컨텍스트 격리)·**006**(ai-skills 결합 최소화)·**007**(PLAN 커밋분할)이 이번 평가·피드백 산출. 바꾸려면 새 ADR 먼저
+- `docs/adr/` — 001~008. **005**(레포 컨텍스트 격리)·**006**(ai-skills 결합 최소화)·**007**(PLAN 커밋분할)·**008**(intake/context source 분리)이 이번 평가·피드백 산출. 바꾸려면 새 ADR 먼저
 - `docs/repo-structure.md` — 구조·인터페이스 (※ §4 MCP 주입 전제는 ADR-004로 폐기됨)
 - `docs/engineering-standards.md` — 개발 방법론 (superpowers + agent-skills 채택분)
 - `docs/w1-runbook.md` — W1 절차 + 실행 로그
