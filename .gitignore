@@ -7,3 +7,4 @@ dist/
 pando.sqlite*
 dashboard/test-results/
 dashboard/playwright-report/
+.claude/
