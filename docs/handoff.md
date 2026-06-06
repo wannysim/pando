@@ -58,7 +58,7 @@
 | W2-C: 상태 저장/운영 루프 | ✅ 완료(기본형) | SQLite jobs/events/repos, runner persistence hook/resume, 초기 단일 in-flight daemon loop, `agentctl submit/show/retry` handler. W4에서 병렬 tick으로 확장됨 |
 | W3: brief 경로 | ✅ 완료 | brief intake/template/loader, personal-site 프로파일 SPEC E2E, `agentctl submit brief` 연결 |
 | W4: n×n 병렬 | ✅ 완료 | global/per-repo/per-provider 세마포어, 포트/캐시/env 격리, 병렬 daemon tick. PR #13 `feat: add parallel scheduler loop` |
-| W5: 통제·운영 | 🟨 진행 중 | PR #17 safety gate contracts, PR 2 lifecycle cancel/cleanup/resume 계약 완료. PR 3 review separation/telemetry는 현재 브랜치에서 계약 고정. 다음은 PR 4 Hono API foundation |
+| W5: 통제·운영 | ✅ 완료 예정 | PR #17 safety gates, lifecycle, review telemetry, Hono API, operational CLI, minimal dashboard를 develop에 반영했다. PR 7은 single-container Docker skeleton과 deterministic two-job smoke fallback 계약을 고정한다 |
 
 ## 코드 현황
 
@@ -83,12 +83,15 @@
 - `src/daemon/worktree-provisioner.ts` — W4 완료. `RepoProfile` + `worktreeRoot`를 `ensureWorktree` 옵션으로 변환하고 setup command를 PM-agnostic action에서 생성. setup command에 job isolation env를 주입
 - `src/worktree/manager.ts` — W4에서 setup command 실행 시 `setupEnv`를 process env에 병합하도록 확장
 - `src/cli/agentctl.ts` — W3 완료. `submit jira`, `submit brief`, `show`, `retry`. W5 PR 2에서 직접 store 기반 `cancel <jobId>`와 `cleanup <jobId>`를 추가. cleanup은 worktree cleaner port를 통해 실행하고 request/completed/failed event를 남김. W5 PR 3에서 `show`가 event payload의 cost/duration/failure reason/evidence를 key=value 형식으로 출력. `submit brief`는 brief 파일을 읽어 schema 검증 후 title/assets를 WorkItem으로 정규화하고, `--brief-path` 생략 시 `briefs/{id}/brief.md`를 사용
+- `src/api/app.ts`, `src/server.ts` — W5 PR 7에서 production static dashboard serving을 `/dashboard` 아래로 고정하고, Hono API/SQLite store/static dashboard를 같은 Node server entrypoint로 묶었다. `/health`, `/jobs`, `/briefs` 같은 API route는 JSON route로 유지되어 SPA fallback과 충돌하지 않는다
+- `deploy/`, `config/orchestrator.docker.yaml` — W5 PR 7에서 single-container Dockerfile/compose skeleton을 추가했다. mount contract는 SQLite `/data/pando.sqlite`, repos `/repos`, worktrees `/worktrees`, config `/config`, skills `/skills`, HTTP `3210`, dashboard root `/app/dashboard/dist`
+- `smoke/two-job-smoke.contract.json`, `scripts/two-job-smoke.mjs`, `docs/runbooks/two-job-smoke.md` — W5 PR 7에서 2-job smoke의 global cap 2~3, worktree collision check, provider cap check, gate evidence check, deterministic fake fallback reason 기록을 테스트 가능한 계약으로 고정했다
 - 검증: `pnpm verify` 통과(2026-06-06, PR #17 기준 21 files / 132 tests, coverage all statements 94.19% / branches 87.63% / functions 97.81% / lines 95.74%. `pipeline/gates` statements 97.41%, scheduler statements 98.38%).
 - 공개 repo hygiene: `tests/` 표면(`describe`/`it`, fixture 문구)은 영어로 정리. 실제 회사 티켓 키는 커밋하지 않고 `DEMO-1234` 같은 가상 키만 사용. `docs/`는 작업자용이라 한글 유지 허용
 
-**다음 세션 시작점 — W5 PR 4 Hono API foundation.**
+**다음 세션 시작점 — W6 후보 정리 또는 첫 live smoke.**
 
-W5 PR #17(safety gate contracts)은 develop에 squash merge 완료. W5 PR 2는 cancel/cleanup/resume 상태와 DB/daemon/CLI 계약을 테스트 먼저 고정했다. W5 PR 3는 REVIEW 단계 모델/엔진/allowedTools/env/prompt stage 분리와 cost/duration/failure telemetry event schema를 DB/runner/daemon/CLI 계약으로 고정했다. 다음 세션은 `docs/w5-operational-readiness.md`의 PR 4 범위에서 Hono API foundation을 TDD로 시작한다. W5는 "대시보드 MVP"가 아니라 "실제로 맡길 수 있는 운영성"을 만드는 단계이며, dashboard는 API가 안정된 뒤 최소 기능만 붙인다.
+W5 PR #17(safety gate contracts)부터 PR 7(Docker and smoke)까지 develop 반영이 끝나면 W5의 최소 운영 준비는 닫힌다. 다음 세션은 Docker daemon이 실행 가능한 환경에서 `docs/runbooks/two-job-smoke.md` 기준 live Claude/Codex 2-job smoke를 먼저 시도한다. 인증/비용/마운트 조건이 부족하면 `pnpm smoke:two-job -- --mode fake --evidence /tmp/pando-two-job-smoke-fake.json`로 deterministic fallback evidence를 남기고, W6 범위(3~5 job soak, auth hardening, notifications, GitHub/Jira write-back 후보)를 정리한다.
 
 W4 완료 판정:
 - ✅ scheduler/semaphore 계약: global / per-repo / per-provider cap 테스트 완료
@@ -107,9 +110,9 @@ W5 우선순위(TDD):
 1. ✅ **Safety gates** — checksum/diff gate 순수 계약, IMPL 테스트 파일 수정/삭제 차단, protected path 차단, deterministic workspace scoping, null-agent fake E2E 완료(PR #17)
 2. ✅ **Lifecycle controls** — cancel/cleanup/resume 시나리오를 DB/daemon/CLI 계약으로 고정했다
 3. ✅ **Review separation + telemetry** — REVIEW 단계가 IMPL과 다른 모델/엔진 설정을 쓰는 계약, cost/duration/failure reason event schema를 테스트로 고정했다
-4. ⬅️ **Hono API + Operational CLI** — `/health`, `/jobs`, retry/cancel/cleanup API와 `agentctl list/cancel/cleanup/daemon`을 추가한다. CLI와 dashboard는 같은 API client를 쓴다
-5. **Minimal dashboard** — Vite React SPA로 jobs list/detail/actions/brief submit/health만 만든다. chart/analytics/batch UI는 W6 이후
-6. **Docker + two-job smoke** — single-container skeleton과 global 2~3 live smoke. 성공 조건은 worktree 충돌 없음, provider cap 준수, deterministic gates 통과/실패 기록 확인
+4. ✅ **Hono API + Operational CLI** — `/health`, `/jobs`, retry/cancel/cleanup API와 `agentctl list/cancel/cleanup/daemon` 추가
+5. ✅ **Minimal dashboard** — Vite React SPA jobs list/detail/actions/brief submit/health 완료
+6. ✅ **Docker + two-job smoke** — single-container skeleton, mount contract, static dashboard serving, deterministic fake smoke fallback 계약 완료. 실제 live smoke는 인증/비용/마운트 준비 후 global 2~3으로만 수행
 
 ## 참조 문서 지도
 
