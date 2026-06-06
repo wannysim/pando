@@ -2,7 +2,60 @@
 
 이 runbook은 로컬에서 pando API/dashboard를 띄운 뒤, 같은 SQLite queue를 local daemon loop가 처리하게 하는 최소 경로다.
 
-> 현재 이 절차는 의도적으로 자세한 개발자용 경로다. 실제 사용 UX 목표는 `pando start` 또는 `pnpm pando start` 같은 단일 명령으로 DB/worktree/dashboard/daemon을 함께 띄우는 것이다. 그 전까지는 아래 env var 경로를 source of truth로 둔다.
+> 빠른 경로는 아래 "Quick start (`pando start`)"다. 단일 명령으로 DB/worktree/config/dashboard/daemon을 함께 띄운다. 환경 변수를 직접 제어하고 싶거나 동작을 자세히 이해하고 싶으면 그 아래 "Start local pando (manual env path)"를 본다. 두 경로는 같은 기본값(`/tmp/pando-local-<timestamp>` run root, `config/`, port 3210, daemon enabled)을 쓴다.
+
+## Quick start (`pando start`)
+
+긴 env block 없이 로컬 pando를 한 번에 띄운다.
+
+```bash
+pnpm pando start
+```
+
+기본 동작:
+
+- DB/worktree는 `/tmp/pando-local-<timestamp>` 아래에 생성된다 (run root와 `worktrees/` 디렉터리는 자동으로 만든다).
+- config dir은 repo의 `config/`다.
+- dashboard는 `http://127.0.0.1:3210/dashboard`다.
+- daemon은 enabled, global concurrency 1이다.
+
+시작 로그가 dashboard URL, API health URL, DB path, worktree root, stop 방법(Ctrl+C), cleanup 명령(`rm -rf /tmp/pando-local-<timestamp>`)을 출력한다. secret 값은 출력하지 않는다.
+
+플래그로 기본값을 바꿀 수 있다.
+
+```bash
+pnpm pando start --port 4000 --config-dir config --concurrency 3 --tick-ms 500
+```
+
+- `--concurrency`는 1~3만 허용한다.
+- 요청한 port가 이미 사용 중이면 다음 빈 port를 자동으로 찾아 그 URL을 로그에 찍는다. 10개 안에 빈 port가 없으면 명확한 에러로 종료하니 `--port <n>`으로 다른 port를 고른다.
+
+usage는 인자 없이, 또는 `help`/`--help`로 본다.
+
+```bash
+pnpm pando help
+```
+
+### Global `pando` command
+
+repo 안에서 매번 `pnpm pando`를 치는 대신 전역 `pando` 명령으로 만들 수 있다.
+
+```bash
+# repo 안에서 한 번 실행
+pnpm link --global
+# 또는
+npm i -g .
+
+# 이후 어디서든
+pando start
+pando help
+```
+
+> 참고: bare 이름 `pando`는 이미 public npm registry에 점유돼 있다. 따라서 향후 공개 배포를 하려면 scoped/대체 이름(예: `@pando/cli`)이 필요하다. 이는 위 local self-dogfood 사용에는 영향을 주지 않는다 — `pnpm link --global` / `npm i -g .`는 이 repo의 `package.json` `bin`을 그대로 링크하기 때문이다.
+
+## Start local pando (manual env path)
+
+아래는 동작을 직접 제어하고 싶을 때 쓰는 자세한 개발자용 경로다.
 
 ## Preconditions
 
@@ -12,7 +65,7 @@
 - Claude auth는 로컬 auth dir 또는 API key로 준비
 - evidence나 임시 DB는 repo 밖(`/tmp` 등)에 둔다
 
-## Start local pando
+### Boot with env vars
 
 ```bash
 export RUN_ID="$(date +%Y%m%d-%H%M%S)"
@@ -76,7 +129,7 @@ Do not expose this server outside a private local network. Public auth is intent
 
 ## Current friction found by self-dogfood
 
-- Starting pando still requires too many environment variables.
+- The long env-var boot is now optional; `pnpm pando start` (or the global `pando start`) covers the common local path. The env-var path stays for fine-grained control.
 - To run multiple pando self-dogfood jobs concurrently, jobs should be queued before starting the daemon, and both `PANDO_GLOBAL_CONCURRENCY` and the repo profile `concurrency` must allow the desired count.
 - The PR stage prompt says Draft PR, but recent self-dogfood produced non-draft PRs. Add a deterministic check or force `gh pr create --draft`.
 - Evidence and temporary DB/worktrees should stay under `/tmp`; do not commit them.
