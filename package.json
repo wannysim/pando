@@ -13,7 +13,8 @@
     "url": "git+https://github.com/wannysim/pando.git"
   },
   "bin": {
-    "pando": "./bin/pando.mjs"
+    "pando": "./bin/pando.mjs",
+    "pandoctl": "./bin/pandoctl.mjs"
   },
   "type": "module",
   "scripts": {
@@ -52,7 +53,7 @@
     "vitest": "^4.1.8"
   },
   "lint-staged": {
-    "*.{js,jsx,ts,tsx,mjs,cjs,mts,cts,json,jsonc,json5,yml,yaml,md,mdx,html,css,scss,less,toml,graphql}": "oxfmt --write"
+    "*.{js,jsx,ts,tsx,mjs,cjs,mts,cts,json,jsonc,json5,yml,yaml,md,mdx,html,css,scss,less,toml,graphql}": "oxfmt --write --no-error-on-unmatched-pattern"
   },
   "engines": {
     "node": ">=22.13.0"
