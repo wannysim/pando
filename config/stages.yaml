@@ -9,7 +9,9 @@ stages:
     skills:
       jira: jira-context-gatherer
       brief: brief-intake
-    allowed_tools: [Read, Glob, Grep, Task, mcp__claude_ai_Atlassian]
+    allowed_tools_by_source:
+      jira: [Read, Glob, Grep, Task, mcp__claude_ai_Atlassian]
+      brief: [Read, Glob, Grep]
 
   plan:
     engine: claude-code

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   loadStageConfigFromYaml,
+  resolveStageAllowedTools,
   resolveStageSkill,
 } from "../../src/core/stage-config.js";
 
@@ -12,7 +13,9 @@ stages:
     skills:
       jira: jira-context-gatherer
       brief: brief-intake
-    allowed_tools: [Read, Glob, Grep, Task, mcp__claude_ai_Atlassian]
+    allowed_tools_by_source:
+      jira: [Read, Glob, Grep, Task, mcp__claude_ai_Atlassian]
+      brief: [Read, Glob, Grep]
   plan:
     engine: claude-code
     model: opus
@@ -44,7 +47,10 @@ describe("loadStageConfigFromYaml", () => {
 
     expect(config.defaults).toEqual({ retryBudget: 10, timeoutMinutes: 30 });
     expect(config.stages.spec).toEqual({
-      allowedTools: ["Read", "Glob", "Grep", "Task", "mcp__claude_ai_Atlassian"],
+      allowedToolsBySource: {
+        brief: ["Read", "Glob", "Grep"],
+        jira: ["Read", "Glob", "Grep", "Task", "mcp__claude_ai_Atlassian"],
+      },
       engine: "claude-code",
       model: "sonnet",
       skills: {
@@ -78,6 +84,20 @@ describe("loadStageConfigFromYaml", () => {
     expect(resolveStageSkill(config, "impl", "jira")).toBeUndefined();
   });
 
+  it("resolves source-specific allowed tools before falling back to stage tools", () => {
+    const config = loadStageConfigFromYaml(YAML);
+
+    expect(resolveStageAllowedTools(config, "spec", "brief")).toEqual([
+      "Read",
+      "Glob",
+      "Grep",
+    ]);
+    expect(resolveStageAllowedTools(config, "spec", "jira")).toContain(
+      "mcp__claude_ai_Atlassian",
+    );
+    expect(resolveStageAllowedTools(config, "plan", "brief")).toContain("Bash(git *)");
+  });
+
   it("fails fast when a required worker stage is missing", () => {
     const invalid = YAML.replace(/  review:[\s\S]*?defaults:/, "defaults:");
 
@@ -90,10 +110,10 @@ describe("loadStageConfigFromYaml", () => {
     ).toThrow(/stages\.test\.engine/i);
     expect(() =>
       loadStageConfigFromYaml(YAML.replace(
-        "allowed_tools: [Read, Glob, Grep, Task, mcp__claude_ai_Atlassian]",
-        "allowed_tools: Read",
+        "brief: [Read, Glob, Grep]",
+        "brief: Read",
       )),
-    ).toThrow(/stages\.spec\.allowed_tools/i);
+    ).toThrow(/stages\.spec\.allowed_tools_by_source\.brief/i);
   });
 
   it("rejects ambiguous skill declarations", () => {

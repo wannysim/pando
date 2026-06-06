@@ -1,3 +1,6 @@
+import { mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { runAgentctl } from "../../src/cli/agentctl.js";
 import type {
@@ -63,20 +66,115 @@ describe("runAgentctl", () => {
         "personal-site",
         "--id",
         "personal-site-20260606-a",
-        "--title",
-        "Refresh home page",
         "--brief-path",
         "briefs/personal-site-20260606-a/brief.md",
       ],
-      { store, stdout: (line) => output.push(line) },
+      {
+        briefReader: briefReader({
+          "briefs/personal-site-20260606-a/brief.md": VALID_BRIEF,
+        }),
+        store,
+        stdout: (line) => output.push(line),
+      },
     );
 
     expect(exitCode).toBe(0);
-    expect(store.jobs.get("personal-site-20260606-a")?.item.payload).toEqual({
+    expect(store.jobs.get("personal-site-20260606-a")?.item).toMatchObject({
+      payload: {
+        assets: ["assets/home-reference.png"],
+        briefPath: "briefs/personal-site-20260606-a/brief.md",
+        kind: "brief",
+      },
+      title: "Refresh home page",
+    });
+    expect(output).toEqual(["queued personal-site-20260606-a"]);
+  });
+
+  it("uses the conventional brief path when --brief-path is omitted", async () => {
+    const store = new AgentctlMemoryStore();
+
+    const exitCode = await runAgentctl(
+      ["submit", "brief", "--repo", "personal-site", "--id", "personal-site-20260606-a"],
+      {
+        briefReader: briefReader({
+          "briefs/personal-site-20260606-a/brief.md": VALID_BRIEF,
+        }),
+        store,
+      },
+    );
+
+    expect(exitCode).toBe(0);
+    expect(store.jobs.get("personal-site-20260606-a")?.item.payload).toMatchObject({
       briefPath: "briefs/personal-site-20260606-a/brief.md",
       kind: "brief",
     });
-    expect(output).toEqual(["queued personal-site-20260606-a"]);
+  });
+
+  it("reads brief files from disk when no test reader is injected", async () => {
+    const store = new AgentctlMemoryStore();
+    const dir = mkdtempSync(join(tmpdir(), "pando-agentctl-"));
+    const briefPath = join(dir, "brief.md");
+    writeFileSync(briefPath, VALID_BRIEF);
+
+    const exitCode = await runAgentctl(
+      [
+        "submit",
+        "brief",
+        "--repo",
+        "personal-site",
+        "--id",
+        "personal-site-20260606-a",
+        "--brief-path",
+        briefPath,
+      ],
+      { store },
+    );
+
+    expect(exitCode).toBe(0);
+    expect(store.jobs.get("personal-site-20260606-a")?.item.title).toBe(
+      "Refresh home page",
+    );
+  });
+
+  it("reports missing brief files from the default disk reader", async () => {
+    const stderr: string[] = [];
+
+    const exitCode = await runAgentctl(
+      [
+        "submit",
+        "brief",
+        "--repo",
+        "personal-site",
+        "--id",
+        "missing",
+        "--brief-path",
+        "/definitely/missing/brief.md",
+      ],
+      { stderr: (line) => stderr.push(line), store: new AgentctlMemoryStore() },
+    );
+
+    expect(exitCode).toBe(1);
+    expect(stderr).toEqual(["brief not found: /definitely/missing/brief.md"]);
+  });
+
+  it("rejects invalid brief files before enqueueing", async () => {
+    const store = new AgentctlMemoryStore();
+    const stderr: string[] = [];
+
+    const exitCode = await runAgentctl(
+      ["submit", "brief", "--repo", "personal-site", "--id", "personal-site-20260606-a"],
+      {
+        briefReader: briefReader({
+          "briefs/personal-site-20260606-a/brief.md": "# Missing sections\n",
+        }),
+        stderr: (line) => stderr.push(line),
+        store,
+      },
+    );
+
+    expect(exitCode).toBe(1);
+    expect(store.jobs.size).toBe(0);
+    expect(stderr.join("\n")).toContain("brief.md must contain a Goal section");
   });
 
   it("shows job status and event history", async () => {
@@ -271,5 +369,44 @@ function workItem(id: string): WorkItem {
     repo: "web",
     source: "jira",
     title: "Example",
+  };
+}
+
+const VALID_BRIEF = `# Refresh home page
+
+## Goal
+
+Make the home page clearer.
+
+## User Story
+
+As a visitor, I want to understand the offer quickly.
+
+## Acceptance Criteria
+
+- [ ] The hero names the offer.
+
+## Screens or Behavior
+
+Show a compact hero and contact CTA.
+
+## Non-Goals
+
+- Do not migrate blog posts.
+
+## Assets
+
+- assets/home-reference.png
+
+## Open Questions
+
+- None
+`;
+
+function briefReader(files: Record<string, string>) {
+  return {
+    async readText(path: string) {
+      return files[path];
+    },
   };
 }

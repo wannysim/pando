@@ -86,13 +86,17 @@ describe("review rework", () => {
 });
 
 describe("escalation", () => {
-  it("BLOCKING_QUESTIONS: PLAN → ESCALATED", () => {
-    const next = transition(at("PLAN"), { type: "BLOCKING_QUESTIONS" }, BUDGET);
-    expect(next.status).toBe("ESCALATED");
+  it("BLOCKING_QUESTIONS: SPEC or PLAN → ESCALATED", () => {
+    expect(transition(at("SPEC"), { type: "BLOCKING_QUESTIONS" }, BUDGET).status).toBe(
+      "ESCALATED",
+    );
+    expect(transition(at("PLAN"), { type: "BLOCKING_QUESTIONS" }, BUDGET).status).toBe(
+      "ESCALATED",
+    );
   });
 
-  it("rejects BLOCKING_QUESTIONS outside PLAN", () => {
-    expect(() => transition(at("SPEC"), { type: "BLOCKING_QUESTIONS" }, BUDGET)).toThrow(
+  it("rejects BLOCKING_QUESTIONS after PLAN", () => {
+    expect(() => transition(at("TEST"), { type: "BLOCKING_QUESTIONS" }, BUDGET)).toThrow(
       /invalid/i,
     );
   });

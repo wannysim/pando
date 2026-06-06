@@ -55,38 +55,38 @@
 | W2-A: 데몬 기반 계약/어댑터 | ✅ 완료 | config loader, artifact schema, worktree manager, Claude/Codex engine adapter 구현. `pnpm verify` 통과 |
 | W2-B: 파이프라인 결합 | ✅ 완료 | stage config loader, artifact/exit-code gate, pipeline runner skeleton, fake engine happy path/blocked/fail coverage |
 | W2-C: 상태 저장/운영 루프 | ✅ 완료(기본형) | SQLite jobs/events/repos, runner persistence hook/resume, 단일 tick daemon loop, `agentctl submit/show/retry` handler |
-| W3: brief 경로 | ⬅️ **다음 작업** | brief intake + personal-site 프로파일 E2E |
-| W4: n×n 병렬 | ⬜ 예정 | global/per-repo/per-provider 세마포어, 포트/캐시 격리, 병렬 스케줄링 |
+| W3: brief 경로 | ✅ 완료 | brief intake/template/loader, personal-site 프로파일 SPEC E2E, `agentctl submit brief` 연결 |
+| W4: n×n 병렬 | ⬅️ **다음 작업** | global/per-repo/per-provider 세마포어, 포트/캐시 격리, 병렬 스케줄링 |
 | W5: 통제·운영 | ⬜ 예정 | diff/checksum gate 강화, 리뷰어 모델 분리, 비용 추적, 웹 대시보드/원격 투입 |
 
 ## 코드 현황
 
-- `src/core/types.ts` — 계약 (WorkItem/RepoProfile/WorkerEngine/Gate). 변경 시 ADR
+- `src/core/types.ts` — 계약 (WorkItem/RepoProfile/WorkerEngine/Gate). RepoProfile은 ADR-008에 따라 `intake.sources`와 `context.providers`를 canonical로 사용하고, `workItemSource`/`contextProviders`는 legacy 호환 필드로 유지
 - `src/core/state-machine.ts` — 완료, 테스트 17개 100% 커버리지
-- `src/core/config.ts` — W2 1단계 완료. `config/repos.yaml` snake_case → `RepoProfile` 검증/정규화, lockfile 기반 PM 감지(yarn→pnpm→npm), `package_manager` fallback, PM-agnostic action(`install/test/lint/typecheck`) 지원
+- `src/core/config.ts` — `config/repos.yaml` snake_case → `RepoProfile` 검증/정규화, lockfile 기반 PM 감지(yarn→pnpm→npm), `package_manager` fallback, PM-agnostic action(`install/test/lint/typecheck`) 지원. W3에서 `intake.sources` + `context.providers` 구조로 이행했고, legacy `work_item_source`/`context_providers`는 계속 로드 가능
 - `src/core/artifacts.ts` — W2 2단계 완료. `_spec.md`/`PLAN.md` 필수 스키마 검증, Open Questions `[Blocker]` 파싱, ADR-007의 commit 단위 `Implementation Roadmap` 검사. DEMO-1234 legacy `Stacked PR Roadmap`은 sanitized fixture로 drift 감지(파싱은 되지만 현재 계약 invalid)
 - `src/worktree/manager.ts` — W2 3단계 완료. `01-worktree.sh` TS 이식, origin base 직접 분기, `~/.worktrees/{repo}/{branch-slug}` 규약, `.git/.dispatch.lock` atomic file lock, env copy/setup hook. 진짜 git integration 테스트 포함
 - `src/engines/claude-code.ts` — W2 4단계 완료. `claude -p`, JSON output, allowedTools 기본값(`Task`, `mcp__claude_ai_Atlassian` 포함), ADR-004에 따라 `--mcp-config` 거부
 - `src/engines/codex.ts` — W2 5단계 완료. `codex exec --json --sandbox workspace-write --model`, JSON-lines session/cost/output 파싱
-- `src/core/stage-config.ts` — W2-B 완료. `config/stages.yaml` engine/model/skill/source별 skills/allowedTools/env/defaults 검증
+- `src/core/stage-config.ts` — `config/stages.yaml` engine/model/skill/source별 skills/allowedTools/env/defaults 검증. W3에서 `allowed_tools_by_source`를 추가해 brief SPEC 경로가 Atlassian MCP tool을 받지 않도록 분리
 - `src/pipeline/gates/artifact-schema.ts` — W2-B 완료. `_spec.md`/`PLAN.md` artifact schema gate. PLAN blocker는 `failureKind: "blocking-questions"`로 보고
 - `src/pipeline/gates/exit-code.ts` — W2-B 완료. `RepoProfile.gates` PM-agnostic action을 package-manager command로 변환하고 exit code만 판정. workspace scope용 command builder hook 포함
-- `src/pipeline/runner.ts` — W2-B/W2-C 완료. fake engine/gate 기반 runner skeleton에 persistence hook(`onEvent`, `onStateChange`)과 persisted stage resume 지원 추가. `SPEC→PLAN→TEST→IMPL→REVIEW→PR→DONE`, blocker→ESCALATED, gate retry budget→FAILED 테스트 포함
+- `src/intake/brief.ts` — W3 완료. ADR-008 brief template, 필수 섹션 검증(`Goal`, `User Story`, `Acceptance Criteria`, `Screens or Behavior`, `Non-Goals`, `Assets`, `Open Questions`), assets 파싱, `[Blocker]` → `failureKind=blocking-questions` SPEC gate 제공
+- `src/pipeline/runner.ts` — W2-B/W2-C 완료. fake engine/gate 기반 runner skeleton에 persistence hook(`onEvent`, `onStateChange`)과 persisted stage resume 지원 추가. `SPEC→PLAN→TEST→IMPL→REVIEW→PR→DONE`, SPEC/PLAN blocker→ESCALATED, gate retry budget→FAILED 테스트 포함
 - `src/db/schema.sql`, `src/db/index.ts` — W2-C 완료. SQLite jobs/events/repos 저장소, `claimNextRunnable`, status update, event ordering, terminal retry, repo profile 저장/조회. 현재는 `node:sqlite` 사용으로 테스트 실행 시 ExperimentalWarning이 출력될 수 있음
 - `src/daemon/loop.ts` — W2-C 완료. 단일 in-flight `runDaemonOnce`: runnable job claim → worktree provision → runner 실행 → 상태/이벤트 persistence. worktree/provision 실패는 `daemon-error` event와 `FAILED` 상태로 기록
 - `src/daemon/worktree-provisioner.ts` — W2-C 완료. `RepoProfile` + `worktreeRoot`를 `ensureWorktree` 옵션으로 변환하고 setup command를 PM-agnostic action에서 생성
-- `src/cli/agentctl.ts` — W2-C 완료. 최소 handler: `submit jira`, `submit brief`, `show`, `retry`. SQLite store는 실행 진입점에서 동적 import로 개방
-- 검증: `pnpm verify` 통과(2026-06-06, `feat/w2-stage-config-loader`, 14 files / 92 tests, coverage all statements 92.88% / branches 85.98% / functions 95.97% / lines 94.79%). `node:sqlite` 사용으로 검증 중 ExperimentalWarning 1회 출력됨
+- `src/cli/agentctl.ts` — W3 완료. `submit jira`, `submit brief`, `show`, `retry`. `submit brief`는 brief 파일을 읽어 schema 검증 후 title/assets를 WorkItem으로 정규화하고, `--brief-path` 생략 시 `briefs/{id}/brief.md`를 사용
+- 검증: `pnpm verify` 통과(2026-06-06, `feat/w3-brief-intake`, 16 files / 110 tests, coverage all statements 93.38% / branches 87.1% / functions 96.71% / lines 94.98%). `node:sqlite` 사용으로 검증 중 ExperimentalWarning 1회 출력됨
 - 공개 repo hygiene: `tests/` 표면(`describe`/`it`, fixture 문구)은 영어로 정리. 실제 회사 티켓 키는 커밋하지 않고 `DEMO-1234` 같은 가상 키만 사용. `docs/`는 작업자용이라 한글 유지 허용
 
-**다음 세션 시작점 — W3 brief 경로.** ADR-008을 먼저 읽고 진행할 것. 권장 순서(TDD):
-1. RepoProfile loader를 `work_item_source` 단수에서 `intake.sources` + `context.providers` 구조로 이행. 하위 호환은 유지
-2. `briefs/{id}/brief.md` intake template/loader — WorkItem(`source: brief`)으로 정규화
-3. brief 필수 섹션(`Goal`, `User Story`, `Acceptance Criteria`, `Screens or Behavior`, `Non-Goals`, `Assets`, `Open Questions`) 검증. `[Blocker]`는 ESCALATED 경로로 연결
-4. personal-site 프로파일 기반 SPEC gate E2E — Jira/MCP 없이 `_spec.md` 계약을 만족하는지 검증
-5. `agentctl submit brief`와 intake 저장 흐름 연결 — 현재 handler는 이미 brief WorkItem enqueue까지 지원
-6. GitHub Issue는 W3에서 구현하지 말고 `WorkItem.source`/설정 확장 여지만 남김
-7. 실제 회사 Jira/Confluence/Figma URL·project key·page id·file id는 public config/docs/test fixture에 커밋하지 않음
+**다음 세션 시작점 — W4 n×n 병렬.** 권장 순서(TDD):
+1. Scheduler/semaphore 계약을 `global / per-repo / per-provider` 3계층으로 고정하고, SQLite runnable job claim과 결합할 최소 인터페이스를 정한다
+2. provider cap은 `RepoProfile.context.providers`와 `config/orchestrator.yaml` provider key를 매핑해 적용한다. brief-only profile은 MCP provider cap을 소비하지 않아야 한다
+3. worktree provision 단계에서 port/cache/env 격리 값을 job별로 주입한다
+4. daemon loop를 단일 tick에서 다중 in-flight 실행으로 확장하되, SQLite는 source of truth로 유지한다
+5. 병렬 테스트는 fake engine + deterministic gates로 시작하고, worktree adapter는 기존처럼 진짜 git integration test만 사용한다
+6. 실제 회사 Jira/Confluence/Figma URL·project key·page id·file id는 public config/docs/test fixture에 커밋하지 않음
 
 ## 참조 문서 지도
 

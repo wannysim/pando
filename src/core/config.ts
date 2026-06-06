@@ -1,5 +1,6 @@
 import { parse } from "yaml";
 import type {
+  ContextProvider,
   PackageAction,
   PackageManager,
   RepoProfile,
@@ -19,8 +20,12 @@ export interface LoadRepoProfilesOptions {
 const PACKAGE_MANAGERS = ["yarn", "pnpm", "npm"] as const;
 const PACKAGE_ACTIONS = ["install", "test", "lint", "typecheck"] as const;
 const SCOPES = ["acme", "external"] as const;
-const WORK_ITEM_SOURCES = ["jira", "brief"] as const;
-const CONTEXT_PROVIDERS = ["atlassian-mcp", "figma-mcp"] as const;
+const INTAKE_SOURCES = ["jira", "brief", "github_issue"] as const;
+const CONTEXT_PROVIDERS = ["confluence", "figma"] as const;
+const LEGACY_CONTEXT_PROVIDER_ALIASES: Record<string, ContextProvider> = {
+  "atlassian-mcp": "confluence",
+  "figma-mcp": "figma",
+};
 
 const LOCKFILES: readonly { file: string; manager: PackageManager }[] = [
   { file: "yarn.lock", manager: "yarn" },
@@ -47,6 +52,8 @@ export async function loadRepoProfilesFromYaml(
     );
     const packageManager =
       (await detectPackageManager(repoPath, opts.files)) ?? fallbackPackageManager;
+    const intake = parseIntake(repo, name);
+    const context = parseContext(repo, name);
 
     if (packageManager === undefined) {
       throw new Error(`${name}.package manager: lockfile not found and package_manager is missing`);
@@ -56,18 +63,10 @@ export async function loadRepoProfilesFromYaml(
       path: repoPath,
       scope: requiredEnum(repo.scope, SCOPES, name, "scope"),
       baseBranch: requiredString(repo.base_branch, name, "base_branch"),
-      workItemSource: requiredEnum(
-        repo.work_item_source,
-        WORK_ITEM_SOURCES,
-        name,
-        "work_item_source",
-      ),
-      contextProviders: optionalEnumArray(
-        repo.context_providers,
-        CONTEXT_PROVIDERS,
-        name,
-        "context_providers",
-      ),
+      intake,
+      context,
+      workItemSource: primaryIntakeSource(intake.sources, name),
+      contextProviders: context.providers,
       conventions: requiredString(repo.conventions, name, "conventions"),
       packageManager,
       setup: requiredEnum(repo.setup, PACKAGE_ACTIONS, name, "setup"),
@@ -80,6 +79,56 @@ export async function loadRepoProfilesFromYaml(
   }
 
   return profiles;
+}
+
+function parseIntake(repo: Record<string, unknown>, name: string): RepoProfile["intake"] {
+  if (repo.intake !== undefined) {
+    const intake = asRecord(repo.intake, `${name}.intake`);
+    return {
+      sources: requiredNonEmptyEnumArray(
+        intake.sources,
+        INTAKE_SOURCES,
+        name,
+        "intake.sources",
+      ),
+    };
+  }
+
+  return {
+    sources: [
+      requiredEnum(repo.work_item_source, INTAKE_SOURCES, name, "work_item_source"),
+    ],
+  };
+}
+
+function parseContext(repo: Record<string, unknown>, name: string): RepoProfile["context"] {
+  if (repo.context !== undefined) {
+    const context = asRecord(repo.context, `${name}.context`);
+    return {
+      policyRefs: optionalStringArray(context.policy_refs, name, "context.policy_refs") ?? [],
+      providers: optionalContextProviderArray(context.providers, name, "context.providers"),
+    };
+  }
+
+  return {
+    policyRefs: [],
+    providers: optionalContextProviderArray(
+      repo.context_providers,
+      name,
+      "context_providers",
+    ),
+  };
+}
+
+function primaryIntakeSource(
+  sources: readonly RepoProfile["workItemSource"][],
+  name: string,
+): RepoProfile["workItemSource"] {
+  const source = sources[0];
+  if (source === undefined) {
+    throw new Error(`${name}.intake.sources: expected non-empty array`);
+  }
+  return source;
 }
 
 export function packageCommand(manager: PackageManager, action: PackageAction): string {
@@ -230,4 +279,40 @@ function optionalEnumArray<const T extends readonly string[]>(
     throw new Error(`${repo}.${field}: expected array`);
   }
   return value.map((item) => requiredEnum(item, allowed, repo, field));
+}
+
+function requiredNonEmptyEnumArray<const T extends readonly string[]>(
+  value: unknown,
+  allowed: T,
+  repo: string,
+  field: string,
+): T[number][] {
+  const items = optionalEnumArray(value, allowed, repo, field);
+  if (items.length === 0) {
+    throw new Error(`${repo}.${field}: expected non-empty array`);
+  }
+  return items;
+}
+
+function optionalContextProviderArray(
+  value: unknown,
+  repo: string,
+  field: string,
+): ContextProvider[] {
+  if (value === undefined) return [];
+  if (!Array.isArray(value)) {
+    throw new Error(`${repo}.${field}: expected array`);
+  }
+  return value.map((item) => contextProvider(item, repo, field));
+}
+
+function contextProvider(value: unknown, repo: string, field: string): ContextProvider {
+  if (typeof value !== "string") {
+    throw new Error(`${repo}.${field}: expected one of ${CONTEXT_PROVIDERS.join(", ")}`);
+  }
+  const canonical = LEGACY_CONTEXT_PROVIDER_ALIASES[value] ?? value;
+  if (!(CONTEXT_PROVIDERS as readonly string[]).includes(canonical)) {
+    throw new Error(`${repo}.${field}: expected one of ${CONTEXT_PROVIDERS.join(", ")}`);
+  }
+  return canonical as ContextProvider;
 }

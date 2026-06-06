@@ -4,6 +4,7 @@ import {
   createSpecArtifactGate,
   type TextFileReader,
 } from "../../src/pipeline/gates/artifact-schema.js";
+import type { GateContext } from "../../src/core/types.js";
 
 const SPEC = "# Example spec\n\n## Requirements Overview\n\n- Build it\n";
 
@@ -88,7 +89,7 @@ describe("createPlanArtifactGate", () => {
   });
 });
 
-function baseContext() {
+function baseContext(): GateContext {
   return {
     item: {
       id: "DEMO-1234",
@@ -100,6 +101,7 @@ function baseContext() {
     profile: {
       baseBranch: "develop",
       concurrency: 1,
+      context: { policyRefs: [], providers: [] },
       contextProviders: [],
       conventions: "repo-local",
       gates: { test: "test" as const },
@@ -109,6 +111,7 @@ function baseContext() {
       portRange: [3000, 3099] as [number, number],
       scope: "external" as const,
       setup: "install" as const,
+      intake: { sources: ["jira"] },
       workItemSource: "jira" as const,
     },
     worktree: "/worktree",

@@ -12,24 +12,35 @@ export type JobStatus =
   | "FAILED"
   | "ESCALATED";
 
+export type WorkItemSource = "jira" | "brief" | "github_issue";
+
+export type IntakeSource = WorkItemSource;
+
+export type ContextProvider = "confluence" | "figma";
+
 export interface WorkItem {
   id: string; // "AP-1234" | "personal-site-20260606-a"
   repo: string; // repos.yaml 키
-  source: "jira" | "brief";
+  source: WorkItemSource;
   title: string;
   branch?: string;
   dependsOn?: string[];
   payload:
     | { kind: "jira"; ticketKey: string }
-    | { kind: "brief"; briefPath: string; assets?: string[] };
+    | { kind: "brief"; briefPath: string; assets?: string[] }
+    | { kind: "github_issue"; owner: string; repo: string; issueNumber: number };
 }
 
 export interface RepoProfile {
   path: string;
   scope: "acme" | "external";
   baseBranch: string;
-  workItemSource: "jira" | "brief";
-  contextProviders: ("atlassian-mcp" | "figma-mcp")[];
+  intake: { sources: IntakeSource[] };
+  context: { providers: ContextProvider[]; policyRefs: string[] };
+  /** Backward-compatible primary source for W2 callers. Prefer intake.sources. */
+  workItemSource: IntakeSource;
+  /** Backward-compatible provider list for W2 callers. Prefer context.providers. */
+  contextProviders: ContextProvider[];
   conventions: string; // 스킬 이름 또는 "repo-local"
   packageManager?: PackageManager;
   setup: PackageAction;

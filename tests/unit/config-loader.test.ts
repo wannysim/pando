@@ -11,8 +11,11 @@ repos:
     path: ~/Github/web
     scope: acme
     base_branch: develop
-    work_item_source: jira
-    context_providers: [atlassian-mcp, figma-mcp]
+    intake:
+      sources: [jira]
+    context:
+      providers: [confluence, figma]
+      policy_refs: []
     conventions: acme-conventions
     setup: install
     gates:
@@ -30,8 +33,10 @@ repos:
     path: ~/Github/personal-site
     scope: external
     base_branch: main
-    work_item_source: brief
-    context_providers: []
+    intake:
+      sources: [brief, github_issue]
+    context:
+      providers: []
     conventions: repo-local
     package_manager: pnpm
     setup: install
@@ -66,7 +71,9 @@ describe("loadRepoProfilesFromYaml", () => {
       scope: "acme",
       baseBranch: "develop",
       workItemSource: "jira",
-      contextProviders: ["atlassian-mcp", "figma-mcp"],
+      intake: { sources: ["jira"] },
+      context: { policyRefs: [], providers: ["confluence", "figma"] },
+      contextProviders: ["confluence", "figma"],
       conventions: "acme-conventions",
       packageManager: "yarn",
       setup: "install",
@@ -88,6 +95,8 @@ describe("loadRepoProfilesFromYaml", () => {
     });
 
     expect(profiles["personal-site"]?.packageManager).toBe("pnpm");
+    expect(profiles["personal-site"]?.intake.sources).toEqual(["brief", "github_issue"]);
+    expect(profiles["personal-site"]?.workItemSource).toBe("brief");
   });
 
   it("fails fast with the repo name when both lockfile and fallback are missing", async () => {
@@ -106,6 +115,73 @@ describe("loadRepoProfilesFromYaml", () => {
         files: probe(["/Users/me/Github/web/yarn.lock"]),
       }),
     ).rejects.toThrow(/web.*scope/i);
+  });
+
+  it("returns an empty profile map when repos is empty", async () => {
+    await expect(
+      loadRepoProfilesFromYaml("repos: {}", {
+        homeDir: "/Users/me",
+        files: probe([]),
+      }),
+    ).resolves.toEqual({});
+  });
+
+  it("rejects empty intake sources and malformed context providers", async () => {
+    await expect(
+      loadRepoProfilesFromYaml(YAML.replace("sources: [jira]", "sources: []"), {
+        homeDir: "/Users/me",
+        files: probe(["/Users/me/Github/web/yarn.lock"]),
+      }),
+    ).rejects.toThrow(/web.*intake\.sources/i);
+
+    await expect(
+      loadRepoProfilesFromYaml(YAML.replace("providers: [confluence, figma]", "providers: figma"), {
+        homeDir: "/Users/me",
+        files: probe(["/Users/me/Github/web/yarn.lock"]),
+      }),
+    ).rejects.toThrow(/web.*context\.providers/i);
+
+    await expect(
+      loadRepoProfilesFromYaml(YAML.replace("providers: [confluence, figma]", "providers: [jira]"), {
+        homeDir: "/Users/me",
+        files: probe(["/Users/me/Github/web/yarn.lock"]),
+      }),
+    ).rejects.toThrow(/web.*context\.providers/i);
+  });
+
+  it("keeps legacy work_item_source and context_providers configs loadable", async () => {
+    const profiles = await loadRepoProfilesFromYaml(
+      `
+repos:
+  legacy:
+    path: ~/Github/legacy
+    scope: external
+    base_branch: main
+    work_item_source: brief
+    context_providers: [atlassian-mcp, figma-mcp]
+    conventions: repo-local
+    package_manager: pnpm
+    setup: install
+    gates:
+      test: test
+    concurrency: 1
+    port_range: [3300, 3399]
+    guards:
+      protected_branches: [main]
+      forbid_test_edit_in_impl: true
+`,
+      {
+        homeDir: "/Users/me",
+        files: probe([]),
+      },
+    );
+
+    expect(profiles.legacy).toMatchObject({
+      context: { policyRefs: [], providers: ["confluence", "figma"] },
+      contextProviders: ["confluence", "figma"],
+      intake: { sources: ["brief"] },
+      workItemSource: "brief",
+    });
   });
 });
 

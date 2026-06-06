@@ -19,6 +19,7 @@ import type {
   WorkerEngineName,
   WorkerStageKey,
 } from "../core/stage-config.js";
+import { resolveStageAllowedTools } from "../core/stage-config.js";
 
 export interface PipelineRunnerOptions {
   item: WorkItem;
@@ -119,7 +120,7 @@ async function runStage(
   if (workerStage !== undefined) {
     const config = opts.stageConfig.stages[workerStage];
     const result = await opts.engines[config.engine].run({
-      allowedTools: config.allowedTools,
+      allowedTools: resolveStageAllowedTools(opts.stageConfig, workerStage, opts.item.source),
       cwd: opts.worktree,
       env: config.env,
       model: config.model,
@@ -158,7 +159,7 @@ async function runGates(
     const result = await gate.check(ctx);
     if (!result.pass) {
       await emit(failedGateEvent(stage, gate.name, result));
-      return result.failureKind === "blocking-questions" && stage === "PLAN"
+      return result.failureKind === "blocking-questions" && canEscalateBlockingQuestions(stage)
         ? "blocking"
         : "fail";
     }
@@ -167,6 +168,10 @@ async function runGates(
   }
 
   return "pass";
+}
+
+function canEscalateBlockingQuestions(stage: StageName): boolean {
+  return stage === "SPEC" || stage === "PLAN";
 }
 
 function failedGateEvent(
