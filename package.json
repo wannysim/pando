@@ -1,6 +1,7 @@
 {
   "name": "pando",
   "version": "0.1.0",
+  "packageManager": "pnpm@10.33.2",
   "private": true,
   "type": "module",
   "description": "Multi-repo background coding agent orchestrator — one root system, many trunks.",
