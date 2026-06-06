@@ -136,6 +136,7 @@ W5 우선순위(TDD):
 - `docs/research-v1.md` — 도구/패턴 리서치 (모델명·가격은 2차 소스, 재확인 필요)
 - `docs/design-v2-multi-repo.md` — n×n 설계, `~/.ai-skills` 자산 매핑 (§4·§7 PLAN은 ADR-007 반영됨)
 - `docs/w5-operational-readiness.md` — W5 테스트 시나리오 매트릭스, dashboard/API MVP, Docker shape, W5/W6 경계
+- `docs/practical-adoption-roadmap.md` — pando를 실사용 가능한 도구로 올리기 위한 full daemon smoke, dashboard UX, terminal UX, README/getting started, Docker worker readiness 스택 계획과 "pando에게 시키는 법"
 - `docs/adr/` — 001~009. **009**는 W5 dashboard/API/deploy 기본값(Vite React SPA + Hono + single container)을 고정한다. 바꾸려면 새 ADR 먼저
 - `docs/repo-structure.md` — 구조·인터페이스
 - `docs/engineering-standards.md` — 개발 방법론 (superpowers + agent-skills 채택분)
