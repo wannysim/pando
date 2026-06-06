@@ -7,9 +7,9 @@ import type {
   WorkerEngine,
   WorkerRunOptions,
   WorkerResult,
-} from "../../src/core/types.js";
-import { runPipeline } from "../../src/pipeline/runner.js";
-import type { StageConfig } from "../../src/core/stage-config.js";
+} from "../../src/core/types";
+import { runPipeline } from "../../src/pipeline/runner";
+import type { StageConfig } from "../../src/core/stage-config";
 
 describe("runPipeline", () => {
   it("runs worker stages and gates through DONE on the happy path", async () => {
@@ -109,7 +109,11 @@ describe("runPipeline", () => {
           })),
         ],
       },
-      item: { ...workItem(), payload: { briefPath: "briefs/demo/brief.md", kind: "brief" }, source: "brief" },
+      item: {
+        ...workItem(),
+        payload: { briefPath: "briefs/demo/brief.md", kind: "brief" },
+        source: "brief",
+      },
       profile: { ...repoProfile(), intake: { sources: ["brief"] }, workItemSource: "brief" },
       stageConfig: stageConfig(),
       worktree: "/worktree",
@@ -141,7 +145,11 @@ describe("runPipeline", () => {
         codex: engine("codex", []),
       },
       initialState: { attemptsLeft: 3, status: "SPEC" },
-      item: { ...workItem(), payload: { briefPath: "briefs/demo/brief.md", kind: "brief" }, source: "brief" },
+      item: {
+        ...workItem(),
+        payload: { briefPath: "briefs/demo/brief.md", kind: "brief" },
+        source: "brief",
+      },
       profile: { ...repoProfile(), intake: { sources: ["brief"] }, workItemSource: "brief" },
       stageConfig: {
         ...stageConfig(),
@@ -198,10 +206,7 @@ describe("runPipeline", () => {
     });
 
     expect(result.final.status).toBe("DONE");
-    expect(calls).toEqual([
-      "codex:Run IMPL",
-      "claude-code:Run REVIEW",
-    ]);
+    expect(calls).toEqual(["codex:Run IMPL", "claude-code:Run REVIEW"]);
   });
 
   it("emits state changes and pipeline events for persistence adapters", async () => {

@@ -1,10 +1,6 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import type {
-  WorkerEngine,
-  WorkerResult,
-  WorkerRunOptions,
-} from "../core/types.js";
+import type { WorkerEngine, WorkerResult, WorkerRunOptions } from "../core/types";
 
 const execFileAsync = promisify(execFile);
 
@@ -45,15 +41,7 @@ export function buildCodexArgs(opts: WorkerRunOptions): string[] {
     throw new Error("Codex CLI does not accept allowedTools");
   }
 
-  return [
-    "exec",
-    "--json",
-    "--sandbox",
-    "workspace-write",
-    "--model",
-    opts.model,
-    opts.prompt,
-  ];
+  return ["exec", "--json", "--sandbox", "workspace-write", "--model", opts.model, opts.prompt];
 }
 
 export function parseCodexJsonStream(stream: string): CodexStreamSummary {

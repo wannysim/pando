@@ -1,19 +1,14 @@
 import { describe, expect, it } from "vitest";
-import type {
-  JobEventRecord,
-  JobRecord,
-  JobStore,
-  UpdateJobStatusInput,
-} from "../../src/db/index.js";
-import { branchForItem, runDaemonOnce } from "../../src/daemon/loop.js";
+import type { JobEventRecord, JobRecord, JobStore, UpdateJobStatusInput } from "../../src/db/index";
+import { branchForItem, runDaemonOnce } from "../../src/daemon/loop";
 import type {
   JobStatus,
   RepoProfile,
   WorkItem,
   WorkerEngine,
   WorkerResult,
-} from "../../src/core/types.js";
-import type { StageConfig } from "../../src/core/stage-config.js";
+} from "../../src/core/types";
+import type { StageConfig } from "../../src/core/stage-config";
 
 describe("runDaemonOnce", () => {
   it("claims one job, provisions a worktree, runs the pipeline, and persists the final status", async () => {
@@ -161,9 +156,7 @@ describe("runDaemonOnce", () => {
 
   it("derives stable default branches and respects explicit branches", () => {
     expect(branchForItem(workItem("DEMO 2004/part A"))).toBe("feat/DEMO-2004-part-A");
-    expect(branchForItem({ ...workItem("DEMO-2004"), branch: "fix/custom" })).toBe(
-      "fix/custom",
-    );
+    expect(branchForItem({ ...workItem("DEMO-2004"), branch: "fix/custom" })).toBe("fix/custom");
   });
 });
 
@@ -263,11 +256,7 @@ function workItem(id: string): WorkItem {
   };
 }
 
-function jobRecord(
-  item: WorkItem,
-  status: JobStatus,
-  attemptsLeft: number,
-): JobRecord {
+function jobRecord(item: WorkItem, status: JobStatus, attemptsLeft: number): JobRecord {
   return {
     attemptsLeft,
     createdAt: "2026-06-06T00:00:00.000Z",

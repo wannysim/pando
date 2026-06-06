@@ -1,17 +1,13 @@
-import type { JobRecord, JobStore } from "../db/index.js";
-import type { MachineState } from "../core/state-machine.js";
-import type {
-  JobStatus,
-  RepoProfile,
-  WorkItem,
-} from "../core/types.js";
+import type { JobRecord, JobStore } from "../db/index";
+import type { MachineState } from "../core/state-machine";
+import type { JobStatus, RepoProfile, WorkItem } from "../core/types";
 import {
   runPipeline,
   type PipelineRunEvent,
   type PipelineRunResult,
   type PipelineRunnerOptions,
   type PipelineStateChange,
-} from "../pipeline/runner.js";
+} from "../pipeline/runner";
 
 export interface WorktreeProvisioner {
   ensure(input: WorktreeProvisionInput): Promise<WorktreeProvisionResult>;
@@ -29,11 +25,10 @@ export interface WorktreeProvisionResult {
   reused?: boolean;
 }
 
-export interface DaemonOnceOptions
-  extends Pick<
-    PipelineRunnerOptions,
-    "buildPrompt" | "engines" | "gates" | "stageConfig"
-  > {
+export interface DaemonOnceOptions extends Pick<
+  PipelineRunnerOptions,
+  "buildPrompt" | "engines" | "gates" | "stageConfig"
+> {
   store: JobStore;
   profiles?: Record<string, RepoProfile>;
   worktrees: WorktreeProvisioner;
@@ -44,9 +39,7 @@ export type DaemonOnceResult =
   | { status: "idle" }
   | { status: "ran" | "failed"; jobId: string; finalStatus: JobStatus };
 
-export async function runDaemonOnce(
-  opts: DaemonOnceOptions,
-): Promise<DaemonOnceResult> {
+export async function runDaemonOnce(opts: DaemonOnceOptions): Promise<DaemonOnceResult> {
   const job = opts.store.claimNextRunnable();
   if (job === undefined) return { status: "idle" };
 
@@ -102,11 +95,7 @@ function resolveProfile(opts: DaemonOnceOptions, item: WorkItem): RepoProfile {
   return profile;
 }
 
-function persistWorktreePath(
-  store: JobStore,
-  job: JobRecord,
-  worktreePath: string,
-): JobRecord {
+function persistWorktreePath(store: JobStore, job: JobRecord, worktreePath: string): JobRecord {
   return store.updateJobStatus({
     attemptsLeft: job.attemptsLeft,
     jobId: job.item.id,
@@ -140,11 +129,7 @@ function persistStateChange(
   });
 }
 
-function persistPipelineEvent(
-  store: JobStore,
-  jobId: string,
-  event: PipelineRunEvent,
-): void {
+function persistPipelineEvent(store: JobStore, jobId: string, event: PipelineRunEvent): void {
   store.appendEvent({
     evidence: "evidence" in event ? event.evidence : undefined,
     gateName: "gateName" in event ? event.gateName : undefined,
@@ -183,5 +168,8 @@ function machineState(job: JobRecord): MachineState {
 }
 
 function sanitizeBranchSegment(value: string): string {
-  return value.trim().replaceAll("/", "-").replace(/[^A-Za-z0-9._-]+/g, "-");
+  return value
+    .trim()
+    .replaceAll("/", "-")
+    .replace(/[^A-Za-z0-9._-]+/g, "-");
 }

@@ -1,4 +1,4 @@
-import type { Gate, GateContext, GateResult, WorkItem } from "../core/types.js";
+import type { Gate, GateContext, GateResult, WorkItem } from "../core/types";
 
 export const BRIEF_TEMPLATE = `# Brief Title
 
@@ -215,7 +215,10 @@ function collectSections(lines: readonly string[]): Partial<Record<BriefSectionK
 }
 
 function sectionKey(heading: string): BriefSectionKey | undefined {
-  const label = heading.replace(/^##\s+/, "").trim().toLowerCase();
+  const label = heading
+    .replace(/^##\s+/, "")
+    .trim()
+    .toLowerCase();
   if (label === "goal") return "goal";
   if (label === "user story") return "userStory";
   if (label === "acceptance criteria") return "acceptanceCriteria";
@@ -262,7 +265,5 @@ function fail(reason: string, evidence: string): GateResult {
 }
 
 function removeUndefined<T extends Record<string, unknown>>(value: T): T {
-  return Object.fromEntries(
-    Object.entries(value).filter(([, item]) => item !== undefined),
-  ) as T;
+  return Object.fromEntries(Object.entries(value).filter(([, item]) => item !== undefined)) as T;
 }

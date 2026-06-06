@@ -1,28 +1,20 @@
-import { packageCommand } from "../core/config.js";
-import type { RepoProfile } from "../core/types.js";
+import { packageCommand } from "../core/config";
+import type { RepoProfile } from "../core/types";
 import {
   ensureWorktree as defaultEnsureWorktree,
   type EnsureWorktreeOptions,
   type EnsureWorktreeResult,
-} from "../worktree/manager.js";
-import type {
-  WorktreeProvisioner,
-  WorktreeProvisionInput,
-  WorktreeProvisionResult,
-} from "./loop.js";
+} from "../worktree/manager";
+import type { WorktreeProvisioner, WorktreeProvisionInput, WorktreeProvisionResult } from "./loop";
 
 export interface WorktreeProvisionerOptions {
   worktreeRoot: string;
   ensureWorktree?: EnsureWorktreePort;
 }
 
-export type EnsureWorktreePort = (
-  opts: EnsureWorktreeOptions,
-) => Promise<EnsureWorktreeResult>;
+export type EnsureWorktreePort = (opts: EnsureWorktreeOptions) => Promise<EnsureWorktreeResult>;
 
-export function createWorktreeProvisioner(
-  opts: WorktreeProvisionerOptions,
-): WorktreeProvisioner {
+export function createWorktreeProvisioner(opts: WorktreeProvisionerOptions): WorktreeProvisioner {
   const ensureWorktree = opts.ensureWorktree ?? defaultEnsureWorktree;
 
   return {

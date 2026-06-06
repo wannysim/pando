@@ -2,8 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   createPackageActionGate,
   type GateCommandRunner,
-} from "../../src/pipeline/gates/exit-code.js";
-import type { GateContext } from "../../src/core/types.js";
+} from "../../src/pipeline/gates/exit-code";
+import type { GateContext } from "../../src/core/types";
 
 describe("createPackageActionGate", () => {
   it("runs the configured PM-agnostic action as a package-manager command", async () => {

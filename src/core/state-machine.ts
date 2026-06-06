@@ -10,16 +10,9 @@
  * 순수 함수만 — I/O 없음 (CLAUDE.md 규율 4).
  */
 
-import type { JobStatus, StageName } from "./types.js";
+import type { JobStatus, StageName } from "./types";
 
-export const STAGE_ORDER: readonly StageName[] = [
-  "SPEC",
-  "PLAN",
-  "TEST",
-  "IMPL",
-  "REVIEW",
-  "PR",
-];
+export const STAGE_ORDER: readonly StageName[] = ["SPEC", "PLAN", "TEST", "IMPL", "REVIEW", "PR"];
 
 const TERMINAL: readonly JobStatus[] = ["DONE", "FAILED", "ESCALATED"];
 

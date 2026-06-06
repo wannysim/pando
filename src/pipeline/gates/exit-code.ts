@@ -1,4 +1,4 @@
-import { packageCommand } from "../../core/config.js";
+import { packageCommand } from "../../core/config";
 import type {
   Gate,
   GateContext,
@@ -6,7 +6,7 @@ import type {
   PackageAction,
   PackageManager,
   RepoProfile,
-} from "../../core/types.js";
+} from "../../core/types";
 
 export type PackageGateName = keyof RepoProfile["gates"];
 

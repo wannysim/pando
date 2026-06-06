@@ -1,9 +1,6 @@
 import { join } from "node:path";
-import {
-  validatePlanArtifact,
-  validateSpecArtifact,
-} from "../../core/artifacts.js";
-import type { Gate, GateContext, GateResult } from "../../core/types.js";
+import { validatePlanArtifact, validateSpecArtifact } from "../../core/artifacts";
+import type { Gate, GateContext, GateResult } from "../../core/types";
 
 export interface TextFileReader {
   readText(path: string): Promise<string | undefined>;

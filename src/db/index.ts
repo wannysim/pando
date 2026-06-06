@@ -1,14 +1,9 @@
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { DatabaseSync } from "node:sqlite";
-import { STAGE_ORDER } from "../core/state-machine.js";
-import type {
-  JobStatus,
-  RepoProfile,
-  StageName,
-  WorkItem,
-} from "../core/types.js";
+import Database from "better-sqlite3";
+import { STAGE_ORDER } from "../core/state-machine";
+import type { JobStatus, RepoProfile, StageName, WorkItem } from "../core/types";
 
 export interface SqliteJobStoreOptions {
   path: string;
@@ -90,11 +85,11 @@ export function createSqliteJobStore(opts: SqliteJobStoreOptions): JobStore {
 }
 
 class SqliteJobStore implements JobStore {
-  private readonly db: DatabaseSync;
+  private readonly db: Database.Database;
   private readonly now: () => string;
 
   constructor(path: string, now: () => string) {
-    this.db = new DatabaseSync(path);
+    this.db = new Database(path);
     this.now = now;
     this.db.exec(readFileSync(schemaPath, "utf8"));
   }
@@ -231,19 +226,15 @@ class SqliteJobStore implements JobStore {
         now,
       );
 
-    const row = this.selectOne(
-      "SELECT * FROM events WHERE sequence = last_insert_rowid()",
-      [],
-    );
+    const row = this.selectOne("SELECT * FROM events WHERE sequence = last_insert_rowid()", []);
     if (row === undefined) throw new Error("failed to append event");
     return deserializeEvent(row);
   }
 
   listEvents(jobId: string): JobEventRecord[] {
-    return this.selectAll(
-      "SELECT * FROM events WHERE job_id = ? ORDER BY sequence ASC",
-      [jobId],
-    ).map(deserializeEvent);
+    return this.selectAll("SELECT * FROM events WHERE job_id = ? ORDER BY sequence ASC", [
+      jobId,
+    ]).map(deserializeEvent);
   }
 
   upsertRepoProfile(name: string, profile: RepoProfile): void {
@@ -281,7 +272,10 @@ class SqliteJobStore implements JobStore {
   }
 
   private selectAll(sql: string, values: readonly SqlValue[]): Row[] {
-    return this.db.prepare(sql).all(...values).map(asRow);
+    return this.db
+      .prepare(sql)
+      .all(...values)
+      .map(asRow);
   }
 }
 

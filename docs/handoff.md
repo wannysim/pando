@@ -19,7 +19,7 @@
 | PLAN 산출 = **작업단위 커밋 분할이 기본**, Stacked PR은 net 1000줄 초과 시에만 제안 | ADR-007 (ai-skills 스킬 + pando 문서 양쪽 반영) |
 | RepoProfile은 intake source와 context source를 분리. 실제 회사 Jira/Confluence/Figma 설정은 private local config에만 둠 | ADR-008 |
 | 게이트 = 결정적 신호만 (exit code/아티팩트/체크섬). LLM output은 Gate 컨텍스트에서 타입 제외 | CLAUDE.md 규율 5 |
-| 개발 = TDD 강제, `pnpm verify`(커버리지 85%+/core 95%+), core·pipeline·scheduler 순수 계층(eslint 강제) | engineering-standards |
+| 개발 = TDD 강제, `pnpm verify`(커버리지 85%+/core 95%+), core·pipeline·scheduler 순수 계층(oxlint 강제) | engineering-standards |
 | worktree 규약 = `~/.worktrees/{repo}/{slug}`, origin ref 직접 분기(원본 무간섭), `.dispatch.lock` 공유 | design-v2 §3.2, `~/.ai-skills` 호환 |
 | 1차 버전은 티켓당 PR 1개 (Stacked PR 자동화는 후순위) | design-v2 §7 |
 | 홈서버 Docker 이전은 후반 로드맵. 지금은 로컬 맥 | 사용자 결정 |
@@ -28,7 +28,7 @@
 
 - ✅ Step 1 worktree 생성 — 원본 무간섭 확인. **01 스크립트는 lockfile 감지로 수정됨** (web=yarn@1)
 - ✅ Step 2 헤드리스 PLAN 생성 — **최대 리스크 해소**. AP-1234로 PLAN.md(4-PR 로드맵) 산출, batch mode·스킬 auto-discovery·repo-scope 정상. 비용 ~$2.65
-- ✅ Step 3 codex 구현 — gpt-5.5로 PR1(jest config 표준화) 구현 검증 완료(2026-06-06). 샌드박스 격리·JSON 스트림 파싱 OK, 품질 우수(Open Question 자가검증으로 inline tsconfig 유지, a-components 93 tests green). **ADR-002(IMPL=codex) 실측 통과.** 미세 이탈(옵션 순서를 일관 통일했으나 티켓 명시 순서와 반대)→REVIEW 단계 필요 사례. 03 스크립트도 pnpm→yarn 정정함
+- ✅ Step 3 codex 구현 — gpt-5.5로 PR1(jest config 표준화) 구현 검증 완료(2026-06-06). 샌드박스 격리·JSON 스트림 파싱 OK, 품질 우수(Open Question 자가검증으로 inline tsconfig 유지, a-components 93 tests green). **ADR-002(IMPL=codex) 실측 통과.** 미세 이탈(옵션 순서를 일관 통일했으나 티켓 명시 순서와 반대)→REVIEW 단계 필요 사례. 03 검증 프롬프트도 web=yarn을 명시함
 - ⬜ Step 4 게이트 — 체크섬 메커니즘은 자명(PR1 테스트 무수정). test/lint/types는 **변경 워크스페이스로 스코프 필요**(W2 입력 6 참조)
 - ✅ **아키텍처 평가 완료 (2026-06-06)**: ① 레포 환경 컨텍스트 격리 ② ai-skills 결합도 → ADR-005/006, W2 입력 7/8 도출. stacked PR 정책은 ADR-007로 ai-skills(`implement-jira`)+pando 문서 양쪽 반영 완료
 - 보류: `~/.worktrees/web/feat-AP-1234`는 PLAN.md 검증 산출물 보존을 위해 **유지 권장** (Step 3/4 재료로 쓰거나, 정리 시 PLAN.md만 백업)
@@ -73,14 +73,22 @@
 - `src/pipeline/gates/exit-code.ts` — W2-B 완료. `RepoProfile.gates` PM-agnostic action을 package-manager command로 변환하고 exit code만 판정. workspace scope용 command builder hook 포함
 - `src/intake/brief.ts` — W3 완료. ADR-008 brief template, 필수 섹션 검증(`Goal`, `User Story`, `Acceptance Criteria`, `Screens or Behavior`, `Non-Goals`, `Assets`, `Open Questions`), assets 파싱, `[Blocker]` → `failureKind=blocking-questions` SPEC gate 제공
 - `src/pipeline/runner.ts` — W2-B/W2-C 완료. fake engine/gate 기반 runner skeleton에 persistence hook(`onEvent`, `onStateChange`)과 persisted stage resume 지원 추가. `SPEC→PLAN→TEST→IMPL→REVIEW→PR→DONE`, SPEC/PLAN blocker→ESCALATED, gate retry budget→FAILED 테스트 포함
-- `src/db/schema.sql`, `src/db/index.ts` — W2-C 완료. SQLite jobs/events/repos 저장소, `claimNextRunnable`, status update, event ordering, terminal retry, repo profile 저장/조회. 현재는 `node:sqlite` 사용으로 테스트 실행 시 ExperimentalWarning이 출력될 수 있음
+- `src/db/schema.sql`, `src/db/index.ts` — W2-C 완료. SQLite jobs/events/repos 저장소, `claimNextRunnable`, status update, event ordering, terminal retry, repo profile 저장/조회. ADR-001에 맞춰 `better-sqlite3`를 사용
 - `src/daemon/loop.ts` — W2-C 완료. 단일 in-flight `runDaemonOnce`: runnable job claim → worktree provision → runner 실행 → 상태/이벤트 persistence. worktree/provision 실패는 `daemon-error` event와 `FAILED` 상태로 기록
 - `src/daemon/worktree-provisioner.ts` — W2-C 완료. `RepoProfile` + `worktreeRoot`를 `ensureWorktree` 옵션으로 변환하고 setup command를 PM-agnostic action에서 생성
 - `src/cli/agentctl.ts` — W3 완료. `submit jira`, `submit brief`, `show`, `retry`. `submit brief`는 brief 파일을 읽어 schema 검증 후 title/assets를 WorkItem으로 정규화하고, `--brief-path` 생략 시 `briefs/{id}/brief.md`를 사용
-- 검증: `pnpm verify` 통과(2026-06-06, `feat/w3-brief-intake`, 16 files / 110 tests, coverage all statements 93.38% / branches 87.1% / functions 96.71% / lines 94.98%). `node:sqlite` 사용으로 검증 중 ExperimentalWarning 1회 출력됨
+- 검증: `pnpm verify` 통과(2026-06-06, 16 files / 110 tests, coverage all statements 93.38% / branches 87.1% / functions 96.71% / lines 94.96%).
 - 공개 repo hygiene: `tests/` 표면(`describe`/`it`, fixture 문구)은 영어로 정리. 실제 회사 티켓 키는 커밋하지 않고 `DEMO-1234` 같은 가상 키만 사용. `docs/`는 작업자용이라 한글 유지 허용
 
 **다음 세션 시작점 — W4 n×n 병렬.** 권장 순서(TDD):
+
+W4 진입 결정:
+- 기본 동시성 값은 현재 config를 따른다 (`global_concurrency: 6`, web 3, personal-site 2, confluence 3, figma 2). 단, 첫 live smoke는 실행 옵션에서 global 2~3으로 낮춰 돌린다.
+- W4 본 구현의 acceptance는 fake engine + deterministic gates 기반 scheduler/semaphore/parallel daemon loop다. 실제 Claude/Codex CLI 실행은 후속 smoke로 2개 job만 검증한다.
+- W4에서는 `RepoProfile.baseBranch`만 사용한다. Jira `fixVersion` 기반 release branch 매핑과 `WorkItem.baseBranch` override는 W4 이후 별도 ADR/계약 변경으로 미룬다.
+- 게이트 스코핑은 PM-agnostic command hook까지만 사용한다. monorepo 변경 workspace/file 감지는 W5의 diff/checksum gate 강화로 미룬다.
+- GitHub Issue intake/write-back, 웹 대시보드/API, Stacked PR 자동화, provider별 정교한 backoff는 W4 범위 밖이다.
+
 1. Scheduler/semaphore 계약을 `global / per-repo / per-provider` 3계층으로 고정하고, SQLite runnable job claim과 결합할 최소 인터페이스를 정한다
 2. provider cap은 `RepoProfile.context.providers`와 `config/orchestrator.yaml` provider key를 매핑해 적용한다. brief-only profile은 MCP provider cap을 소비하지 않아야 한다
 3. worktree provision 단계에서 port/cache/env 격리 값을 job별로 주입한다
@@ -93,6 +101,6 @@
 - `docs/research-v1.md` — 도구/패턴 리서치 (모델명·가격은 2차 소스, 재확인 필요)
 - `docs/design-v2-multi-repo.md` — n×n 설계, `~/.ai-skills` 자산 매핑 (§4·§7 PLAN은 ADR-007 반영됨)
 - `docs/adr/` — 001~008. **005**(레포 컨텍스트 격리)·**006**(ai-skills 결합 최소화)·**007**(PLAN 커밋분할)·**008**(intake/context source 분리)이 이번 평가·피드백 산출. 바꾸려면 새 ADR 먼저
-- `docs/repo-structure.md` — 구조·인터페이스 (※ §4 MCP 주입 전제는 ADR-004로 폐기됨)
+- `docs/repo-structure.md` — 구조·인터페이스
 - `docs/engineering-standards.md` — 개발 방법론 (superpowers + agent-skills 채택분)
 - `docs/w1-runbook.md` — W1 절차 + 실행 로그

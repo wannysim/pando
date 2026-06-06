@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { createWorktreeProvisioner } from "../../src/daemon/worktree-provisioner.js";
-import type { EnsureWorktreeOptions, EnsureWorktreeResult } from "../../src/worktree/manager.js";
-import type { RepoProfile, WorkItem } from "../../src/core/types.js";
+import { createWorktreeProvisioner } from "../../src/daemon/worktree-provisioner";
+import type { EnsureWorktreeOptions, EnsureWorktreeResult } from "../../src/worktree/manager";
+import type { RepoProfile, WorkItem } from "../../src/core/types";
 
 describe("createWorktreeProvisioner", () => {
   it("builds daemon-mode worktree options from the repo profile", async () => {

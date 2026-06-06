@@ -1,10 +1,10 @@
 import { readFile } from "node:fs/promises";
 import process from "node:process";
 import { pathToFileURL } from "node:url";
-import { STAGE_ORDER } from "../core/state-machine.js";
-import type { StageName, WorkItem } from "../core/types.js";
-import type { JobEventRecord, JobStore } from "../db/index.js";
-import { loadBriefWorkItem, type BriefFileReader } from "../intake/brief.js";
+import { STAGE_ORDER } from "../core/state-machine";
+import type { StageName, WorkItem } from "../core/types";
+import type { JobEventRecord, JobStore } from "../db/index";
+import { loadBriefWorkItem, type BriefFileReader } from "../intake/brief";
 
 export interface AgentctlOptions {
   store: JobStore;
@@ -14,10 +14,7 @@ export interface AgentctlOptions {
   defaultRetryBudget?: number;
 }
 
-export async function runAgentctl(
-  args: readonly string[],
-  opts: AgentctlOptions,
-): Promise<number> {
+export async function runAgentctl(args: readonly string[], opts: AgentctlOptions): Promise<number> {
   const stdout = opts.stdout ?? (() => {});
   const stderr = opts.stderr ?? (() => {});
 
@@ -68,7 +65,7 @@ export async function runAgentctl(
 }
 
 export async function main(args = process.argv.slice(2)): Promise<number> {
-  const { createSqliteJobStore } = await import("../db/index.js");
+  const { createSqliteJobStore } = await import("../db/index");
   const store = createSqliteJobStore({
     path: process.env.PANDO_DB ?? "./pando.sqlite",
   });
@@ -223,12 +220,7 @@ function nodeFileReader(): BriefFileReader {
 }
 
 function isNotFound(error: unknown): boolean {
-  return (
-    typeof error === "object" &&
-    error !== null &&
-    "code" in error &&
-    error.code === "ENOENT"
-  );
+  return typeof error === "object" && error !== null && "code" in error && error.code === "ENOENT";
 }
 
 function isDirectRun(): boolean {

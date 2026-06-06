@@ -1,9 +1,4 @@
-import {
-  chmod,
-  mkdtemp,
-  rm,
-  writeFile,
-} from "node:fs/promises";
+import { chmod, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -12,7 +7,7 @@ import {
   CodexEngine,
   parseCodexJsonStream,
   type CommandRunner,
-} from "../../src/engines/codex.js";
+} from "../../src/engines/codex";
 
 const roots: string[] = [];
 
@@ -153,7 +148,7 @@ async function fakeExecutable(source: string): Promise<string> {
   const root = await mkdtemp(join(tmpdir(), "pando-codex-engine-"));
   roots.push(root);
 
-  const command = join(root, "fake-codex.js");
+  const command = join(root, "fake-codex");
   await writeFile(command, `#!/usr/bin/env node\n${source}\n`);
   await chmod(command, 0o755);
   return command;

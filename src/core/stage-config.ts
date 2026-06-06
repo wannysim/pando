@@ -1,5 +1,5 @@
 import { parse } from "yaml";
-import type { WorkItemSource } from "./types.js";
+import type { WorkItemSource } from "./types";
 
 export const WORKER_STAGE_KEYS = ["spec", "plan", "test", "impl", "review"] as const;
 
@@ -40,14 +40,8 @@ export function loadStageConfigFromYaml(yaml: string): StageConfig {
       WORKER_STAGE_KEYS.map((stage) => [stage, parseStage(stages[stage], stage)]),
     ) as Record<WorkerStageKey, StageWorkerConfig>,
     defaults: {
-      retryBudget: requiredPositiveInteger(
-        defaults.retry_budget,
-        "defaults.retry_budget",
-      ),
-      timeoutMinutes: requiredPositiveInteger(
-        defaults.timeout_minutes,
-        "defaults.timeout_minutes",
-      ),
+      retryBudget: requiredPositiveInteger(defaults.retry_budget, "defaults.retry_budget"),
+      timeoutMinutes: requiredPositiveInteger(defaults.timeout_minutes, "defaults.timeout_minutes"),
     },
   };
 }
@@ -130,10 +124,7 @@ function optionalStringArraysBySource(
   return result;
 }
 
-function optionalStringRecord(
-  value: unknown,
-  path: string,
-): Record<string, string> | undefined {
+function optionalStringRecord(value: unknown, path: string): Record<string, string> | undefined {
   if (value === undefined) return undefined;
 
   const raw = asRecord(value, path);
@@ -196,9 +187,7 @@ function requiredStringArray(value: unknown, path: string): string[] {
 }
 
 function removeUndefined<T extends Record<string, unknown>>(value: T): T {
-  return Object.fromEntries(
-    Object.entries(value).filter(([, item]) => item !== undefined),
-  ) as T;
+  return Object.fromEntries(Object.entries(value).filter(([, item]) => item !== undefined)) as T;
 }
 
 function isWorkItemSource(value: string): value is WorkItemSource {

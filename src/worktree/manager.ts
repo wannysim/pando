@@ -1,18 +1,6 @@
 import { exec, execFile } from "node:child_process";
-import {
-  copyFile,
-  mkdir,
-  open,
-  stat,
-  unlink,
-} from "node:fs/promises";
-import {
-  basename,
-  dirname,
-  isAbsolute,
-  join,
-  resolve,
-} from "node:path";
+import { copyFile, mkdir, open, stat, unlink } from "node:fs/promises";
+import { basename, dirname, isAbsolute, join, resolve } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { promisify } from "node:util";
 
@@ -50,9 +38,7 @@ export function worktreePathFor(opts: WorktreePathOptions): string {
   return join(opts.worktreeRoot, basename(opts.repoPath), branchSlug(opts.branch));
 }
 
-export async function ensureWorktree(
-  opts: EnsureWorktreeOptions,
-): Promise<EnsureWorktreeResult> {
+export async function ensureWorktree(opts: EnsureWorktreeOptions): Promise<EnsureWorktreeResult> {
   const path = worktreePathFor(opts);
   const lockPath = join(await gitDir(opts.repoPath), ".dispatch.lock");
 

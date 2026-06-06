@@ -1,39 +1,50 @@
 {
   "name": "pando",
   "version": "0.1.0",
-  "packageManager": "pnpm@10.33.2",
   "private": true,
-  "type": "module",
   "description": "Multi-repo background coding agent orchestrator — one root system, many trunks.",
+  "homepage": "https://github.com/wannysim/pando#readme",
+  "bugs": {
+    "url": "https://github.com/wannysim/pando/issues"
+  },
   "license": "MIT",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/wannysim/pando.git"
   },
-  "bugs": {
-    "url": "https://github.com/wannysim/pando/issues"
-  },
-  "homepage": "https://github.com/wannysim/pando#readme",
-  "engines": {
-    "node": ">=22"
-  },
+  "type": "module",
   "scripts": {
     "test": "vitest run",
     "test:watch": "vitest",
     "coverage": "vitest run --coverage",
-    "lint": "eslint .",
+    "lint": "oxlint .",
+    "lint:fix": "oxlint --fix .",
+    "format": "oxfmt --write .",
+    "format:check": "oxfmt --check .",
     "types": "tsc --noEmit",
-    "verify": "pnpm coverage && pnpm lint && pnpm types"
-  },
-  "devDependencies": {
-    "@types/node": "^22.10.0",
-    "@vitest/coverage-v8": "^4.1.0",
-    "eslint": "^9.17.0",
-    "typescript": "^5.7.0",
-    "typescript-eslint": "^8.18.0",
-    "vitest": "^4.1.0"
+    "verify": "pnpm coverage && pnpm lint && pnpm types",
+    "prepare": "husky"
   },
   "dependencies": {
+    "better-sqlite3": "^12.10.0",
     "yaml": "^2.9.0"
-  }
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/node": "^22.19.19",
+    "@vitest/coverage-v8": "^4.1.8",
+    "husky": "^9.1.7",
+    "lint-staged": "^17.0.7",
+    "oxfmt": "^0.53.0",
+    "oxlint": "^1.68.0",
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.8"
+  },
+  "lint-staged": {
+    "*.{js,jsx,ts,tsx,mjs,cjs,mts,cts,json,jsonc,json5,yml,yaml,md,mdx,html,css,scss,less,toml,graphql}": "oxfmt --write"
+  },
+  "engines": {
+    "node": ">=22.13.0"
+  },
+  "packageManager": "pnpm@11.5.2"
 }

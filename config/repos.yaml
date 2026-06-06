@@ -12,7 +12,7 @@ repos:
       providers: [confluence, figma]
       policy_refs: []
     conventions: acme-conventions
-    setup: install   # web은 yarn@1 모노레포 (W1 검증에서 확인)
+    setup: install # web은 yarn@1 모노레포 (W1 검증에서 확인)
     gates:
       test: test
       lint: lint
