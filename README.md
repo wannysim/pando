@@ -28,6 +28,32 @@ Early implementation. W1-W3 are complete; W4 n x n parallel scheduling is next. 
 - [engineering-standards.md](./docs/engineering-standards.md) — development methodology
 - [adr/](./docs/adr) — architecture decision records
 
+## Local run
+
+> Full env-var and command reference: [docs/runbooks/local-pando-runner.md](./docs/runbooks/local-pando-runner.md)
+
+**Worker expectations (post-PR #33):** Claude Code is required for all pipeline stages. `gh` is required for the PR creation stage. Evidence files and the temporary DB are written under `/tmp`, not inside the repo.
+
+### Prerequisites
+
+```bash
+pnpm install
+```
+
+CLIs required: `claude` (Claude Code), `gh`, `git`. Ensure `gh auth status` passes and Claude auth is configured.
+
+### Start the daemon and open the dashboard
+
+Follow the [runbook](./docs/runbooks/local-pando-runner.md) "Start local pando" section to set env vars and run `pnpm start`, then open `http://127.0.0.1:3210/dashboard`.
+
+### Submit a brief job
+
+Follow the [runbook](./docs/runbooks/local-pando-runner.md) "Submit a brief" section to queue a job with your brief path.
+
+### Check status and stop
+
+Run `agentctl list` / `agentctl show <id>` to check progress (see runbook for the full commands). Stop: **Ctrl-C** the `pnpm start` process. Temporary artifacts live under `/tmp` and can be removed afterwards.
+
 ## Development
 
 ```bash
