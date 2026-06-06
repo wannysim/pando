@@ -31,20 +31,26 @@ export interface RepoProfile {
   workItemSource: "jira" | "brief";
   contextProviders: ("atlassian-mcp" | "figma-mcp")[];
   conventions: string; // 스킬 이름 또는 "repo-local"
-  setup: string;
-  gates: { test: string; lint?: string; types?: string };
+  packageManager?: PackageManager;
+  setup: PackageAction;
+  gates: { test: PackageAction; lint?: PackageAction; types?: PackageAction };
   concurrency: number;
   portRange: [number, number];
   envFiles?: string[];
   guards: { protectedBranches: string[]; forbidTestEditInImpl: boolean };
 }
 
+export type PackageManager = "yarn" | "pnpm" | "npm";
+
+export type PackageAction = "install" | "test" | "lint" | "typecheck";
+
 export interface WorkerRunOptions {
   cwd: string; // worktree 경로
   prompt: string;
   model: string;
   sessionId?: string; // 단계 간 세션 연속성
-  mcpConfig?: string; // claude-code 전용
+  allowedTools?: string[]; // 단계별 CLI tool whitelist
+  mcpConfig?: string; // managed connector 상속(ADR-004)과 충돌하는 엔진은 거부할 수 있다
   outputSchema?: object;
   timeoutMs: number;
   env?: Record<string, string>; // IMPLEMENT_JIRA_BATCH=1 등
