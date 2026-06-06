@@ -83,6 +83,7 @@ export interface GateResult {
   pass: boolean;
   reason?: string;
   evidence?: string; // 명령 출력, 체크섬 diff 등
+  failureKind?: "gate-fail" | "blocking-questions";
 }
 
 export interface Gate {

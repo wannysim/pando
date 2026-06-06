@@ -3,11 +3,36 @@
 # 모델명은 구축 시점 리더보드 확인 후 확정할 것 (research-v1 §5 주의사항)
 
 stages:
-  spec:   { engine: claude-code, model: sonnet }   # MCP 의존(Atlassian/Figma) → Claude Code
-  plan:   { engine: claude-code, model: opus }     # /implement-jira --batch
-  test:   { engine: codex,       model: gpt-5-codex }
-  impl:   { engine: codex,       model: gpt-5-codex }
-  review: { engine: claude-code, model: opus }     # 구현과 다른 모델 — 기만 방지 (research-v1 §3.2)
+  spec:
+    engine: claude-code
+    model: sonnet
+    skills:
+      jira: jira-context-gatherer
+      brief: brief-intake
+    allowed_tools: [Read, Glob, Grep, Task, mcp__claude_ai_Atlassian]
+
+  plan:
+    engine: claude-code
+    model: opus
+    skill: implement-jira
+    allowed_tools: [Read, Glob, Grep, Write, "Bash(git *)", Task, mcp__claude_ai_Atlassian]
+    env:
+      IMPLEMENT_JIRA_BATCH: "1"
+
+  test:
+    engine: codex
+    model: gpt-5-codex
+    skill: test-writer
+
+  impl:
+    engine: codex
+    model: gpt-5-codex
+
+  review:
+    engine: claude-code
+    model: opus
+    skill: verifier
+    allowed_tools: [Read, Glob, Grep, "Bash(git *)"]
 
 defaults:
   retry_budget: 10
