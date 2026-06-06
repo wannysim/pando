@@ -89,7 +89,43 @@ Success criteria:
 - `checks.providerCap.pass` is `true`.
 - `checks.gateEvidence.pass` is `true`, with structured JSON evidence from `test`, `lint`, and `types` package-action gates.
 
-2026-06-07 host contract result: passed with global cap `2`. Evidence: `/tmp/pando-full-daemon-smoke-contract-20260607-002546/full-daemon-smoke.json`. Both pando brief jobs finished `DONE`, worktree paths were distinct, provider usage was `{}`, and each job recorded three structured gate evidence entries. This is still a contract smoke; live full-daemon worker execution with real Claude/Codex remains the next integration step.
+2026-06-07 host contract result: passed with global cap `2`. Evidence: `/tmp/pando-full-daemon-smoke-contract-20260607-003713/full-daemon-smoke.json`. Both pando brief jobs finished `DONE`, worktree paths were distinct, provider usage was `{}`, and each job recorded three structured gate evidence entries. This is the baseline to run before live full-daemon workers.
+
+## Host full daemon live dogfood
+
+After the contract smoke passes, run the host full-daemon live smoke with exactly two `pando` self-profile jobs and global concurrency fixed at `2`. This path uses real Claude Code and Codex workers through `runDaemonOnce`.
+
+```bash
+RUN_ID="live-$(date +%Y%m%d-%H%M%S)"
+ROOT="/tmp/pando-full-daemon-smoke-$RUN_ID"
+
+pnpm smoke:full-daemon -- \
+  --mode live \
+  --global-concurrency 2 \
+  --worktree-root "$ROOT/worktrees" \
+  --db "$ROOT/pando.sqlite" \
+  --evidence "$ROOT/full-daemon-smoke.json" \
+  --run-id "$RUN_ID"
+```
+
+Success criteria:
+
+- `mode` is `live`.
+- `jobs` contains exactly `PANDO-FULL-SMOKE-1` and `PANDO-FULL-SMOKE-2`.
+- both jobs finish `DONE`.
+- `checks.twoJobsClaimed.actual` is `2`.
+- `checks.globalConcurrency.value` is `2`, and `withinLiveCap` is `true`.
+- `checks.worktreeCollision.pass`, `checks.providerCap.pass`, and `checks.gateEvidence.pass` are all `true`.
+- DB events include real worker execution events, stage duration payloads, and structured gate evidence. If a worker fails, preserve the failure payload instead of relying on LLM output text.
+
+2026-06-07 host live result:
+
+- Baseline contract evidence: `/tmp/pando-full-daemon-smoke-contract-20260607-003713/full-daemon-smoke.json`.
+- Initial live failure evidence: `/tmp/pando-full-daemon-smoke-live-20260607-003749/live-failure-evidence.json`.
+- Live resume evidence: `/tmp/pando-full-daemon-smoke-live-20260607-003749/live-resume-evidence.json`.
+- Follow-up dogfood evidence: `/tmp/pando-full-daemon-dogfood-20260607-010122/dogfood-evidence.json`.
+
+The initial live run used exactly two jobs with global concurrency `2` and exposed a Codex TEST-stage stdin wait: both Codex workers reported `Reading additional input from stdin...` after termination. The fix is to run Codex through `spawn(..., { stdio: ["ignore", "pipe", "pipe"] })` so stdin is closed. After that runner fix, the same two DB jobs resumed to `DONE` without enqueueing more live smoke jobs.
 
 ## Docker worker readiness
 

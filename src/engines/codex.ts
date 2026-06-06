@@ -1,8 +1,5 @@
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
+import { spawn } from "node:child_process";
 import type { WorkerEngine, WorkerResult, WorkerRunOptions } from "../core/types";
-
-const execFileAsync = promisify(execFile);
 
 export interface CommandRunnerOptions {
   cwd: string;
@@ -81,7 +78,7 @@ export class CodexEngine implements WorkerEngine {
 
   constructor(opts: CodexEngineOptions = {}) {
     this.command = opts.command ?? "codex";
-    this.runner = opts.runner ?? execFileRunner;
+    this.runner = opts.runner ?? spawnRunner;
   }
 
   async run(opts: WorkerRunOptions): Promise<WorkerResult> {
@@ -101,30 +98,44 @@ export class CodexEngine implements WorkerEngine {
   }
 }
 
-async function execFileRunner(
+async function spawnRunner(
   command: string,
   args: string[],
   opts: CommandRunnerOptions,
 ): Promise<CommandResult> {
-  try {
-    const { stdout, stderr } = await execFileAsync(command, args, {
+  return await new Promise<CommandResult>((resolve) => {
+    const child = spawn(command, args, {
       cwd: opts.cwd,
       env: opts.env,
-      timeout: opts.timeoutMs,
+      stdio: ["ignore", "pipe", "pipe"],
     });
-    return { exitCode: 0, stdout: asText(stdout), stderr: asText(stderr) };
-  } catch (error) {
-    const failure = error as Partial<{
-      code: number | string;
-      stdout: string | Buffer;
-      stderr: string | Buffer;
-    }>;
-    return {
-      exitCode: typeof failure.code === "number" ? failure.code : 1,
-      stdout: asText(failure.stdout),
-      stderr: asText(failure.stderr),
-    };
-  }
+    let stderr = "";
+    let stdout = "";
+    let settled = false;
+    const maxBuffer = 10 * 1024 * 1024;
+    const timer = setTimeout(() => {
+      child.kill("SIGTERM");
+    }, opts.timeoutMs);
+
+    child.stdout?.on("data", (chunk) => {
+      if (stdout.length < maxBuffer) stdout += asText(chunk);
+    });
+    child.stderr?.on("data", (chunk) => {
+      if (stderr.length < maxBuffer) stderr += asText(chunk);
+    });
+    child.on("error", (error) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve({ exitCode: 1, stderr: error.message, stdout });
+    });
+    child.on("close", (code) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve({ exitCode: typeof code === "number" ? code : 1, stderr, stdout });
+    });
+  });
 }
 
 function parseJsonObject(line: string): Record<string, unknown> | undefined {
