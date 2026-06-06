@@ -4,6 +4,8 @@ import { Hono } from "hono";
 import type { Context } from "hono";
 import type { ContentfulStatusCode } from "hono/utils/http-status";
 import type { JobStatus, WorkItem } from "../core/types";
+import type { BriefComposeInput } from "../intake/brief";
+import { materializeInlineBrief, type BriefWriter } from "../intake/brief-materializer";
 import type {
   CancelJobInput,
   EnqueueJobInput,
@@ -46,6 +48,12 @@ export interface PandoApiOptions {
   store: PandoApiStore;
   defaultRetryBudget?: number;
   staticDashboard?: StaticDashboardOptions;
+  briefMaterializer?: BriefMaterializerOptions;
+}
+
+export interface BriefMaterializerOptions {
+  writer: BriefWriter;
+  inboxRoot: string;
 }
 
 export interface StaticDashboardOptions {
@@ -171,7 +179,7 @@ export function createPandoApiApp(opts: PandoApiOptions): Hono {
 
   app.post("/briefs", async (context) => {
     const body = await readJsonObject(context);
-    const item = briefWorkItem(body);
+    const item = await briefWorkItem(body, opts.briefMaterializer);
     const job = opts.store.enqueueJob({
       item,
       retryBudget: opts.defaultRetryBudget ?? 10,
@@ -297,19 +305,111 @@ function requireJob(store: PandoApiStore, jobId: string): JobRecord {
   throw routeError("job_not_found", `job not found: ${jobId}`, 404);
 }
 
-function briefWorkItem(body: Record<string, unknown>): WorkItem {
+async function briefWorkItem(
+  body: Record<string, unknown>,
+  materializer: BriefMaterializerOptions | undefined,
+): Promise<WorkItem> {
   const id = requiredString(body.id, "id");
   const repo = requiredString(body.repo, "repo");
-  const briefPath = optionalString(body.briefPath, "briefPath") ?? `briefs/${id}/brief.md`;
+  const branch = optionalString(body.branch, "branch");
 
+  if (body.brief !== undefined) {
+    return await inlineBriefWorkItem({ body, branch, id, materializer, repo });
+  }
+
+  const briefPath = optionalString(body.briefPath, "briefPath") ?? `briefs/${id}/brief.md`;
   return {
-    branch: optionalString(body.branch, "branch"),
+    branch,
     id,
     payload: { briefPath, kind: "brief" },
     repo,
     source: "brief",
     title: optionalString(body.title, "title") ?? id,
   };
+}
+
+async function inlineBriefWorkItem(input: {
+  body: Record<string, unknown>;
+  branch: string | undefined;
+  id: string;
+  materializer: BriefMaterializerOptions | undefined;
+  repo: string;
+}): Promise<WorkItem> {
+  if (input.materializer === undefined) {
+    throw routeError("inline_brief_unavailable", "inline brief intake is not configured", 400);
+  }
+
+  const brief = parseInlineBrief(input.body.brief, input.id);
+  const materialized = await materialize(input.materializer, input.id, brief);
+
+  return {
+    branch: input.branch,
+    id: input.id,
+    payload: removeUndefined({
+      assets: materialized.assets,
+      briefPath: materialized.briefPath,
+      kind: "brief" as const,
+    }),
+    repo: input.repo,
+    source: "brief",
+    title: brief.title,
+  };
+}
+
+async function materialize(
+  materializer: BriefMaterializerOptions,
+  id: string,
+  brief: BriefComposeInput,
+) {
+  try {
+    return await materializeInlineBrief({
+      brief,
+      id,
+      inboxRoot: materializer.inboxRoot,
+      writer: materializer.writer,
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "inline brief is invalid";
+    throw routeError("invalid_brief", message, 400);
+  }
+}
+
+function parseInlineBrief(value: unknown, id: string): BriefComposeInput {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw routeError("invalid_request", "brief must be an object", 400);
+  }
+  const brief = value as Record<string, unknown>;
+  const title = optionalString(brief.title, "brief.title")?.trim();
+
+  return {
+    acceptanceCriteria: optionalStringList(brief.acceptanceCriteria, "brief.acceptanceCriteria"),
+    assets: optionalStringList(brief.assets, "brief.assets"),
+    body: optionalString(brief.body, "brief.body"),
+    goal: optionalString(brief.goal, "brief.goal"),
+    nonGoals: optionalStringList(brief.nonGoals, "brief.nonGoals"),
+    openQuestions: optionalStringList(brief.openQuestions, "brief.openQuestions"),
+    screensOrBehavior: optionalString(brief.screensOrBehavior, "brief.screensOrBehavior"),
+    title: title === undefined || title.length === 0 ? id : title,
+    userStory: optionalString(brief.userStory, "brief.userStory"),
+  };
+}
+
+function optionalStringList(value: unknown, field: string): string[] | undefined {
+  if (value === undefined) return undefined;
+  if (typeof value === "string") {
+    return value
+      .split("\n")
+      .map((item) => item.trim())
+      .filter((item) => item.length > 0);
+  }
+  if (Array.isArray(value) && value.every((item) => typeof item === "string")) {
+    return value as string[];
+  }
+  throw routeError("invalid_request", `${field} must be a string or string array`, 400);
+}
+
+function removeUndefined<T extends Record<string, unknown>>(value: T): T {
+  return Object.fromEntries(Object.entries(value).filter(([, item]) => item !== undefined)) as T;
 }
 
 async function readJsonObject(context: Context): Promise<Record<string, unknown>> {

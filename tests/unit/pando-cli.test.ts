@@ -27,6 +27,7 @@ describe("resolvePandoStartArgs", () => {
 
     const root = "/tmp/pando-local-20260607-123456";
     expect(resolved.options).toEqual({
+      briefInboxRoot: `${root}/briefs`,
       dashboardRoot: undefined,
       daemon: {
         configDir: "config",

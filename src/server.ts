@@ -1,13 +1,17 @@
 import { createServer, type IncomingMessage } from "node:http";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { Readable } from "node:stream";
 import process from "node:process";
 import { createPandoApiApp } from "./api/app";
 import { createLocalDaemonRuntime, type DaemonLoopController } from "./daemon/local-runtime";
 import { createSqliteJobStore } from "./db/index";
+import { createFsBriefWriter } from "./intake/brief-materializer";
 
 const DEFAULT_PORT = 3210;
 
 export interface PandoServerOptions {
+  briefInboxRoot: string;
   dbPath: string;
   daemon: PandoDaemonServerOptions;
   dashboardRoot?: string;
@@ -26,6 +30,7 @@ export interface PandoDaemonServerOptions {
 export function createPandoServer(opts: PandoServerOptions) {
   const store = createSqliteJobStore({ path: opts.dbPath });
   const app = createPandoApiApp({
+    briefMaterializer: { inboxRoot: opts.briefInboxRoot, writer: createFsBriefWriter() },
     staticDashboard:
       opts.dashboardRoot === undefined
         ? undefined
@@ -68,6 +73,7 @@ export function createPandoServer(opts: PandoServerOptions) {
 
 export function serverOptionsFromEnv(env: NodeJS.ProcessEnv = process.env): PandoServerOptions {
   return {
+    briefInboxRoot: emptyToUndefined(env.PANDO_BRIEF_INBOX) ?? join(tmpdir(), "pando-briefs"),
     daemon: {
       configDir: env.PANDO_CONFIG_DIR ?? "config",
       enabled: parseBoolean(env.PANDO_DAEMON_ENABLED),

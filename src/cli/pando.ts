@@ -43,6 +43,7 @@ export function resolvePandoStartArgs(
   return {
     kind: "start",
     options: {
+      briefInboxRoot: `${runRoot}/briefs`,
       dashboardRoot: undefined,
       daemon: {
         configDir: options.configDir ?? "config",

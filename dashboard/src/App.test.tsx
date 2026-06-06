@@ -109,6 +109,44 @@ describe("DashboardApp", () => {
     );
   });
 
+  it("submits an inline natural-language brief with references through the client", async () => {
+    const client = createMockClient();
+    const user = userEvent.setup();
+    render(<DashboardApp client={client} />);
+
+    await screen.findByRole("button", { name: /open DEMO-5001/i });
+    await user.click(screen.getByRole("button", { name: "Describe task" }));
+
+    expect(screen.getByText("Repo is required")).toBeVisible();
+    expect(screen.getByText("ID is required")).toBeVisible();
+    expect(client.submitBrief).not.toHaveBeenCalled();
+
+    await user.type(screen.getByLabelText("Task repo"), "pando");
+    await user.type(screen.getByLabelText("Task ID"), "footer-year");
+    await user.type(screen.getByLabelText("Task title"), "Make the footer year dynamic");
+    await user.type(
+      screen.getByLabelText("What to build"),
+      "The footer should show the current year automatically.",
+    );
+    await user.type(
+      screen.getByLabelText("References (one per line)"),
+      "src/footer.tsx\ndocs/spec.md",
+    );
+    await user.click(screen.getByRole("button", { name: "Describe task" }));
+
+    await waitFor(() =>
+      expect(client.submitBrief).toHaveBeenCalledWith({
+        brief: {
+          assets: ["src/footer.tsx", "docs/spec.md"],
+          body: "The footer should show the current year automatically.",
+          title: "Make the footer year dynamic",
+        },
+        id: "footer-year",
+        repo: "pando",
+      }),
+    );
+  });
+
   // AC-4a: context strip renders above action row with current stage and branch
   it("context strip renders above action row with current stage and branch (AC-4a)", async () => {
     const client = createMockClient();
