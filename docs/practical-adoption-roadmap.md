@@ -9,20 +9,22 @@
 - Hono API와 Vite dashboard를 단일 Node server에서 띄울 수 있다.
 - Docker HTTP/API/static dashboard smoke가 통과했다.
 - Host에서 실제 `claude`/`codex` CLI worker 2-job probe가 통과했다.
+- PR #28에서 `pando` self-profile과 host full-daemon contract smoke가 develop에 반영됐다.
+- PR #29에서 host full-daemon live 2-job smoke와 단일 pando self-dogfood job이 develop에 반영됐다.
 - worker readiness/live smoke evidence는 structured JSON으로 남긴다.
 
-아직 아래는 안 됐다.
+아직 아래는 남아 있다.
 
 - `src/server.ts`가 production daemon loop를 돌리지 않는다. 지금 server는 API/static dashboard entrypoint다.
 - dashboard/API로 job을 넣으면 DB에 queued job이 생기지만, real `runDaemonOnce` + real worker engines + worktree provisioner + gates가 상시 실행되지는 않는다.
-- `config/repos.yaml`에 pando self-profile이 없다. 즉 `repo: pando`로 queued job을 넣을 수는 있어도 full daemon 실행 시 repo profile lookup에서 막힌다.
 - Docker image 안에는 `claude`/`codex` CLI와 auth volume이 없다.
 
-따라서 다음 목표는 "멋진 UI"가 아니라 **host에서 pando가 자기 자신을 대상으로 2개 job만 안전하게 실행하는 최소 경로**다. 그 다음에 dashboard/terminal/README를 사용자용으로 다듬는다.
+따라서 다음 목표는 "새 기능 확장"이 아니라 **PR #29 이후 문서 정합성을 맞춘 뒤 pando self-dogfood로 작은 작업을 반복 실행할 수 있게 운영 표면을 다듬는 것**이다. 우선순위는 docs consistency → dashboard operations UX → terminal UX → README/getting-started → Docker worker readiness 순서다.
 
 ## 요구사항 요약
 
 - pando self-dogfooding: pando repo 자체를 brief 기반 target repo로 등록하고, host daemon 경로에서 2개 job만 실행한다.
+- Docs consistency: handoff, roadmap, next-session prompt, runbook이 PR #29 이후 상태를 같은 말로 설명해야 한다.
 - Dashboard UX: queued/running/failed 상태와 readiness blocker를 눈으로 이해할 수 있어야 한다.
 - Terminal UX: `agentctl`로 submit/list/show/retry/cancel/cleanup/status/smoke 흐름을 빠르게 확인할 수 있어야 한다.
 - README/getting started: 처음 보는 사용자가 5분 안에 dashboard를 열고, fake/readiness/live smoke 중 하나를 실행할 수 있어야 한다.
@@ -30,9 +32,10 @@
 
 ## Stacked PR Roadmap
 
-### PR 1: pando self-profile and full daemon smoke contract
+### Done: PR 1 — pando self-profile and full daemon smoke contract
 
 - Focus: Foundations + Data/Logic
+- Status: ✅ 완료, develop 반영(PR #28)
 - Files:
   - `config/repos.yaml`
   - `scripts/` 또는 `src/daemon/`의 host-only smoke entrypoint
@@ -50,10 +53,11 @@
 - Commit:
   - `chore: add pando self daemon smoke contract`
 
-### PR 2: host full daemon live pipeline smoke
+### Done: PR 2 — host full daemon live pipeline smoke
 
 - Focus: Integration
 - Depends on: PR 1
+- Status: ✅ 완료, develop 반영(PR #29)
 - Files:
   - `scripts/full-daemon-smoke.mjs` 같은 수동 smoke script
   - `docs/runbooks/two-job-smoke.md`
@@ -70,10 +74,32 @@
 - Commit:
   - `chore: run host daemon live smoke`
 
-### PR 3: dashboard operations UX pass
+### PR 3: docs consistency after dogfood
+
+- Focus: Docs
+- Depends on: PR 1~2
+- Files:
+  - `docs/practical-adoption-roadmap.md`
+  - `docs/next-session-prompt.md`
+  - `docs/handoff.md`
+  - `docs/runbooks/two-job-smoke.md` if needed
+- Work:
+  - PR #28/#29 완료 상태를 roadmap과 next-session prompt에 반영한다.
+  - 다음 우선순위를 docs consistency, dashboard operations UX, terminal UX, README/getting-started, Docker worker readiness 순서로 정렬한다.
+  - "full daemon smoke가 아직 안 됐다"처럼 PR #29 이후 상태와 충돌하는 문구를 제거한다.
+  - 다음 세션 목표를 pando self-dogfood로 작은 문서/운영 UX 작업을 돌리는 흐름으로 정리한다.
+- Acceptance:
+  - docs가 host full-daemon contract/live dogfood 완료 상태를 일관되게 설명한다.
+  - 남은 한계는 production server loop, operations UX, Docker worker readiness처럼 실제로 남은 항목만 말한다.
+  - `pnpm format:check` 통과.
+  - 가능하면 `pnpm verify` 통과.
+- Commit:
+  - `docs: update roadmap after full daemon dogfood`
+
+### PR 4: dashboard operations UX pass
 
 - Focus: Atomic UI + Integration
-- Depends on: PR 1~2
+- Depends on: PR 3
 - Files:
   - `dashboard/src/*`
   - `src/api/schema.ts`, `src/api/app.ts` if response shape needs small additions
@@ -92,10 +118,10 @@
 - Commit:
   - `feat(dashboard): improve operations workflow`
 
-### PR 4: terminal UX and smoke commands
+### PR 5: terminal UX and smoke commands
 
 - Focus: Data/Logic + Integration
-- Depends on: PR 1~2
+- Depends on: PR 3
 - Files:
   - `src/cli/agentctl.ts`
   - `scripts/two-job-smoke.mjs`
@@ -111,10 +137,10 @@
 - Commit:
   - `feat(cli): add operator smoke commands`
 
-### PR 5: README and getting started page
+### PR 6: README and getting started page
 
 - Focus: Docs + polish
-- Depends on: PR 1~4 중 실제 동작하는 범위
+- Depends on: PR 3~5 중 실제 동작하는 범위
 - Files:
   - `README.md`
   - `README.ko.md`
@@ -133,7 +159,7 @@
 - Commit:
   - `docs: add getting started guide`
 
-### PR 6: Docker worker readiness hardening
+### PR 7: Docker worker readiness hardening
 
 - Focus: Deployment
 - Depends on: host daemon smoke가 먼저 통과한 뒤 착수
@@ -200,11 +226,11 @@ README는 아래 순서가 좋다.
 
 ### 지금 당장 가능한 방식
 
-지금은 dashboard/API에 job을 넣을 수 있지만 full daemon execution은 아직 붙지 않았다. 그래서 pando에게 일을 "완전히 자동으로" 맡기기 전까지는 아래 방식이 맞다.
+PR #29 이후에는 pando self-profile과 host full-daemon smoke path가 있으므로, 작은 문서/운영 UX 작업을 brief로 넣어 self-dogfood하는 흐름을 실험할 수 있다. 다만 production `src/server.ts` 상시 daemon loop는 아직 붙지 않았으므로, 완전한 상시 운영보다 host smoke/dogfood 경로로 작게 실행하는 방식이 맞다.
 
 1. 새 Codex/Claude 세션을 연다.
 2. `docs/next-session-prompt.md`를 그대로 붙여 넣는다.
-3. 이번 문서(`docs/practical-adoption-roadmap.md`)를 읽고 PR 1부터 진행하라고 시킨다.
+3. 이번 문서(`docs/practical-adoption-roadmap.md`)를 읽고 현재 첫 우선순위부터 진행하라고 시킨다.
 4. 작업이 끝나면 `pnpm verify`, smoke evidence, docs/handoff 업데이트, English commit을 요구한다.
 
 붙여 넣을 수 있는 짧은 지시:
@@ -212,15 +238,15 @@ README는 아래 순서가 좋다.
 ```text
 CLAUDE.md, docs/handoff.md, docs/practical-adoption-roadmap.md, docs/next-session-prompt.md를 읽고 develop 최신 상태에서 시작해줘.
 
-목표는 docs/practical-adoption-roadmap.md의 PR 1이야.
-TDD로 pando self-profile과 host full daemon smoke contract를 먼저 고정하고, 가능하면 2-job smoke까지 실행해줘.
+목표는 pando self-dogfood로 작은 docs consistency 작업 하나를 끝까지 돌리는 거야.
+full daemon smoke는 PR #29로 이미 develop에 반영됐으니, 다음 우선순위 문서를 확인하고 작은 변경만 진행해줘.
 비밀값은 출력/커밋하지 말고, evidence는 /tmp 아래에 남겨줘.
 완료 후 pnpm verify를 통과시키고 English commit message로 커밋해줘.
 ```
 
-### full daemon wiring 이후 방식
+### self-dogfood 방식
 
-PR 1~2가 끝난 뒤에는 pando 자신에게 brief를 넣는 방식으로 전환한다.
+작은 작업은 pando 자신에게 brief를 넣는 방식으로 전환한다.
 
 예상 흐름:
 
@@ -237,8 +263,8 @@ PANDO_API_URL=http://127.0.0.1:3210 \
   pnpm tsx src/cli/agentctl.ts list
 ```
 
-주의: 이 흐름은 `config/repos.yaml`에 `pando` self-profile이 추가되고, daemon execution wiring이 붙은 뒤에만 실제 구현까지 진행된다. 지금은 queued job과 dashboard preview까지만 확인할 수 있다.
+주의: production server loop는 아직 상시 실행되지 않는다. 실제 worker 실행까지 확인하려면 PR #29의 host full-daemon smoke/dogfood runbook처럼 명시적인 host 실행 경로와 `/tmp` structured evidence를 사용한다.
 
 ## 다음 결정
 
-다음 작업은 **PR 1: pando self-profile and full daemon smoke contract**로 시작한다. dashboard/terminal/README polish는 full daemon path가 최소 1번 통과한 뒤가 맞다.
+다음 작업은 **PR 3: docs consistency after dogfood**로 시작한다. 이후 순서는 dashboard operations UX → terminal UX → README/getting-started → Docker worker readiness가 맞다.

@@ -1,8 +1,13 @@
 # Two-job smoke runbook
 
-W5 PR 7 keeps live validation intentionally small: exactly two jobs, with global concurrency set to 2 or 3. If CLI auth, provider auth, repo mounts, or cost controls are not ready, record deterministic fake smoke evidence instead.
+W5 PR 7 kept live validation intentionally small: exactly two jobs, with global concurrency set to 2 or 3. If CLI auth, provider auth, repo mounts, or cost controls are not ready, record deterministic fake smoke evidence instead.
 
-The current live scope is a **worker probe**: one Claude Code worker job and one Codex worker job run in isolated directories and record deterministic exit-code evidence. It does not yet run a full daemon pipeline job through `SPEC -> PLAN -> TEST -> IMPL -> REVIEW -> PR`; production server wiring for `runDaemonOnce`, real engines, prompts, worktree provisioning, and gates is the next step for full daemon live smoke.
+There are now two host live scopes:
+
+- **Worker probe**: one Claude Code worker job and one Codex worker job run in isolated directories and record deterministic exit-code evidence.
+- **Full daemon live dogfood**: two `pando` self-profile jobs run through `runDaemonOnce`, then a follow-up single pando dogfood job runs through the same host path.
+
+Production `src/server.ts` still serves API/static dashboard only; always-on daemon loop wiring remains a separate follow-up.
 
 ## Preconditions
 

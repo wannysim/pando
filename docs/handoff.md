@@ -105,9 +105,9 @@
   - 최종 검증: `pnpm format:check` 통과. `pnpm verify` 통과(2026-06-07, core 28 files / 196 tests, coverage all statements 92.58% / branches 85.15% / functions 96.69% / lines 94.01%; dashboard 1 file / 6 tests + types + build).
 - 공개 repo hygiene: `tests/` 표면(`describe`/`it`, fixture 문구)은 영어로 정리. 실제 회사 티켓 키는 커밋하지 않고 `DEMO-1234` 같은 가상 키만 사용. `docs/`는 작업자용이라 한글 유지 허용
 
-**다음 세션 시작점 — host full daemon live follow-ups 또는 Docker worker readiness.**
+**다음 세션 시작점 — pando self-dogfood follow-ups.**
 
-W5의 최소 운영 준비는 닫혔다. Host에서 실제 Claude/Codex worker 2-job probe와 full daemon 2-job live dogfood를 수행했다. 다음 세션에서 가장 먼저 결정할 것은 **반복 live soak/worker-cost telemetry를 우선할지, Docker worker CLI/auth를 먼저 확정할지**다.
+W5의 최소 운영 준비는 닫혔다. Host에서 실제 Claude/Codex worker 2-job probe와 full daemon 2-job live dogfood를 수행했다. 다음 세션은 pando self-dogfood로 작은 작업을 계속 돌릴 수 있게 **dashboard operations UX → terminal UX → README/getting-started → Docker worker readiness** 순서로 운영 표면을 다듬는 것이 우선이다.
 
 ## 남아있는 작업
 
@@ -127,7 +127,7 @@ W4 완료 판정:
 - ✅ acceptance 검증: fake engine + deterministic gate 성격의 unit/integration tests. 실제 Claude/Codex CLI 실행은 W4 본 구현 acceptance에서 제외
 
 W4/W5에서 의도적으로 남긴 것:
-- 실제 Claude/Codex worker live smoke는 아직 안 함. Docker HTTP/API/static smoke와 deterministic fake two-job smoke는 완료됐고, live worker smoke는 인증/CLI/비용 조건을 갖춘 뒤 global 2~3으로 별도 실행한다
+- 실제 Claude/Codex worker 2-job probe와 host full-daemon live dogfood는 완료. production `src/server.ts` 상시 loop wiring과 Docker live worker smoke는 아직 별도 후속이다
 - Jira `fixVersion` 기반 release branch 매핑과 `WorkItem.baseBranch` override는 별도 ADR/후속 작업
 - monorepo 변경 workspace/file gate scoping의 순수 계약은 W5 PR #17에서 완료. 실제 git diff 수집/command scoping adapter 연결은 후속 작업에서 필요 시 진행
 - GitHub Issue intake/write-back, Stacked PR 자동화, provider별 정교한 backoff는 아직 범위 밖
@@ -145,7 +145,7 @@ W5 우선순위(TDD):
 - `docs/research-v1.md` — 도구/패턴 리서치 (모델명·가격은 2차 소스, 재확인 필요)
 - `docs/design-v2-multi-repo.md` — n×n 설계, `~/.ai-skills` 자산 매핑 (§4·§7 PLAN은 ADR-007 반영됨)
 - `docs/w5-operational-readiness.md` — W5 테스트 시나리오 매트릭스, dashboard/API MVP, Docker shape, W5/W6 경계
-- `docs/practical-adoption-roadmap.md` — pando를 실사용 가능한 도구로 올리기 위한 full daemon smoke, dashboard UX, terminal UX, README/getting started, Docker worker readiness 스택 계획과 "pando에게 시키는 법"
+- `docs/practical-adoption-roadmap.md` — PR #29 이후 pando self-dogfood 후속 순서(docs consistency, dashboard UX, terminal UX, README/getting started, Docker worker readiness)와 "pando에게 시키는 법"
 - `docs/adr/` — 001~009. **009**는 W5 dashboard/API/deploy 기본값(Vite React SPA + Hono + single container)을 고정한다. 바꾸려면 새 ADR 먼저
 - `docs/repo-structure.md` — 구조·인터페이스
 - `docs/engineering-standards.md` — 개발 방법론 (superpowers + agent-skills 채택분)
