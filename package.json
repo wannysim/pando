@@ -1,9 +1,18 @@
 {
   "name": "pando",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "private": true,
   "type": "module",
   "description": "Multi-repo background coding agent orchestrator — one root system, many trunks.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/wannysim/pando.git"
+  },
+  "bugs": {
+    "url": "https://github.com/wannysim/pando/issues"
+  },
+  "homepage": "https://github.com/wannysim/pando#readme",
   "engines": {
     "node": ">=22"
   },
