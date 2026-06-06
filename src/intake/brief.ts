@@ -60,14 +60,7 @@ export function composeBriefMarkdown(input: BriefComposeInput): string {
       "User Story",
       input.userStory?.trim() || "As a user, I want this outcome so that I receive value.",
     ),
-    section(
-      "Acceptance Criteria",
-      bullets(
-        (acceptance.length > 0 ? acceptance : ["The expected behavior is verifiable."]).map(
-          (item) => `[ ] ${item}`,
-        ),
-      ),
-    ),
+    section("Acceptance Criteria", bullets(acceptance.map((item) => `[ ] ${item}`))),
     section(
       "Screens or Behavior",
       input.screensOrBehavior?.trim() || body || "Describe the visible behavior.",

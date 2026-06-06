@@ -438,6 +438,100 @@ describe("Pando Hono API", () => {
     });
   });
 
+  it("materializes an inline brief, then enqueues it with the written path and assets", async () => {
+    const store = new ApiMemoryStore([]);
+    const writer = new RecordingBriefWriter();
+    const app = createPandoApiApp({
+      briefMaterializer: { inboxRoot: "/tmp/pando-inbox", writer },
+      defaultRetryBudget: 5,
+      store,
+    });
+
+    const response = await app.request("/briefs", {
+      body: JSON.stringify({
+        brief: {
+          title: "Make the footer year dynamic",
+          goal: "Keep the copyright year correct without manual edits.",
+          userStory: "As a visitor, I want the footer to show the current year.",
+          acceptanceCriteria: ["The footer renders the current year."],
+          screensOrBehavior: "Footer reads the current year at render time.",
+          nonGoals: ["Do not redesign the footer."],
+          assets: ["src/footer.tsx", "docs/spec.md"],
+          openQuestions: [],
+        },
+        id: "footer-year",
+        repo: "pando",
+      }),
+      method: "POST",
+    });
+
+    expect(response.status).toBe(201);
+    expect(writer.writes).toHaveLength(1);
+    expect(writer.writes[0]?.path).toBe("/tmp/pando-inbox/footer-year/brief.md");
+    expect(writer.writes[0]?.content).toContain("# Make the footer year dynamic");
+    expect(store.enqueues).toEqual([
+      {
+        item: {
+          id: "footer-year",
+          payload: {
+            assets: ["src/footer.tsx", "docs/spec.md"],
+            briefPath: "/tmp/pando-inbox/footer-year/brief.md",
+            kind: "brief",
+          },
+          repo: "pando",
+          source: "brief",
+          title: "Make the footer year dynamic",
+        },
+        retryBudget: 5,
+      },
+    ]);
+  });
+
+  it("rejects schema-invalid inline briefs with 400 before writing or enqueueing", async () => {
+    const store = new ApiMemoryStore([]);
+    const writer = new RecordingBriefWriter();
+    const app = createPandoApiApp({
+      briefMaterializer: { inboxRoot: "/tmp/pando-inbox", writer },
+      store,
+    });
+
+    const response = await app.request("/briefs", {
+      body: JSON.stringify({
+        brief: { title: "", body: "do something" },
+        id: "bad-brief",
+        repo: "pando",
+      }),
+      method: "POST",
+    });
+
+    expect(response.status).toBe(400);
+    expect(writer.writes).toEqual([]);
+    expect(store.enqueues).toEqual([]);
+    const body = await response.json();
+    expect(body).toMatchObject({ error: { code: "invalid_brief" }, ok: false });
+  });
+
+  it("rejects inline briefs when no materializer is configured", async () => {
+    const store = new ApiMemoryStore([]);
+    const app = createPandoApiApp({ store });
+
+    const response = await app.request("/briefs", {
+      body: JSON.stringify({
+        brief: { title: "Inline", body: "x", acceptanceCriteria: ["y"] },
+        id: "inline",
+        repo: "pando",
+      }),
+      method: "POST",
+    });
+
+    expect(response.status).toBe(400);
+    expect(store.enqueues).toEqual([]);
+    expect(await response.json()).toMatchObject({
+      error: { code: "inline_brief_unavailable" },
+      ok: false,
+    });
+  });
+
   it("returns stable JSON errors instead of thrown stack traces", async () => {
     const store = new ApiMemoryStore([
       jobRecord(workItem("DEMO-4009"), {
@@ -477,6 +571,14 @@ describe("Pando Hono API", () => {
     });
   });
 });
+
+class RecordingBriefWriter {
+  readonly writes: Array<{ content: string; path: string }> = [];
+
+  async writeBrief(path: string, content: string): Promise<void> {
+    this.writes.push({ content, path });
+  }
+}
 
 class ApiMemoryStore {
   readonly cancellations: CancelJobInput[] = [];
