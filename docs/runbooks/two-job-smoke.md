@@ -134,7 +134,15 @@ The initial live run used exactly two jobs with global concurrency `2` and expos
 
 ## Docker worker readiness
 
-After building the image, run a one-off container with the mount contract:
+The readiness smoke runs the same `pnpm smoke:two-job -- --mode readiness` contract
+*inside the container*, against the `docker` target. It records, as structured JSON,
+which class of blocker is open: CLI, auth, or mount. See `deploy/README.md`
+"Worker readiness" for the full CLI/auth/git decision and tradeoffs.
+
+### Step 1 — baseline (proves the blocker class)
+
+After building the image, run a one-off container with only the base mount
+contract (no CLI, no auth):
 
 ```bash
 docker compose -f deploy/docker-compose.yml build pando
@@ -158,7 +166,66 @@ docker run --rm \
   --evidence /evidence/docker-readiness.json
 ```
 
-2026-06-06 Docker result: mount contract and global cap passed, but Docker live worker smoke is blocked because the image does not include `claude` or `codex`, and no Claude/Codex auth signal is mounted.
+### Step 2 — make workers ready
+
+Pick a CLI strategy (`deploy/README.md` covers the tradeoffs):
+
+- **macOS host:** install the Linux CLI in the image (Dockerfile option B,
+  `RUN npm install -g @anthropic-ai/claude-code @openai/codex`). The host's
+  `~/.local/bin` binaries are Mach-O and will NOT run in the container.
+- **Linux host:** bind-mount the host CLI bin at `/worker-bin` (compose mount #1).
+
+Then add the auth volumes and re-run with the CLI image:
+
+```bash
+docker run --rm \
+  -e PANDO_GLOBAL_CONCURRENCY=2 \
+  -e PANDO_DB=/data/pando.sqlite -e PANDO_REPOS_ROOT=/repos \
+  -e PANDO_WORKTREE_ROOT=/worktrees -e PANDO_CONFIG_DIR=/config \
+  -e PANDO_SKILLS_ROOT=/skills \
+  -e CLAUDE_CONFIG_DIR=/root/.claude -e CODEX_HOME=/root/.codex \
+  -v /tmp/pando-docker-readiness/data:/data \
+  -v "$HOME/Github":/repos -v "$HOME/.worktrees":/worktrees \
+  -v "$PWD/config":/config:ro -v "$HOME/.ai-skills":/skills:ro \
+  -v "$HOME/.claude":/root/.claude:ro -v "$HOME/.codex":/root/.codex:ro \
+  -v /tmp/pando-docker-readiness/evidence:/evidence \
+  <image-with-cli> \
+  node scripts/two-job-smoke.mjs --mode readiness --target docker \
+  --evidence /evidence/docker-readiness-cli-installed.json
+```
+
+### Interpreting the evidence
+
+- `checks.workerCli.commands.{claude,codex}.available` -> CLI blocker.
+- `checks.auth.signals.{claude,codex}` (booleans only) -> auth blocker.
+- `checks.mounts.paths.*.ready` -> mount blocker.
+- `blockers[]` empty == ready for a live Docker worker smoke.
+
+### 2026-06-07 Docker readiness result (verified in this environment)
+
+- **Baseline** (`/tmp/pando-docker-readiness/evidence/docker-readiness.json`):
+  mount contract `pass` and global cap `withinLiveCap: true`, but
+  `blockers` = `[claude CLI not available, codex CLI not available, Claude auth not
+  configured, Codex auth not configured]`. So the open blocker is **CLI + auth**, not
+  mounts.
+- **Auth volume mounted** (`docker-readiness-mounted.json`): mounting `~/.claude` /
+  `~/.codex` at `/root/.claude` / `/root/.codex` flips `auth.pass` to `true`
+  (`configDirPresent: true`). Auth-by-volume works.
+- **Host bin mounted, macOS host**: mounting `~/.local/bin` at `/worker-bin` did
+  **not** make the CLI available — `workerCli.pass` stayed `false`. The host
+  binaries are Mach-O arm64; the `linux/arm64` container cannot exec them. This is
+  the recorded reason the host-bin shortcut fails on macOS.
+- **Linux CLI installed in image** (`docker-readiness-cli-installed.json`): with
+  `npm install -g @anthropic-ai/claude-code @openai/codex` plus the auth volumes,
+  `blockers` = `[]`, `workerCli.pass: true` (`claude 2.1.167`, `codex-cli 0.137.0`),
+  `auth.pass: true`, `mounts.pass: true`. **This is the minimal next step to unblock
+  a live Docker worker smoke on a macOS host.**
+
+Remaining gap before a live Docker worker smoke: git push / PR credentials inside
+the container (deploy key or credential store, see `deploy/README.md`), and a live
+confirmation that the Claude managed connector is inherited in the container — if it
+is not, fall back to API-key mode / Jira REST (ADR candidates in `deploy/README.md`).
+The connector check requires real model calls and was not run here.
 
 ## Docker HTTP smoke
 

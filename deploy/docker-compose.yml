@@ -24,6 +24,39 @@ services:
       - "${PANDO_WORKTREE_ROOT:-~/.worktrees}:/worktrees"
       - "${PANDO_CONFIG_ROOT:-../config}:/config:ro"
       - "${PANDO_SKILLS_ROOT:-~/.ai-skills}:/skills:ro"
+      # --- Worker readiness mounts (opt-in; uncomment to run live Docker workers) ---
+      # These turn the HTTP/dashboard skeleton into a live-worker container. They
+      # are commented out by default so the base image stays secret-free and the
+      # HTTP smoke needs no host CLIs. See deploy/README.md "Worker readiness".
+      #
+      # 1) Worker CLIs on PATH (LINUX HOST ONLY). Mount the host bin holding
+      #    `claude` / `codex` read-only at /worker-bin (= PANDO_WORKER_BIN).
+      #    NOTE: only works when host and container share OS+arch. A macOS host
+      #    ships Mach-O binaries that will NOT run in the linux container; install
+      #    the CLI in the image instead (see deploy/README.md option B).
+      # - "${PANDO_WORKER_BIN_ROOT:-~/.local/bin}:/worker-bin:ro"
+      #
+      # 2) Worker auth (read-only). Claude Code and Codex read managed-connector
+      #    tokens / config from these dirs. NEVER bake these into the image.
+      # - "${PANDO_CLAUDE_CONFIG:-~/.claude}:/root/.claude:ro"
+      # - "${PANDO_CODEX_CONFIG:-~/.codex}:/root/.codex:ro"
+      #
+      # 3) Git credentials for push / PR creation. Pick ONE:
+      #    a) Deploy key (preferred for a single repo): mount a read-only SSH key
+      #       and a known_hosts file, then configure the repo remote to use SSH.
+      # - "${PANDO_DEPLOY_KEY:-~/.ssh/pando_deploy_key}:/root/.ssh/id_ed25519:ro"
+      # - "${PANDO_SSH_KNOWN_HOSTS:-~/.ssh/known_hosts}:/root/.ssh/known_hosts:ro"
+      #    b) gh / HTTPS token via git credential store (host-managed, read-only):
+      # - "${PANDO_GIT_CREDENTIALS:-~/.git-credentials}:/root/.git-credentials:ro"
+      # - "${PANDO_GITCONFIG:-~/.gitconfig}:/root/.gitconfig:ro"
+    # If Claude Code cannot inherit the host managed connector inside the
+    # container, set API-key mode here instead (values come from the host env or
+    # an untracked .env file; do NOT commit secrets). See deploy/README.md.
+    # environment additions (uncomment in the environment: block above):
+    #   ANTHROPIC_API_KEY: "${ANTHROPIC_API_KEY:-}"
+    #   OPENAI_API_KEY: "${OPENAI_API_KEY:-}"
+    #   CLAUDE_CONFIG_DIR: "/root/.claude"
+    #   CODEX_HOME: "/root/.codex"
     healthcheck:
       test:
         - "CMD-SHELL"
