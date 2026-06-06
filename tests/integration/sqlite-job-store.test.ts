@@ -90,6 +90,60 @@ describe("SqliteJobStore", () => {
     store.close();
   });
 
+  it("round-trips telemetry cost duration and failure payloads through event payload_json", () => {
+    const store = createSqliteJobStore({
+      path: ":memory:",
+      now: fixedClock([
+        "2026-06-06T00:00:00.000Z",
+        "2026-06-06T00:00:01.000Z",
+        "2026-06-06T00:00:02.000Z",
+        "2026-06-06T00:00:03.000Z",
+      ]),
+    });
+
+    store.enqueueJob({ item: workItem("DEMO-1011"), retryBudget: 2 });
+    store.appendEvent({
+      jobId: "DEMO-1011",
+      payload: { durationMs: 250, engine: "codex", model: "impl-model" },
+      stage: "IMPL",
+      type: "stage-completed",
+    });
+    store.appendEvent({
+      jobId: "DEMO-1011",
+      payload: { costUsd: 0.125, engine: "codex", model: "impl-model" },
+      stage: "IMPL",
+      type: "worker-cost",
+    });
+    store.appendEvent({
+      evidence: '{"changed":["src/example.test.ts"]}',
+      jobId: "DEMO-1011",
+      payload: {
+        durationMs: 40,
+        evidence: '{"changed":["src/example.test.ts"]}',
+        failureKind: "gate-fail",
+        gateName: "checksum",
+        reason: "test checksum changed",
+      },
+      reason: "test checksum changed",
+      stage: "IMPL",
+      type: "stage-failed",
+    });
+
+    expect(store.listEvents("DEMO-1011").map((event) => event.payload)).toEqual([
+      { durationMs: 250, engine: "codex", model: "impl-model" },
+      { costUsd: 0.125, engine: "codex", model: "impl-model" },
+      {
+        durationMs: 40,
+        evidence: '{"changed":["src/example.test.ts"]}',
+        failureKind: "gate-fail",
+        gateName: "checksum",
+        reason: "test checksum changed",
+      },
+    ]);
+
+    store.close();
+  });
+
   it("updates terminal jobs back to a retry stage", () => {
     const store = createSqliteJobStore({
       path: ":memory:",

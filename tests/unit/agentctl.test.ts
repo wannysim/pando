@@ -199,6 +199,52 @@ describe("runAgentctl", () => {
     ]);
   });
 
+  it("renders telemetry details in job event history", async () => {
+    const store = new AgentctlMemoryStore();
+    store.enqueueJob({ item: workItem("DEMO-3010"), retryBudget: 2 });
+    store.updateJobStatus({ attemptsLeft: 1, jobId: "DEMO-3010", status: "FAILED" });
+    store.appendEvent({
+      jobId: "DEMO-3010",
+      payload: { durationMs: 250, engine: "codex", model: "impl-model" },
+      stage: "IMPL",
+      type: "stage-completed",
+    });
+    store.appendEvent({
+      jobId: "DEMO-3010",
+      payload: { costUsd: 0.125, engine: "codex", model: "impl-model" },
+      stage: "IMPL",
+      type: "worker-cost",
+    });
+    store.appendEvent({
+      evidence: '{"changed":["src/example.test.ts"]}',
+      jobId: "DEMO-3010",
+      payload: {
+        durationMs: 40,
+        evidence: '{"changed":["src/example.test.ts"]}',
+        failureKind: "gate-fail",
+        gateName: "checksum",
+        reason: "test checksum changed",
+      },
+      reason: "test checksum changed",
+      stage: "IMPL",
+      type: "stage-failed",
+    });
+    const output: string[] = [];
+
+    const exitCode = await runAgentctl(["show", "DEMO-3010"], {
+      store,
+      stdout: (line) => output.push(line),
+    });
+
+    expect(exitCode).toBe(0);
+    expect(output).toEqual([
+      "DEMO-3010 FAILED repo=web attemptsLeft=1",
+      "#1 IMPL stage-completed durationMs=250 engine=codex model=impl-model",
+      "#2 IMPL worker-cost costUsd=0.125 engine=codex model=impl-model",
+      '#3 IMPL stage-failed reason="test checksum changed" evidence="{\\"changed\\":[\\"src/example.test.ts\\"]}" durationMs=40 failureKind=gate-fail gateName=checksum',
+    ]);
+  });
+
   it("returns a non-zero exit code when a job is missing", async () => {
     const stderr: string[] = [];
 

@@ -45,6 +45,59 @@ describe("runDaemonOnce", () => {
     expect(store.updates.at(-1)).toMatchObject({ status: "DONE" });
   });
 
+  it("persists structured telemetry payloads emitted by the pipeline runner", async () => {
+    const item = workItem("DEMO-2005");
+    const store = new MemoryJobStore(jobRecord(item, "IMPL", 3));
+
+    const result = await runDaemonOnce({
+      engines: {
+        "claude-code": engine("claude-code"),
+        codex: engine("codex"),
+      },
+      profiles: { web: repoProfile() },
+      runner: async (runnerOpts) => {
+        await runnerOpts.onEvent?.({
+          payload: { durationMs: 125, engine: "codex", model: "impl-model" },
+          stage: "IMPL",
+          type: "stage-completed",
+        } as never);
+        await runnerOpts.onEvent?.({
+          payload: { costUsd: 0.35, engine: "codex", model: "impl-model" },
+          stage: "IMPL",
+          type: "worker-cost",
+        } as never);
+        return { events: [], final: { attemptsLeft: 3, status: "DONE" } };
+      },
+      stageConfig: stageConfig(),
+      store,
+      worktrees: {
+        async ensure(input) {
+          return { branch: input.branch, path: "/worktrees/web/feat-DEMO-2005" };
+        },
+      },
+    });
+
+    expect(result).toEqual({
+      finalStatus: "DONE",
+      jobId: "DEMO-2005",
+      status: "ran",
+    });
+    expect(store.events).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          payload: { durationMs: 125, engine: "codex", model: "impl-model" },
+          stage: "IMPL",
+          type: "stage-completed",
+        }),
+        expect.objectContaining({
+          payload: { costUsd: 0.35, engine: "codex", model: "impl-model" },
+          stage: "IMPL",
+          type: "worker-cost",
+        }),
+      ]),
+    );
+  });
+
   it("returns idle when no runnable job exists", async () => {
     const store = new MemoryJobStore(undefined);
 
