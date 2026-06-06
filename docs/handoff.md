@@ -58,7 +58,7 @@
 | W2-C: 상태 저장/운영 루프 | ✅ 완료(기본형) | SQLite jobs/events/repos, runner persistence hook/resume, 초기 단일 in-flight daemon loop, `agentctl submit/show/retry` handler. W4에서 병렬 tick으로 확장됨 |
 | W3: brief 경로 | ✅ 완료 | brief intake/template/loader, personal-site 프로파일 SPEC E2E, `agentctl submit brief` 연결 |
 | W4: n×n 병렬 | ✅ 완료 | global/per-repo/per-provider 세마포어, 포트/캐시/env 격리, 병렬 daemon tick. PR #13 `feat: add parallel scheduler loop` |
-| W5: 통제·운영 | ⬅️ **다음 작업** | diff/checksum gate 강화, 리뷰어 모델 분리, 비용 추적, daemon/list/cancel/cleanup 운영 UX, 웹 대시보드/원격 투입 |
+| W5: 통제·운영 | 🟨 진행 중 | PR #17에서 safety gate contracts 완료. 다음은 lifecycle cancel/cleanup/resume 계약 |
 
 ## 코드 현황
 
@@ -72,6 +72,8 @@
 - `src/core/stage-config.ts` — `config/stages.yaml` engine/model/skill/source별 skills/allowedTools/env/defaults 검증. W3에서 `allowed_tools_by_source`를 추가해 brief SPEC 경로가 Atlassian MCP tool을 받지 않도록 분리
 - `src/pipeline/gates/artifact-schema.ts` — W2-B 완료. `_spec.md`/`PLAN.md` artifact schema gate. PLAN blocker는 `failureKind: "blocking-questions"`로 보고
 - `src/pipeline/gates/exit-code.ts` — W2-B 완료. `RepoProfile.gates` PM-agnostic action을 package-manager command로 변환하고 exit code만 판정. workspace scope용 command builder hook 포함
+- `src/pipeline/gates/checksum.ts` — W5 PR #17 완료. TEST 단계가 기록할 테스트/중요 파일 checksum manifest 순수 로직과 IMPL 단계 checksum mismatch gate 계약. 실패는 `{reason, evidence}` 구조로 보고하며 evidence는 changed/missing checksum JSON
+- `src/pipeline/gates/diff-rules.ts` — W5 PR #17 완료. IMPL 단계 테스트 파일 수정/삭제 차단, protected path 변경 차단, monorepo workspace scope resolution을 git diff/file metadata 같은 결정적 입력만으로 판정. 실제 git diff 수집은 adapter/port 쪽 후속 연결 대상
 - `src/intake/brief.ts` — W3 완료. ADR-008 brief template, 필수 섹션 검증(`Goal`, `User Story`, `Acceptance Criteria`, `Screens or Behavior`, `Non-Goals`, `Assets`, `Open Questions`), assets 파싱, `[Blocker]` → `failureKind=blocking-questions` SPEC gate 제공
 - `src/pipeline/runner.ts` — W2-B/W2-C 완료. fake engine/gate 기반 runner skeleton에 persistence hook(`onEvent`, `onStateChange`)과 persisted stage resume 지원 추가. W4에서 job-level env 병합을 지원해 worktree isolation env(`PORT`, `XDG_CACHE_HOME`, `PANDO_*`)를 worker 실행에 전달. `SPEC→PLAN→TEST→IMPL→REVIEW→PR→DONE`, SPEC/PLAN blocker→ESCALATED, gate retry budget→FAILED 테스트 포함
 - `src/db/schema.sql`, `src/db/index.ts` — W2-C 완료. SQLite jobs/events/repos 저장소, `claimNextRunnable`, status update, event ordering, terminal retry, repo profile 저장/조회. W4에서 `claimNextRunnable({ excludeJobIds })`를 추가해 같은 daemon tick 안에서 이미 in-flight인 active job을 중복 claim하지 않음. ADR-001에 맞춰 `better-sqlite3`를 사용
@@ -81,12 +83,12 @@
 - `src/daemon/worktree-provisioner.ts` — W4 완료. `RepoProfile` + `worktreeRoot`를 `ensureWorktree` 옵션으로 변환하고 setup command를 PM-agnostic action에서 생성. setup command에 job isolation env를 주입
 - `src/worktree/manager.ts` — W4에서 setup command 실행 시 `setupEnv`를 process env에 병합하도록 확장
 - `src/cli/agentctl.ts` — W3 완료. `submit jira`, `submit brief`, `show`, `retry`. `submit brief`는 brief 파일을 읽어 schema 검증 후 title/assets를 WorkItem으로 정규화하고, `--brief-path` 생략 시 `briefs/{id}/brief.md`를 사용
-- 검증: `pnpm verify` 통과(2026-06-06, PR #13 기준 18 files / 121 tests, coverage all statements 93.71% / branches 87.16% / functions 97.08% / lines 95.26%. scheduler statements 98.38%).
+- 검증: `pnpm verify` 통과(2026-06-06, PR #17 기준 21 files / 132 tests, coverage all statements 94.19% / branches 87.63% / functions 97.81% / lines 95.74%. `pipeline/gates` statements 97.41%, scheduler statements 98.38%).
 - 공개 repo hygiene: `tests/` 표면(`describe`/`it`, fixture 문구)은 영어로 정리. 실제 회사 티켓 키는 커밋하지 않고 `DEMO-1234` 같은 가상 키만 사용. `docs/`는 작업자용이라 한글 유지 허용
 
-**다음 세션 시작점 — W5 통제·운영.**
+**다음 세션 시작점 — W5 PR 2 lifecycle and cancellation.**
 
-W5 착수 전 반드시 `docs/w5-operational-readiness.md`와 ADR-009를 읽는다. W5는 "대시보드 MVP"가 아니라 "실제로 맡길 수 있는 운영성"을 만드는 단계이며, dashboard는 API가 안정된 뒤 최소 기능만 붙인다.
+W5 PR #17(safety gate contracts)은 develop에 squash merge 완료. 다음 세션은 `docs/w5-operational-readiness.md`의 PR 2 범위에서 cancel/cleanup/resume 상태와 DB/daemon/CLI 계약을 테스트 먼저 고정한다. W5는 "대시보드 MVP"가 아니라 "실제로 맡길 수 있는 운영성"을 만드는 단계이며, dashboard는 API가 안정된 뒤 최소 기능만 붙인다.
 
 W4 완료 판정:
 - ✅ scheduler/semaphore 계약: global / per-repo / per-provider cap 테스트 완료
@@ -98,12 +100,12 @@ W4 완료 판정:
 W4에서 의도적으로 남긴 것:
 - 실제 Claude/Codex live smoke는 아직 안 함. W5 착수 직전 또는 W5 초반에 global 2~3으로 낮춰 2개 job smoke를 별도 실행한다
 - Jira `fixVersion` 기반 release branch 매핑과 `WorkItem.baseBranch` override는 별도 ADR/후속 작업
-- monorepo 변경 workspace/file gate scoping은 W5 diff/checksum gate 강화에서 처리
+- monorepo 변경 workspace/file gate scoping의 순수 계약은 W5 PR #17에서 완료. 실제 git diff 수집/command scoping adapter 연결은 후속 작업에서 필요 시 진행
 - GitHub Issue intake/write-back, Stacked PR 자동화, provider별 정교한 backoff는 아직 범위 밖
 
 W5 우선순위(TDD):
-1. **Safety gates** — checksum/diff gate를 강화한다. TEST 단계 산출물 불변성, IMPL 단계 금지 경로/테스트 수정 정책, 변경 workspace/file scoping을 결정적 신호로 고정한다
-2. **Lifecycle controls** — cancel/cleanup/resume 시나리오를 DB/daemon/CLI 계약으로 고정한다
+1. ✅ **Safety gates** — checksum/diff gate 순수 계약, IMPL 테스트 파일 수정/삭제 차단, protected path 차단, deterministic workspace scoping, null-agent fake E2E 완료(PR #17)
+2. ⬅️ **Lifecycle controls** — cancel/cleanup/resume 시나리오를 DB/daemon/CLI 계약으로 고정한다
 3. **Review separation + telemetry** — REVIEW 단계가 IMPL과 다른 모델/엔진 설정을 쓰는 계약, cost/duration/retry/failure reason event schema를 테스트로 고정한다
 4. **Hono API + Operational CLI** — `/health`, `/jobs`, retry/cancel/cleanup API와 `agentctl list/cancel/cleanup/daemon`을 추가한다. CLI와 dashboard는 같은 API client를 쓴다
 5. **Minimal dashboard** — Vite React SPA로 jobs list/detail/actions/brief submit/health만 만든다. chart/analytics/batch UI는 W6 이후

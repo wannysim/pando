@@ -205,11 +205,12 @@ pando container
 
 W5는 한 PR로 처리하지 않는다.
 
-1. **PR 1: safety gate contracts**
+1. ✅ **PR 1: safety gate contracts** — 완료(PR #17, develop squash merge)
    - checksum/diff gate 순수 함수와 테스트
    - null-agent fake E2E 추가
    - no dashboard/API
-2. **PR 2: lifecycle and cancellation**
+   - 남은 연결점: 실제 git diff/checksum 수집 adapter와 exit-code command scoping 연결은 후속 PR에서 필요한 시점에 붙인다
+2. ⬅️ **PR 2: lifecycle and cancellation**
    - cancel status/event 계약
    - retry/cancel/cleanup store interfaces
    - daemon tick cancellation hook
@@ -233,9 +234,9 @@ W5가 길어지면 PR 6~7은 W6로 넘긴다. 그 경우 W5 완료 기준은 saf
 
 ## W5 착수 순서
 
-1. Safety gate scenario tests를 먼저 추가한다.
-2. checksum/diff gate를 순수 계층으로 구현한다.
-3. cancel/cleanup 상태와 DB 계약을 고정한다.
+1. ✅ Safety gate scenario tests를 먼저 추가한다.
+2. ✅ checksum/diff gate를 순수 계층으로 구현한다.
+3. ⬅️ cancel/cleanup 상태와 DB 계약을 고정한다.
 4. API response schema를 만든다.
 5. CLI를 API client로 점진 이행한다.
 6. dashboard는 API가 안정된 뒤 최소 화면만 만든다.
