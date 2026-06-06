@@ -1,4 +1,4 @@
-import { Activity, Ban, RefreshCw, RotateCcw, Send, ShieldCheck, Trash2 } from "lucide-react";
+import { Activity, Ban, Copy, RefreshCw, RotateCcw, Send, ShieldCheck, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 import type { PandoApiClient } from "../../src/api/client";
 import type {
@@ -306,7 +306,7 @@ function JobDetailPanel({
         </div>
         <div>
           <dt>Branch</dt>
-          <dd>{branchFromWorktree(job.worktreePath)}</dd>
+          <dd>{job.branch ?? "-"}</dd>
         </div>
         <div>
           <dt>Started</dt>
@@ -392,6 +392,8 @@ function JobDetailPanel({
 }
 
 function EventRow({ event, now }: { event: ApiJobEvent; now: Date }) {
+  const duration = formatDurationMs(event.payload.durationMs);
+  const cost = formatCostUsd(event.payload.costUsd);
   return (
     <li>
       <div className="event-head">
@@ -404,10 +406,42 @@ function EventRow({ event, now }: { event: ApiJobEvent; now: Date }) {
         <span>{event.gateName ?? "-"}</span>
         <time title={event.createdAt}>{formatAge(event.createdAt, now)}</time>
       </div>
+      {duration === null && cost === null ? null : (
+        <div className="event-metrics">
+          {duration === null ? null : <span className="event-metric">{duration}</span>}
+          {cost === null ? null : <span className="event-metric">{cost}</span>}
+        </div>
+      )}
       {event.reason === null ? null : <p className="event-reason">{event.reason}</p>}
-      {event.evidence === null ? null : <code className="event-evidence">{event.evidence}</code>}
+      {event.evidence === null ? null : <EvidenceBlock evidence={event.evidence} />}
     </li>
   );
+}
+
+const EVIDENCE_MAX = 160;
+
+function EvidenceBlock({ evidence }: { evidence: string }) {
+  const truncated = evidence.length > EVIDENCE_MAX;
+  const shown = truncated ? `${evidence.slice(0, EVIDENCE_MAX)}…` : evidence;
+  return (
+    <div className="event-evidence-block">
+      <code className="event-evidence" data-testid="event-evidence">
+        {shown}
+      </code>
+      <button
+        className="ghost-button copy-button"
+        type="button"
+        onClick={() => void copyToClipboard(evidence)}
+      >
+        <Copy size={13} aria-hidden="true" />
+        Copy evidence
+      </button>
+    </div>
+  );
+}
+
+async function copyToClipboard(value: string): Promise<void> {
+  await navigator.clipboard?.writeText(value);
 }
 
 function BriefSubmitPanel({
@@ -502,10 +536,19 @@ function currentStage(events: ApiJobEvent[]): string {
   return "-";
 }
 
-function branchFromWorktree(path: string | null): string {
-  if (path === null) return "-";
-  const parts = path.split("/");
-  return parts[parts.length - 1] ?? "-";
+function formatDurationMs(value: unknown): string | null {
+  if (typeof value !== "number" || !Number.isFinite(value) || value < 0) return null;
+  if (value < 1000) return `${Math.round(value)}ms`;
+  const seconds = value / 1000;
+  if (seconds < 60) return `${seconds.toFixed(1)}s`;
+  const minutes = Math.floor(seconds / 60);
+  const remainder = Math.round(seconds % 60);
+  return `${minutes}m ${remainder}s`;
+}
+
+function formatCostUsd(value: unknown): string | null {
+  if (typeof value !== "number" || !Number.isFinite(value) || value < 0) return null;
+  return `$${value.toFixed(4)}`;
 }
 
 function formatElapsed(startedAt: string | null, endAt: Date): string {
