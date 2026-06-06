@@ -34,9 +34,11 @@ The readiness evidence records:
 - `globalConcurrency.value` and `withinLiveCap`
 - `workerCli.commands.claude/codex.available`
 - auth signals as booleans only (`ANTHROPIC_API_KEY`, `CLAUDE_CONFIG_DIR`, `OPENAI_API_KEY`, `CODEX_HOME`, or default config dirs)
+- `gitCreds.signals` git push / PR credential presence as booleans only (deploy key, known_hosts, credential store, gitconfig, `GH_TOKEN` / `GITHUB_TOKEN`). Recorded, not a hard blocker; key/token values are never recorded
 - host path readiness for SQLite parent, repos, worktrees, config, and skills
 
-Do not commit evidence files; keep them under `/tmp` or another non-repo path.
+Do not commit evidence files; keep them under `/tmp` or another non-repo path. The
+default evidence path `smoke/evidence/` is gitignored.
 
 ## Host live worker smoke
 
@@ -170,9 +172,16 @@ docker run --rm \
 
 Pick a CLI strategy (`deploy/README.md` covers the tradeoffs):
 
-- **macOS host:** install the Linux CLI in the image (Dockerfile option B,
-  `RUN npm install -g @anthropic-ai/claude-code @openai/codex`). The host's
-  `~/.local/bin` binaries are Mach-O and will NOT run in the container.
+- **macOS host:** build with the opt-in install layer (Dockerfile option B). The
+  host's `~/.local/bin` binaries are Mach-O and will NOT run in the container.
+
+  ```bash
+  PANDO_INSTALL_WORKER_CLIS=true \
+    docker compose -f deploy/docker-compose.yml build pando
+  ```
+
+  Versions pin via `PANDO_CLAUDE_CLI_VERSION` / `PANDO_CODEX_CLI_VERSION`
+  (defaults `2.1.167` / `0.137.0`).
 - **Linux host:** bind-mount the host CLI bin at `/worker-bin` (compose mount #1).
 
 Then add the auth volumes and re-run with the CLI image:
@@ -188,16 +197,22 @@ docker run --rm \
   -v "$HOME/Github":/repos -v "$HOME/.worktrees":/worktrees \
   -v "$PWD/config":/config:ro -v "$HOME/.ai-skills":/skills:ro \
   -v "$HOME/.claude":/root/.claude:ro -v "$HOME/.codex":/root/.codex:ro \
+  -v "$HOME/.ssh/id_ed25519":/root/.ssh/id_ed25519:ro \
   -v /tmp/pando-docker-readiness/evidence:/evidence \
-  <image-with-cli> \
+  deploy-pando:latest \
   node scripts/two-job-smoke.mjs --mode readiness --target docker \
   --evidence /evidence/docker-readiness-cli-installed.json
 ```
+
+The optional SSH deploy-key mount above lets the `gitCreds` probe report
+`sshReady: true`; drop it for a CLI/auth-only check.
 
 ### Interpreting the evidence
 
 - `checks.workerCli.commands.{claude,codex}.available` -> CLI blocker.
 - `checks.auth.signals.{claude,codex}` (booleans only) -> auth blocker.
+- `checks.gitCreds.signals` (booleans + deploy-key path only) -> git push / PR
+  credential presence. Recorded, not a hard blocker.
 - `checks.mounts.paths.*.ready` -> mount blocker.
 - `blockers[]` empty == ready for a live Docker worker smoke.
 
@@ -216,16 +231,17 @@ docker run --rm \
   binaries are Mach-O arm64; the `linux/arm64` container cannot exec them. This is
   the recorded reason the host-bin shortcut fails on macOS.
 - **Linux CLI installed in image** (`docker-readiness-cli-installed.json`): with
-  `npm install -g @anthropic-ai/claude-code @openai/codex` plus the auth volumes,
+  the opt-in install layer (`PANDO_INSTALL_WORKER_CLIS=true`) plus the auth volumes,
   `blockers` = `[]`, `workerCli.pass: true` (`claude 2.1.167`, `codex-cli 0.137.0`),
-  `auth.pass: true`, `mounts.pass: true`. **This is the minimal next step to unblock
-  a live Docker worker smoke on a macOS host.**
+  `auth.pass: true`, `mounts.pass: true`. **This is the path that unblocks a live
+  Docker worker smoke on a macOS host.**
 
-Remaining gap before a live Docker worker smoke: git push / PR credentials inside
-the container (deploy key or credential store, see `deploy/README.md`), and a live
-confirmation that the Claude managed connector is inherited in the container — if it
-is not, fall back to API-key mode / Jira REST (ADR candidates in `deploy/README.md`).
-The connector check requires real model calls and was not run here.
+Remaining gap before a live Docker worker smoke: a live confirmation that the
+Claude managed connector is inherited in the container — if it is not, fall back to
+API-key mode / Jira REST (ADR candidates in `deploy/README.md`). The connector check
+requires real model calls and was not run here. Git push / PR credentials are now a
+recorded `gitCreds` probe signal (deploy key or credential store, see
+`deploy/README.md`); mount one before the PR stage.
 
 ## Docker HTTP smoke
 
