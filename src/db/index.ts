@@ -347,7 +347,7 @@ function optionalStage(row: Row, key: string): StageName | undefined {
 
 function source(row: Row): WorkItem["source"] {
   const value = text(row, "source");
-  if (value !== "jira" && value !== "brief") {
+  if (value !== "jira" && value !== "brief" && value !== "github_issue") {
     throw new Error(`invalid work item source in database: ${value}`);
   }
   return value;

@@ -10,7 +10,7 @@ intake:
   briefs_dir: ./briefs
 
 providers:
-  atlassian-mcp: { max_concurrent: 3 }   # dispatch-batch 설계노트 §6 rate 리스크
-  figma-mcp: { max_concurrent: 2 }
+  confluence: { max_concurrent: 3 }      # Atlassian MCP/Confluence rate risk
+  figma: { max_concurrent: 2 }
 
 db: ./pando.sqlite

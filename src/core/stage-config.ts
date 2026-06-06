@@ -1,4 +1,5 @@
 import { parse } from "yaml";
+import type { WorkItemSource } from "./types.js";
 
 export const WORKER_STAGE_KEYS = ["spec", "plan", "test", "impl", "review"] as const;
 
@@ -6,14 +7,13 @@ export type WorkerStageKey = (typeof WORKER_STAGE_KEYS)[number];
 
 export type WorkerEngineName = "claude-code" | "codex";
 
-export type WorkItemSource = "jira" | "brief";
-
 export interface StageWorkerConfig {
   engine: WorkerEngineName;
   model: string;
   skill?: string;
   skills?: Partial<Record<WorkItemSource, string>>;
   allowedTools?: string[];
+  allowedToolsBySource?: Partial<Record<WorkItemSource, string[]>>;
   env?: Record<string, string>;
 }
 
@@ -28,7 +28,7 @@ export interface StageConfig {
 }
 
 const ENGINES = ["claude-code", "codex"] as const;
-const WORK_ITEM_SOURCES = ["jira", "brief"] as const;
+const WORK_ITEM_SOURCES = ["jira", "brief", "github_issue"] as const;
 
 export function loadStageConfigFromYaml(yaml: string): StageConfig {
   const root = asRecord(parse(yaml), "config");
@@ -60,6 +60,14 @@ export function resolveStageSkill(
   return config.stages[stage].skills?.[source] ?? config.stages[stage].skill;
 }
 
+export function resolveStageAllowedTools(
+  config: StageConfig,
+  stage: WorkerStageKey,
+  source: WorkItemSource,
+): string[] | undefined {
+  return config.stages[stage].allowedToolsBySource?.[source] ?? config.stages[stage].allowedTools;
+}
+
 function parseStage(value: unknown, stage: WorkerStageKey): StageWorkerConfig {
   const path = `stages.${stage}`;
   const raw = asRecord(value, path);
@@ -72,6 +80,10 @@ function parseStage(value: unknown, stage: WorkerStageKey): StageWorkerConfig {
 
   return removeUndefined({
     allowedTools: optionalStringArray(raw.allowed_tools, `${path}.allowed_tools`),
+    allowedToolsBySource: optionalStringArraysBySource(
+      raw.allowed_tools_by_source,
+      `${path}.allowed_tools_by_source`,
+    ),
     engine: requiredEnum(raw.engine, ENGINES, `${path}.engine`),
     env: optionalStringRecord(raw.env, `${path}.env`),
     model: requiredString(raw.model, `${path}.model`),
@@ -94,6 +106,25 @@ function optionalSkills(
       throw new Error(`${path}.${source}: expected one of ${WORK_ITEM_SOURCES.join(", ")}`);
     }
     result[source] = requiredString(skill, `${path}.${source}`);
+  }
+
+  return result;
+}
+
+function optionalStringArraysBySource(
+  value: unknown,
+  path: string,
+): Partial<Record<WorkItemSource, string[]>> | undefined {
+  if (value === undefined) return undefined;
+
+  const raw = asRecord(value, path);
+  const result: Partial<Record<WorkItemSource, string[]>> = {};
+
+  for (const [source, tools] of Object.entries(raw)) {
+    if (!isWorkItemSource(source)) {
+      throw new Error(`${path}.${source}: expected one of ${WORK_ITEM_SOURCES.join(", ")}`);
+    }
+    result[source] = requiredStringArray(tools, `${path}.${source}`);
   }
 
   return result;
@@ -154,6 +185,10 @@ function requiredEnum<const T extends readonly string[]>(
 
 function optionalStringArray(value: unknown, path: string): string[] | undefined {
   if (value === undefined) return undefined;
+  return requiredStringArray(value, path);
+}
+
+function requiredStringArray(value: unknown, path: string): string[] {
   if (!Array.isArray(value) || !value.every((item) => typeof item === "string")) {
     throw new Error(`${path}: expected string[]`);
   }

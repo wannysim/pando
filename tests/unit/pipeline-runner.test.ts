@@ -3,6 +3,7 @@ import type {
   Gate,
   GateContext,
   GateResult,
+  RepoProfile,
   WorkerEngine,
   WorkerRunOptions,
   WorkerResult,
@@ -88,6 +89,78 @@ describe("runPipeline", () => {
       stage: "PLAN",
       type: "gate-blocking",
     });
+  });
+
+  it("maps blocking SPEC gate failures to ESCALATED before planning", async () => {
+    const calls: string[] = [];
+
+    const result = await runPipeline({
+      engines: {
+        "claude-code": engine("claude-code", calls),
+        codex: engine("codex", calls),
+      },
+      gates: {
+        SPEC: [
+          gate("brief-intake-schema", () => ({
+            evidence: "[Blocker] Need final copy",
+            failureKind: "blocking-questions",
+            pass: false,
+            reason: "brief has blocking open questions",
+          })),
+        ],
+      },
+      item: { ...workItem(), payload: { briefPath: "briefs/demo/brief.md", kind: "brief" }, source: "brief" },
+      profile: { ...repoProfile(), intake: { sources: ["brief"] }, workItemSource: "brief" },
+      stageConfig: stageConfig(),
+      worktree: "/worktree",
+    });
+
+    expect(result.final.status).toBe("ESCALATED");
+    expect(calls).toEqual(["claude-code:Run SPEC"]);
+    expect(result.events.at(-1)).toMatchObject({
+      evidence: "[Blocker] Need final copy",
+      gateName: "brief-intake-schema",
+      reason: "brief has blocking open questions",
+      stage: "SPEC",
+      type: "gate-blocking",
+    });
+  });
+
+  it("passes source-specific allowed tools to worker engines", async () => {
+    const allowedTools: Array<readonly string[] | undefined> = [];
+
+    await runPipeline({
+      engines: {
+        "claude-code": {
+          name: "claude-code",
+          async run(opts) {
+            allowedTools.push(opts.allowedTools);
+            return { ok: true, output: "ok" };
+          },
+        },
+        codex: engine("codex", []),
+      },
+      initialState: { attemptsLeft: 3, status: "SPEC" },
+      item: { ...workItem(), payload: { briefPath: "briefs/demo/brief.md", kind: "brief" }, source: "brief" },
+      profile: { ...repoProfile(), intake: { sources: ["brief"] }, workItemSource: "brief" },
+      stageConfig: {
+        ...stageConfig(),
+        stages: {
+          ...stageConfig().stages,
+          spec: {
+            engine: "claude-code",
+            model: "sonnet",
+            allowedToolsBySource: {
+              brief: ["Read", "Glob", "Grep"],
+              jira: ["Read", "Glob", "Grep", "mcp__claude_ai_Atlassian"],
+            },
+          },
+        },
+      },
+      worktree: "/worktree",
+    });
+
+    expect(allowedTools[0]).toEqual(["Read", "Glob", "Grep"]);
   });
 
   it("retries deterministic gate failures until the budget is exhausted", async () => {
@@ -211,11 +284,12 @@ function workItem() {
   };
 }
 
-function repoProfile() {
+function repoProfile(): RepoProfile {
   return {
     baseBranch: "develop",
     concurrency: 1,
     contextProviders: [],
+    context: { policyRefs: [], providers: [] },
     conventions: "repo-local",
     gates: { test: "test" as const },
     guards: { forbidTestEditInImpl: true, protectedBranches: ["develop"] },
@@ -224,6 +298,7 @@ function repoProfile() {
     portRange: [3000, 3099] as [number, number],
     scope: "external" as const,
     setup: "install" as const,
+    intake: { sources: ["jira"] },
     workItemSource: "jira" as const,
   };
 }

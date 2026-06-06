@@ -1,11 +1,14 @@
+import { readFile } from "node:fs/promises";
 import process from "node:process";
 import { pathToFileURL } from "node:url";
 import { STAGE_ORDER } from "../core/state-machine.js";
 import type { StageName, WorkItem } from "../core/types.js";
 import type { JobEventRecord, JobStore } from "../db/index.js";
+import { loadBriefWorkItem, type BriefFileReader } from "../intake/brief.js";
 
 export interface AgentctlOptions {
   store: JobStore;
+  briefReader?: BriefFileReader;
   stdout?: (line: string) => void;
   stderr?: (line: string) => void;
   defaultRetryBudget?: number;
@@ -32,7 +35,7 @@ export async function runAgentctl(
     }
 
     if (command === "submit" && subcommand === "brief") {
-      const item = briefWorkItem(parsed);
+      const item = await briefWorkItem(parsed, opts.briefReader ?? nodeFileReader());
       const job = opts.store.enqueueJob({
         item,
         retryBudget: optionInt(parsed, "attempts") ?? opts.defaultRetryBudget ?? 10,
@@ -128,16 +131,16 @@ function jiraWorkItem(id: string, parsed: ParsedArgs): WorkItem {
   };
 }
 
-function briefWorkItem(parsed: ParsedArgs): WorkItem {
+async function briefWorkItem(parsed: ParsedArgs, reader: BriefFileReader): Promise<WorkItem> {
   const id = required(parsed, "id");
-  return {
-    branch: optional(parsed, "branch"),
+  return loadBriefWorkItem({
+    briefPath: optional(parsed, "brief-path") ?? `briefs/${id}/brief.md`,
     id,
-    payload: { briefPath: required(parsed, "brief-path"), kind: "brief" },
+    branch: optional(parsed, "branch"),
+    reader,
     repo: required(parsed, "repo"),
-    source: "brief",
-    title: required(parsed, "title"),
-  };
+    title: optional(parsed, "title"),
+  });
 }
 
 function showJob(
@@ -200,10 +203,32 @@ function usage(): string {
   return [
     "usage:",
     "agentctl submit jira <ticket> --repo <repo> [--title <title>] [--branch <branch>]",
-    "agentctl submit brief --repo <repo> --id <id> --title <title> --brief-path <path>",
+    "agentctl submit brief --repo <repo> --id <id> [--title <title>] [--brief-path <path>]",
     "agentctl show <job-id>",
     "agentctl retry <job-id> --from <stage> [--attempts <n>]",
   ].join("\n");
+}
+
+function nodeFileReader(): BriefFileReader {
+  return {
+    async readText(path) {
+      try {
+        return await readFile(path, "utf8");
+      } catch (error) {
+        if (isNotFound(error)) return undefined;
+        throw error;
+      }
+    },
+  };
+}
+
+function isNotFound(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    error.code === "ENOENT"
+  );
 }
 
 function isDirectRun(): boolean {

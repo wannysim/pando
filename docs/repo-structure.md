@@ -120,19 +120,27 @@ export type JobStatus = StageName | "QUEUED" | "DONE" | "FAILED" | "ESCALATED";
 export interface WorkItem {
   id: string;                          // "AP-1234" | "personal-site-20260606-a"
   repo: string;                        // repos.yaml 키
-  source: "jira" | "brief";
+  source: "jira" | "brief" | "github_issue";
   title: string;
   branch?: string;
   dependsOn?: string[];
-  payload: { ticketKey: string } | { briefPath: string; assets?: string[] };
+  payload:
+    | { kind: "jira"; ticketKey: string }
+    | { kind: "brief"; briefPath: string; assets?: string[] }
+    | { kind: "github_issue"; owner: string; repo: string; issueNumber: number };
 }
 
 export interface RepoProfile {
   path: string;
   scope: "acme" | "external";
   baseBranch: string;
-  workItemSource: "jira" | "brief";
-  contextProviders: ("atlassian-mcp" | "figma-mcp")[];
+  intake: { sources: ("jira" | "brief" | "github_issue")[] };
+  context: {
+    providers: ("confluence" | "figma")[];
+    policyRefs: string[];
+  };
+  workItemSource: "jira" | "brief" | "github_issue"; // legacy primary source
+  contextProviders: ("confluence" | "figma")[];       // legacy provider list
   conventions: string;                 // 스킬 이름 or "repo-local"
   setup: string;
   gates: { test: string; lint?: string; types?: string };

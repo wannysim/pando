@@ -281,6 +281,7 @@ function repoProfile(): RepoProfile {
   return {
     baseBranch: "develop",
     concurrency: 1,
+    context: { policyRefs: [], providers: [] },
     contextProviders: [],
     conventions: "repo-local",
     gates: { test: "test" },
@@ -290,6 +291,7 @@ function repoProfile(): RepoProfile {
     portRange: [3000, 3099],
     scope: "external",
     setup: "install",
+    intake: { sources: ["jira"] },
     workItemSource: "jira",
   };
 }
