@@ -4,22 +4,15 @@
  * QUEUED → SPEC → PLAN → TEST → IMPL → REVIEW → PR → DONE
  *                  │               ▲      │
  *                  │               └──────┘ CHANGES_REQUESTED (budget 차감)
- *                  └→ ESCALATED (blocking open questions)
+ * SPEC/PLAN → ESCALATED (blocking open questions)
  * 모든 단계: GATE_FAIL → 같은 단계 재시도 (budget 차감), 소진 시 FAILED
  *
  * 순수 함수만 — I/O 없음 (CLAUDE.md 규율 4).
  */
 
-import type { JobStatus, StageName } from "./types.js";
+import type { JobStatus, StageName } from "./types";
 
-export const STAGE_ORDER: readonly StageName[] = [
-  "SPEC",
-  "PLAN",
-  "TEST",
-  "IMPL",
-  "REVIEW",
-  "PR",
-];
+export const STAGE_ORDER: readonly StageName[] = ["SPEC", "PLAN", "TEST", "IMPL", "REVIEW", "PR"];
 
 const TERMINAL: readonly JobStatus[] = ["DONE", "FAILED", "ESCALATED"];
 
@@ -87,7 +80,7 @@ export function transition(
       return consumeAttempt(state, "IMPL");
 
     case "BLOCKING_QUESTIONS":
-      if (state.status !== "PLAN") invalid(state, event);
+      if (state.status !== "SPEC" && state.status !== "PLAN") invalid(state, event);
       return { status: "ESCALATED", attemptsLeft: state.attemptsLeft };
   }
 }

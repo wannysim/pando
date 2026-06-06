@@ -1,6 +1,6 @@
-# briefs/ — 개인 프로젝트 기획 인박스
+# briefs/ - 개인 프로젝트 기획 인박스
 
-Jira가 없는 레포(`work_item_source: brief`)의 작업 입력. 채팅으로 구술한 기획을 intake가 이 템플릿으로 정리해 저장하면 파이프라인이 Jira 티켓과 동일하게 처리한다 (docs/design-v2-multi-repo.md §2.2).
+Jira가 없는 레포(`intake.sources: [brief]`)의 작업 입력. 채팅으로 구술한 기획을 intake가 이 템플릿으로 정리해 저장하면 파이프라인이 Jira 티켓과 동일하게 처리한다 (docs/design-v2-multi-repo.md §2.2, ADR-008).
 
 ## 구조
 
@@ -14,28 +14,38 @@ briefs/
 ## brief.md 템플릿
 
 ```markdown
-# {제목}
+# Brief Title
 
 > repo: personal-site
-> 생성: {ISO timestamp}
+> created: {ISO timestamp}
 
-## 목표
-(한 문단 — 왜 만드는가)
+## Goal
 
-## 요구사항 요약
-- (bullet 3~7개)
+Why this work should exist.
 
-## 화면·동작 묘사
-(말로 전달한 디자인. assets/ 이미지 참조 가능)
+## User Story
 
-## 수용 기준
+As a user, I want an outcome so that I receive value.
+
+## Acceptance Criteria
+
 - [ ] ...
 
-## 비범위
-- (이번에 안 하는 것)
+## Screens or Behavior
 
-## 모호한 지점
-- (intake에서 해소 못 한 것 — 파이프라인이 Open Questions로 이월)
+Visible UI, workflow, or system behavior. Reference assets when useful.
+
+## Non-Goals
+
+- Work that is explicitly out of scope.
+
+## Assets
+
+- None
+
+## Open Questions
+
+- None
 ```
 
-원칙: 모호함 해소는 **파이프라인 진입 전**(intake 대화)에 끝낸다. brief가 엉성하면 IMPL retry budget으로 비용을 치르게 된다.
+원칙: 모호함 해소는 **파이프라인 진입 전**(intake 대화)에 끝낸다. `Open Questions`에 `[Blocker]`가 있으면 SPEC/PLAN 진행 전 `ESCALATED`로 보내는 결정적 신호가 된다.

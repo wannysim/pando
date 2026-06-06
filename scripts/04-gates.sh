@@ -22,6 +22,33 @@ else
   echo "checksums recorded: $CHECKSUM_FILE"
 fi
 
+run_package_action() {
+  local action="$1"
+  local manager
+
+  if [ -f yarn.lock ]; then
+    manager="yarn"
+  elif [ -f pnpm-lock.yaml ]; then
+    manager="pnpm"
+  elif [ -f package-lock.json ]; then
+    manager="npm"
+  else
+    echo "no lockfile detected; cannot run $action gate" >&2
+    exit 1
+  fi
+
+  case "$action:$manager" in
+    typecheck:npm) npx tsc --noEmit ;;
+    typecheck:yarn) yarn tsc --noEmit ;;
+    typecheck:pnpm) pnpm exec tsc --noEmit ;;
+    test:npm) npm run test ;;
+    lint:npm) npm run lint ;;
+    *) "$manager" "$action" ;;
+  esac
+}
+
 # ② 결정적 게이트: exit code만 신뢰
-pnpm test && pnpm lint && pnpm tsc --noEmit
+run_package_action test
+run_package_action lint
+run_package_action typecheck
 echo "GATE PASS: test+lint+types"

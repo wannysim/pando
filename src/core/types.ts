@@ -5,46 +5,58 @@
 
 export type StageName = "SPEC" | "PLAN" | "TEST" | "IMPL" | "REVIEW" | "PR";
 
-export type JobStatus =
-  | StageName
-  | "QUEUED"
-  | "DONE"
-  | "FAILED"
-  | "ESCALATED";
+export type JobStatus = StageName | "QUEUED" | "DONE" | "FAILED" | "ESCALATED";
+
+export type WorkItemSource = "jira" | "brief" | "github_issue";
+
+export type IntakeSource = WorkItemSource;
+
+export type ContextProvider = "confluence" | "figma";
 
 export interface WorkItem {
   id: string; // "AP-1234" | "personal-site-20260606-a"
   repo: string; // repos.yaml 키
-  source: "jira" | "brief";
+  source: WorkItemSource;
   title: string;
   branch?: string;
   dependsOn?: string[];
   payload:
     | { kind: "jira"; ticketKey: string }
-    | { kind: "brief"; briefPath: string; assets?: string[] };
+    | { kind: "brief"; briefPath: string; assets?: string[] }
+    | { kind: "github_issue"; owner: string; repo: string; issueNumber: number };
 }
 
 export interface RepoProfile {
   path: string;
   scope: "acme" | "external";
   baseBranch: string;
-  workItemSource: "jira" | "brief";
-  contextProviders: ("atlassian-mcp" | "figma-mcp")[];
+  intake: { sources: IntakeSource[] };
+  context: { providers: ContextProvider[]; policyRefs: string[] };
+  /** Backward-compatible primary source for W2 callers. Prefer intake.sources. */
+  workItemSource: IntakeSource;
+  /** Backward-compatible provider list for W2 callers. Prefer context.providers. */
+  contextProviders: ContextProvider[];
   conventions: string; // 스킬 이름 또는 "repo-local"
-  setup: string;
-  gates: { test: string; lint?: string; types?: string };
+  packageManager?: PackageManager;
+  setup: PackageAction;
+  gates: { test: PackageAction; lint?: PackageAction; types?: PackageAction };
   concurrency: number;
   portRange: [number, number];
   envFiles?: string[];
   guards: { protectedBranches: string[]; forbidTestEditInImpl: boolean };
 }
 
+export type PackageManager = "yarn" | "pnpm" | "npm";
+
+export type PackageAction = "install" | "test" | "lint" | "typecheck";
+
 export interface WorkerRunOptions {
   cwd: string; // worktree 경로
   prompt: string;
   model: string;
   sessionId?: string; // 단계 간 세션 연속성
-  mcpConfig?: string; // claude-code 전용
+  allowedTools?: string[]; // 단계별 CLI tool whitelist
+  mcpConfig?: string; // managed connector 상속(ADR-004)과 충돌하는 엔진은 거부할 수 있다
   outputSchema?: object;
   timeoutMs: number;
   env?: Record<string, string>; // IMPLEMENT_JIRA_BATCH=1 등
@@ -77,6 +89,7 @@ export interface GateResult {
   pass: boolean;
   reason?: string;
   evidence?: string; // 명령 출력, 체크섬 diff 등
+  failureKind?: "gate-fail" | "blocking-questions";
 }
 
 export interface Gate {

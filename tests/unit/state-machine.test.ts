@@ -4,7 +4,7 @@ import {
   STAGE_ORDER,
   transition,
   type MachineState,
-} from "../../src/core/state-machine.js";
+} from "../../src/core/state-machine";
 
 const BUDGET = 3;
 
@@ -13,11 +13,11 @@ function at(status: MachineState["status"], attemptsLeft = BUDGET): MachineState
 }
 
 describe("initialState", () => {
-  it("QUEUED에서 시작하고 budget을 가진다", () => {
+  it("starts in QUEUED with the given budget", () => {
     expect(initialState(BUDGET)).toEqual({ status: "QUEUED", attemptsLeft: BUDGET });
   });
 
-  it("budget은 1 이상이어야 한다", () => {
+  it("requires a budget of at least 1", () => {
     expect(() => initialState(0)).toThrow();
     expect(() => initialState(-1)).toThrow();
   });
@@ -29,7 +29,7 @@ describe("happy path", () => {
     expect(next).toEqual({ status: "SPEC", attemptsLeft: BUDGET });
   });
 
-  it("GATE_PASS로 SPEC→PLAN→TEST→IMPL→REVIEW→PR→DONE 순서대로 전이한다", () => {
+  it("moves through SPEC, PLAN, TEST, IMPL, REVIEW, PR, and DONE on GATE_PASS", () => {
     let state = at("SPEC");
     const expected = [...STAGE_ORDER.slice(1), "DONE"];
     for (const want of expected) {
@@ -38,25 +38,25 @@ describe("happy path", () => {
     }
   });
 
-  it("GATE_PASS는 다음 단계의 attemptsLeft를 budget으로 리셋한다", () => {
+  it("resets attemptsLeft to the budget when GATE_PASS advances to the next stage", () => {
     const worn = at("SPEC", 1);
     const next = transition(worn, { type: "GATE_PASS" }, BUDGET);
     expect(next).toEqual({ status: "PLAN", attemptsLeft: BUDGET });
   });
 });
 
-describe("retry budget (게이트 실패)", () => {
-  it("GATE_FAIL은 같은 단계에 머물며 attemptsLeft를 차감한다", () => {
+describe("retry budget on gate failure", () => {
+  it("keeps the same stage and decrements attemptsLeft on GATE_FAIL", () => {
     const next = transition(at("IMPL", 3), { type: "GATE_FAIL" }, BUDGET);
     expect(next).toEqual({ status: "IMPL", attemptsLeft: 2 });
   });
 
-  it("attemptsLeft가 소진되면 FAILED", () => {
+  it("moves to FAILED when attemptsLeft is exhausted", () => {
     const next = transition(at("IMPL", 1), { type: "GATE_FAIL" }, BUDGET);
     expect(next.status).toBe("FAILED");
   });
 
-  it("모든 단계에서 동일하게 동작한다", () => {
+  it("applies the same retry behavior to every stage", () => {
     for (const stage of STAGE_ORDER) {
       expect(transition(at(stage, 2), { type: "GATE_FAIL" }, BUDGET)).toEqual({
         status: stage,
@@ -67,50 +67,48 @@ describe("retry budget (게이트 실패)", () => {
   });
 });
 
-describe("REVIEW 회귀", () => {
-  it("CHANGES_REQUESTED: REVIEW → IMPL (attemptsLeft 차감)", () => {
+describe("review rework", () => {
+  it("moves REVIEW to IMPL and decrements attemptsLeft on CHANGES_REQUESTED", () => {
     const next = transition(at("REVIEW", 2), { type: "CHANGES_REQUESTED" }, BUDGET);
     expect(next).toEqual({ status: "IMPL", attemptsLeft: 1 });
   });
 
-  it("회귀 budget 소진 시 FAILED", () => {
+  it("moves to FAILED when the rework budget is exhausted", () => {
     const next = transition(at("REVIEW", 1), { type: "CHANGES_REQUESTED" }, BUDGET);
     expect(next.status).toBe("FAILED");
   });
 
-  it("REVIEW 외 단계에서 CHANGES_REQUESTED는 불허", () => {
-    expect(() => transition(at("IMPL"), { type: "CHANGES_REQUESTED" }, BUDGET)).toThrow(
+  it("rejects CHANGES_REQUESTED outside REVIEW", () => {
+    expect(() => transition(at("IMPL"), { type: "CHANGES_REQUESTED" }, BUDGET)).toThrow(/invalid/i);
+  });
+});
+
+describe("escalation", () => {
+  it("BLOCKING_QUESTIONS: SPEC or PLAN → ESCALATED", () => {
+    expect(transition(at("SPEC"), { type: "BLOCKING_QUESTIONS" }, BUDGET).status).toBe("ESCALATED");
+    expect(transition(at("PLAN"), { type: "BLOCKING_QUESTIONS" }, BUDGET).status).toBe("ESCALATED");
+  });
+
+  it("rejects BLOCKING_QUESTIONS after PLAN", () => {
+    expect(() => transition(at("TEST"), { type: "BLOCKING_QUESTIONS" }, BUDGET)).toThrow(
       /invalid/i,
     );
   });
 });
 
-describe("에스컬레이션", () => {
-  it("BLOCKING_QUESTIONS: PLAN → ESCALATED", () => {
-    const next = transition(at("PLAN"), { type: "BLOCKING_QUESTIONS" }, BUDGET);
-    expect(next.status).toBe("ESCALATED");
-  });
-
-  it("PLAN 외 단계에서 BLOCKING_QUESTIONS는 불허", () => {
-    expect(() => transition(at("SPEC"), { type: "BLOCKING_QUESTIONS" }, BUDGET)).toThrow(
-      /invalid/i,
-    );
-  });
-});
-
-describe("불허 전이 (전수)", () => {
-  it("START는 QUEUED에서만 가능", () => {
+describe("invalid transitions", () => {
+  it("allows START only from QUEUED", () => {
     for (const stage of STAGE_ORDER) {
       expect(() => transition(at(stage), { type: "START" }, BUDGET)).toThrow(/invalid/i);
     }
   });
 
-  it("QUEUED에서 게이트 이벤트는 불허", () => {
+  it("rejects gate events from QUEUED", () => {
     expect(() => transition(at("QUEUED"), { type: "GATE_PASS" }, BUDGET)).toThrow(/invalid/i);
     expect(() => transition(at("QUEUED"), { type: "GATE_FAIL" }, BUDGET)).toThrow(/invalid/i);
   });
 
-  it("터미널 상태(DONE/FAILED/ESCALATED)에서는 어떤 이벤트도 불허", () => {
+  it("rejects every event from terminal states", () => {
     const events = [
       { type: "START" },
       { type: "GATE_PASS" },
@@ -126,8 +124,8 @@ describe("불허 전이 (전수)", () => {
   });
 });
 
-describe("순수성", () => {
-  it("transition은 입력 상태를 변이하지 않는다", () => {
+describe("purity", () => {
+  it("does not mutate the input state", () => {
     const state = at("IMPL", 2);
     transition(state, { type: "GATE_FAIL" }, BUDGET);
     expect(state).toEqual({ status: "IMPL", attemptsLeft: 2 });

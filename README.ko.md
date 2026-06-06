@@ -20,7 +20,7 @@ SPEC -> PLAN -> TEST -> IMPL <-> REVIEW -> PR (draft)
 
 ## 상태
 
-설계 단계입니다. 자세한 설계 문서는 [docs/](./docs)를 참고하세요.
+초기 구현 단계입니다. W1-W3는 완료되었고, 다음 작업은 W4 n x n 병렬 스케줄링입니다. 자세한 설계 문서는 [docs/](./docs)를 참고하세요.
 
 - [research-v1.md](./docs/research-v1.md) — 도구와 패턴 리서치
 - [design-v2-multi-repo.md](./docs/design-v2-multi-repo.md) — 재사용 가능한 agent-skill 자산 기반 n x n 설계

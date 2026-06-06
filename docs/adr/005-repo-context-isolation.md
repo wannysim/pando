@@ -21,5 +21,5 @@
 ## 결과
 
 - 새 레포 추가 = `repos.yaml` 한 항목 + (필요 시) PM 명시. 환경 명령을 일일이 정확히 적을 필요가 줄어 오설정 리스크 감소.
-- `config/repos.yaml`의 web `gates`가 아직 전부 `pnpm` → PM-agnostic 표현으로 정정 필요 (W2 작업 항목).
-- W2의 worktree manager / stage runner가 이 결정을 구현. 계약 변경(`RepoProfile`에 `packageManager?` 추가)의 근거는 본 ADR.
+- `config/repos.yaml`은 `install/test/lint/typecheck` 같은 PM-agnostic action으로 정리됐다.
+- W2의 worktree manager / stage runner가 이 결정을 구현했고, `scripts/04-gates.sh`도 lockfile 감지 기반 게이트로 정리됐다. 계약 변경(`RepoProfile`에 `packageManager?` 추가)의 근거는 본 ADR.
