@@ -1,4 +1,4 @@
-# 인수인계 — 현재 상태와 다음 단계 (2026-06-06)
+# 인수인계 — 현재 상태와 다음 단계 (2026-06-07)
 
 > 이 문서는 세션 간 컨텍스트 이관용. 새 세션은 CLAUDE.md → 이 문서 → 참조 문서 순으로 읽으면 된다.
 
@@ -68,7 +68,7 @@
 - `src/core/artifacts.ts` — W2 2단계 완료. `_spec.md`/`PLAN.md` 필수 스키마 검증, Open Questions `[Blocker]` 파싱, ADR-007의 commit 단위 `Implementation Roadmap` 검사. DEMO-1234 legacy `Stacked PR Roadmap`은 sanitized fixture로 drift 감지(파싱은 되지만 현재 계약 invalid)
 - `src/worktree/manager.ts` — W2 3단계 완료. `01-worktree.sh` TS 이식, origin base 직접 분기, `~/.worktrees/{repo}/{branch-slug}` 규약, `.git/.dispatch.lock` atomic file lock, env copy/setup hook. 진짜 git integration 테스트 포함
 - `src/engines/claude-code.ts` — W2 4단계 완료. `claude -p`, JSON output, allowedTools 기본값(`Task`, `mcp__claude_ai_Atlassian` 포함), ADR-004에 따라 `--mcp-config` 거부
-- `src/engines/codex.ts` — W2 5단계 완료. `codex exec --json --sandbox workspace-write --model`, JSON-lines session/cost/output 파싱
+- `src/engines/codex.ts` — W2 5단계 완료. `codex exec --json --sandbox workspace-write --model`, JSON-lines session/cost/output 파싱. 2026-06-07 full-daemon live smoke에서 Codex stdin 대기가 재현되어 기본 runner를 `spawn(..., stdio: ["ignore", "pipe", "pipe"])`로 전환하고 stdin 종료 회귀 테스트를 추가했다
 - `src/core/stage-config.ts` — `config/stages.yaml` engine/model/skill/source별 skills/allowedTools/env/defaults 검증. W3에서 `allowed_tools_by_source`를 추가해 brief SPEC 경로가 Atlassian MCP tool을 받지 않도록 분리
 - `src/pipeline/gates/artifact-schema.ts` — W2-B 완료. `_spec.md`/`PLAN.md` artifact schema gate. PLAN blocker는 `failureKind: "blocking-questions"`로 보고
 - `src/pipeline/gates/exit-code.ts` — W2-B 완료. `RepoProfile.gates` PM-agnostic action을 package-manager command로 변환하고 exit code만 판정. workspace scope용 command builder hook 포함
@@ -86,7 +86,7 @@
 - `src/cli/agentctl.ts` — W3 완료. `submit jira`, `submit brief`, `show`, `retry`. W5 PR 2에서 직접 store 기반 `cancel <jobId>`와 `cleanup <jobId>`를 추가. cleanup은 worktree cleaner port를 통해 실행하고 request/completed/failed event를 남김. W5 PR 3에서 `show`가 event payload의 cost/duration/failure reason/evidence를 key=value 형식으로 출력. `submit brief`는 brief 파일을 읽어 schema 검증 후 title/assets를 WorkItem으로 정규화하고, `--brief-path` 생략 시 `briefs/{id}/brief.md`를 사용
 - `src/api/app.ts`, `src/server.ts` — W5 PR 7에서 production static dashboard serving을 `/dashboard` 아래로 고정하고, Hono API/SQLite store/static dashboard를 같은 Node server entrypoint로 묶었다. `/health`, `/jobs`, `/briefs` 같은 API route는 JSON route로 유지되어 SPA fallback과 충돌하지 않는다
 - `deploy/`, `config/orchestrator.docker.yaml` — W5 PR 7에서 single-container Dockerfile/compose skeleton을 추가했다. mount contract는 SQLite `/data/pando.sqlite`, repos `/repos`, worktrees `/worktrees`, config `/config`, skills `/skills`, HTTP `3210`, dashboard root `/app/dashboard/dist`
-- `smoke/two-job-smoke.contract.json`, `scripts/two-job-smoke.mjs`, `docs/runbooks/two-job-smoke.md` — W5 PR 7에서 2-job smoke의 global cap 2~3, worktree collision check, provider cap check, gate evidence check, deterministic fake fallback reason 기록을 테스트 가능한 계약으로 고정했다. 2026-06-07에 `pnpm smoke:full-daemon` host contract runbook을 추가했다
+- `smoke/two-job-smoke.contract.json`, `scripts/two-job-smoke.mjs`, `docs/runbooks/two-job-smoke.md` — W5 PR 7에서 2-job smoke의 global cap 2~3, worktree collision check, provider cap check, gate evidence check, deterministic fake fallback reason 기록을 테스트 가능한 계약으로 고정했다. 2026-06-07에 `pnpm smoke:full-daemon` host contract + live dogfood runbook을 추가했다
 - 검증: `pnpm verify` 통과(2026-06-06, PR #25 기준 27 files / 182 tests, coverage all statements 92.69% / branches 85.60% / functions 96.33% / lines 93.81%). 로컬 Docker Desktop에서 `docker compose -f deploy/docker-compose.yml up --build -d` 성공, container health `healthy`, `/health` JSON 200, `/dashboard` HTML 200, dashboard JS asset 200, `/briefs` enqueue + `/jobs` list 200 확인 후 `docker compose ... down -v`로 정리.
 - **Live worker smoke readiness (2026-06-06, branch `chore/live-worker-smoke-readiness`)**:
   - 시작 전 `pnpm verify` 통과. 변경 후 최종 `pnpm verify`도 통과(27 files / 185 tests, coverage all statements 92.69% / branches 85.60% / functions 96.33% / lines 93.81%). Docker HTTP/API/static smoke도 재확인: compose build/up, health `healthy`, `/health` 200, `/dashboard` HTML 200, dashboard JS asset 200, `/briefs` enqueue + `/jobs` list 200, `down -v` 정리.
@@ -94,22 +94,24 @@
   - Host readiness 통과: `claude 2.1.167 (Claude Code)`, `codex-cli 0.137.0`, `~/.claude`, `~/.codex`, `~/.ai-skills`, `~/.worktrees`, repo/config paths 모두 ready. 명시 API key env는 unset이지만 기본 auth dir 신호가 있음.
   - Host live worker 2-job smoke 통과: `PANDO_GLOBAL_CONCURRENCY=2`, `PANDO_WORKTREE_ROOT=/tmp/pando-live-worker-smoke`, evidence `/tmp/pando-live-worker-smoke/live-worker-smoke.json`. `SMOKE-LIVE-CLAUDE`와 `SMOKE-LIVE-CODEX` 둘 다 exit `0`, `timedOut=false`, worktree path distinct, provider cap pass, gate evidence pass. 초기 구현에서 Codex가 `execFile` stdin 대기로 timeout됐고, `spawn(..., stdio: ["ignore", "pipe", "pipe"])`로 고쳐 재실행 통과.
   - Docker image build는 현재 코드 기준으로도 통과. Docker worker readiness는 아직 blocked: mount contract와 global cap은 pass지만 image 안에 `claude`/`codex`가 없고 Claude/Codex auth signal도 mount되지 않았다. Docker live worker smoke 전 최소 작업은 CLI 설치 방식 + auth volume/API-key mode + git credentials 확정.
-  - 범위 주의: 이번 live smoke는 **worker probe**다. production `src/server.ts`는 아직 `runDaemonOnce`/real WorkerEngine/worktree provisioner/stage prompts/gates를 wiring하지 않으므로, full daemon pipeline 2-job smoke는 다음 작업이다.
+  - 범위 주의: 이 live worker smoke는 **worker probe**다. 2026-06-07에 별도로 full daemon live pipeline smoke를 호스트에서 수행했다. production `src/server.ts` 상시 loop wiring은 아직 별도 후속이다.
 - **Full daemon smoke contract (2026-06-07, branch `chore/full-daemon-live-smoke`)**:
   - `config/repos.yaml`에 `pando` self-profile을 brief-only target으로 추가했다. context providers는 비워 provider cap을 소비하지 않고, gates는 `pnpm test`/`pnpm lint`/`pnpm exec tsc --noEmit` package-action gate로 해석된다.
   - pass-path gate evidence를 DB event에 보존하도록 runner 계약을 보강했다. evidence는 command + exitCode JSON만 기록하고 worker output text는 gate 판정에 쓰지 않는다.
-  - Host full-daemon **contract** smoke 통과: `globalConcurrency=2`, exactly 2 jobs(`PANDO-FULL-SMOKE-1`, `PANDO-FULL-SMOKE-2`), both `DONE`, worktree collision pass, provider usage `{}`, gate evidence pass. Evidence: `/tmp/pando-full-daemon-smoke-contract-20260607-002546/full-daemon-smoke.json`.
-  - 최종 검증: `pnpm format:check` 통과. `pnpm verify` 통과(2026-06-07, core 28 files / 193 tests, coverage all statements 92.49% / branches 85.13% / functions 96.64% / lines 93.94%; dashboard 1 file / 6 tests + types + build).
-  - 이 결과는 live worker 호출이 아니라 contract runner 기반이다. real Claude/Codex로 full daemon pipeline을 돌리는 작업은 다음 PR 범위로 남긴다.
+  - Host full-daemon **contract** smoke 재실행 통과: `globalConcurrency=2`, exactly 2 jobs(`PANDO-FULL-SMOKE-1`, `PANDO-FULL-SMOKE-2`), both `DONE`, worktree collision pass, provider usage `{}`, gate evidence pass. Evidence: `/tmp/pando-full-daemon-smoke-contract-20260607-003713/full-daemon-smoke.json`.
+  - Host full-daemon **live** smoke: 같은 두 job과 global concurrency `2`로 실행했다. 최초 live run은 TEST 단계 Codex worker가 stdin 대기로 `Reading additional input from stdin...` evidence를 남겼고, 30분 stage timeout과 retry loop를 기다리지 않기 위해 종료했다. Structured failure evidence: `/tmp/pando-full-daemon-smoke-live-20260607-003749/live-failure-evidence.json`.
+  - Codex runner fix 후 같은 DB의 기존 두 job을 새 enqueue 없이 resume했고 둘 다 `DONE`까지 완료했다. `gateEvidence`, `durationPayloads`, 이전 실패 payload가 DB events에 남았다. Codex/Claude CLI가 parsable cost를 내지 않아 `worker-cost` event는 없었다. Resume evidence: `/tmp/pando-full-daemon-smoke-live-20260607-003749/live-resume-evidence.json`.
+  - pando self-profile dogfood job `PANDO-LIVE-DOGFOOD-1`을 `agentctl submit brief`로 단일 enqueue하고 full daemon 경로에서 실행했다. Worktree: `/tmp/pando-full-daemon-dogfood-20260607-010122/worktrees/pando/chore-full-daemon-live-dogfood-docs`; evidence: `/tmp/pando-full-daemon-dogfood-20260607-010122/dogfood-evidence.json`; final status `DONE`; docs 변경과 untracked `PLAN.md`를 남겼다.
+  - 최종 검증: `pnpm format:check` 통과. `pnpm verify` 통과(2026-06-07, core 28 files / 196 tests, coverage all statements 92.58% / branches 85.15% / functions 96.69% / lines 94.01%; dashboard 1 file / 6 tests + types + build).
 - 공개 repo hygiene: `tests/` 표면(`describe`/`it`, fixture 문구)은 영어로 정리. 실제 회사 티켓 키는 커밋하지 않고 `DEMO-1234` 같은 가상 키만 사용. `docs/`는 작업자용이라 한글 유지 허용
 
-**다음 세션 시작점 — host full daemon live pipeline smoke 또는 Docker worker readiness.**
+**다음 세션 시작점 — host full daemon live follow-ups 또는 Docker worker readiness.**
 
-W5의 최소 운영 준비는 닫혔다. Host에서 실제 Claude/Codex worker 2-job probe는 통과했다. 다음 세션에서 가장 먼저 결정할 것은 **full daemon pipeline smoke를 호스트에서 먼저 wiring할지, Docker worker CLI/auth를 먼저 확정할지**다.
+W5의 최소 운영 준비는 닫혔다. Host에서 실제 Claude/Codex worker 2-job probe와 full daemon 2-job live dogfood를 수행했다. 다음 세션에서 가장 먼저 결정할 것은 **반복 live soak/worker-cost telemetry를 우선할지, Docker worker CLI/auth를 먼저 확정할지**다.
 
 ## 남아있는 작업
 
-1. **Full daemon live pipeline smoke** — host full-daemon contract smoke는 통과했지만 real Claude/Codex worker로 pipeline을 실행하지는 않았다. 다음 단계는 같은 `pando` self-profile과 `pnpm smoke:full-daemon -- --mode live` 경로를 사용해 2개 job만 global 2~3으로 실행하고, 실패 시 deterministic blocker evidence를 남기는 것이다. production `src/server.ts` 상시 loop wiring은 아직 별도 후속이다.
+1. **Full daemon live follow-ups** — host full-daemon live smoke는 같은 두 job/global 2로 완료됐다. 다음 단계는 반복 2-job soak, worker-cost telemetry가 실제 CLI 출력에서 비어 있을 때의 처리 방침, production `src/server.ts` 상시 loop wiring 여부 결정이다.
 2. **Docker worker readiness** — 현재 single-container image는 Node daemon/API/static dashboard skeleton을 검증했다. 컨테이너 내부 Claude/Codex CLI 설치 방식, API key/auth volume, git credentials, Atlassian connector/API token fallback은 별도 smoke가 필요하다.
 3. **Gate adapter 연결** — checksum/diff/workspace scoping의 순수 계약은 완료됐지만, 실제 git diff/checksum 수집 adapter와 exit-code command scoping 연결은 후속 작업에서 필요 시 붙인다.
 4. **Release branch routing** — Jira `fixVersion` 기반 `release/*` base branch 매핑과 `WorkItem.baseBranch` override는 미해결이다.

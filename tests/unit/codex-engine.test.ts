@@ -115,7 +115,7 @@ describe("CodexEngine", () => {
     });
   });
 
-  it("preserves successful and failed output through the default execFile runner", async () => {
+  it("preserves successful and failed output through the default process runner", async () => {
     const success = new CodexEngine({
       command: await fakeExecutable("process.stdout.write(JSON.stringify({text:'ok'}) + '\\n');"),
     });
@@ -141,6 +141,63 @@ describe("CodexEngine", () => {
         timeoutMs: 30_000,
       }),
     ).resolves.toEqual({ ok: false, output: "out\nerr\n" });
+  });
+
+  it("closes stdin for the default runner so codex exec does not wait for input", async () => {
+    const command = await fakeExecutable(`
+      const timeout = setTimeout(() => {
+        process.stderr.write('stdin still open\\n');
+        process.exit(7);
+      }, 100);
+      process.stdin.resume();
+      process.stdin.on('end', () => {
+        clearTimeout(timeout);
+        process.stdout.write(JSON.stringify({ text: 'stdin closed' }) + '\\n');
+      });
+    `);
+    const engine = new CodexEngine({ command });
+
+    await expect(
+      engine.run({
+        cwd: "/tmp",
+        model: "gpt-5-codex",
+        prompt: "Implement",
+        timeoutMs: 1_000,
+      }),
+    ).resolves.toMatchObject({ ok: true, output: "stdin closed" });
+  });
+
+  it("returns deterministic failure output when the default runner cannot spawn codex", async () => {
+    const engine = new CodexEngine({ command: "/tmp/pando-missing-codex-command" });
+
+    await expect(
+      engine.run({
+        cwd: "/tmp",
+        model: "gpt-5-codex",
+        prompt: "Implement",
+        timeoutMs: 1_000,
+      }),
+    ).resolves.toMatchObject({
+      ok: false,
+      output: expect.stringContaining("ENOENT"),
+    });
+  });
+
+  it("terminates the default runner when the command exceeds the stage timeout", async () => {
+    const command = await fakeExecutable(`
+      process.stdout.write('started\\n');
+      setInterval(() => {}, 1000);
+    `);
+    const engine = new CodexEngine({ command });
+
+    await expect(
+      engine.run({
+        cwd: "/tmp",
+        model: "gpt-5-codex",
+        prompt: "Implement",
+        timeoutMs: 50,
+      }),
+    ).resolves.toMatchObject({ ok: false });
   });
 });
 
