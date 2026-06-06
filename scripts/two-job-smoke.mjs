@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { spawn, spawnSync } from "node:child_process";
-import { existsSync, statSync } from "node:fs";
+import { accessSync, constants, existsSync, statSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
 import { delimiter, dirname, join, resolve } from "node:path";
 import process from "node:process";
@@ -76,7 +76,9 @@ async function liveEvidence(env, target, readiness) {
         ),
       },
       globalConcurrency: readiness.checks.globalConcurrency,
-      providerCap: { pass: jobs.every((job) => providerUsageWithinCap(job.providerUsage)) },
+      providerCap: {
+        pass: jobs.every((job) => providerUsageWithinCap(job.providerUsage)),
+      },
       worktreeCollision: {
         pass: new Set(jobs.map((job) => job.worktreePath)).size === jobs.length,
       },
@@ -296,21 +298,29 @@ function findCommand(command, pathValue) {
 
 function workerAuthCheck(env) {
   const home = env.HOME ?? homedir();
-  const claudeConfigDir = env.CLAUDE_CONFIG_DIR ?? join(home, ".claude");
-  const codexConfigDir = env.CODEX_HOME ?? join(home, ".codex");
+  const claudeConfigDir = resolvePath(env.CLAUDE_CONFIG_DIR ?? join(home, ".claude"));
+  const claudeConfigFile = resolvePath(
+    env.CLAUDE_CONFIG_FILE ??
+      (env.CLAUDE_CONFIG_DIR === undefined
+        ? join(home, ".claude.json")
+        : join(claudeConfigDir, ".claude.json")),
+  );
+  const codexConfigDir = resolvePath(env.CODEX_HOME ?? join(home, ".codex"));
   const claude = {
-    apiKeyPresent: env.ANTHROPIC_API_KEY !== undefined,
-    configDirPresent: pathExists(resolvePath(claudeConfigDir)),
+    apiKeyPresent: hasNonEmptyEnv(env, "ANTHROPIC_API_KEY"),
+    configDirPresent: pathExists(claudeConfigDir),
+    configFilePresent: pathExists(claudeConfigFile) && !pathIsDirectory(claudeConfigFile),
   };
   const codex = {
-    apiKeyPresent: env.OPENAI_API_KEY !== undefined,
-    configDirPresent: pathExists(resolvePath(codexConfigDir)),
+    apiKeyPresent: hasNonEmptyEnv(env, "OPENAI_API_KEY"),
+    configDirPresent: pathExists(codexConfigDir),
+    configDirWritable: pathWritable(codexConfigDir),
   };
   const blockers = [];
-  if (!claude.apiKeyPresent && !claude.configDirPresent) {
+  if (!claude.apiKeyPresent && !(claude.configDirPresent && claude.configFilePresent)) {
     blockers.push("Claude authentication is not configured");
   }
-  if (!codex.apiKeyPresent && !codex.configDirPresent) {
+  if (!codex.apiKeyPresent && !(codex.configDirPresent && codex.configDirWritable)) {
     blockers.push("Codex authentication is not configured");
   }
 
@@ -419,6 +429,19 @@ function resolvePath(path) {
 
 function pathExists(path) {
   return existsSync(path);
+}
+
+function pathWritable(path) {
+  try {
+    accessSync(path, constants.W_OK);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function hasNonEmptyEnv(env, name) {
+  return typeof env[name] === "string" && env[name].length > 0;
 }
 
 function pathIsDirectory(path) {

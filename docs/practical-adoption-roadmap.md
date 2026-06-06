@@ -6,23 +6,19 @@
 
 현재 pando는 아래까지 확인됐다.
 
-- Hono API와 Vite dashboard를 단일 Node server에서 띄울 수 있다.
-- Docker HTTP/API/static dashboard smoke가 통과했다.
-- Host에서 실제 `claude`/`codex` CLI worker 2-job probe가 통과했다.
-- PR #28에서 `pando` self-profile과 host full-daemon contract smoke가 develop에 반영됐다.
-- PR #29에서 host full-daemon live 2-job smoke와 단일 pando self-dogfood job이 develop에 반영됐다.
+- Hono API와 Vite dashboard를 단일 Node server에서 띄울 수 있고, `pando start` 한 번으로 local daemon/dashboard/API를 `/tmp` run root에서 시작할 수 있다(PR #41).
+- Dashboard/API는 인라인 자연어 brief를 받아 canonical `brief.md`를 repo 밖 inbox에 materialize한 뒤 queue에 넣을 수 있다(PR #54). 기존 file-path brief submit은 advanced/operator 경로로 남아 있다.
+- Host에서 실제 `claude`/`codex` CLI worker 2-job probe와 host full-daemon live dogfood가 통과했다(PR #28~#29).
 - PR #36~#38에서 pando가 concurrency 3 self-dogfood batch로 README/getting-started, dashboard operations context, agentctl operations status 작업을 끝까지 돌리고 PR까지 만들었다.
+- Dashboard/CLI follow-up, draft PR gate, real git checksum/diff adapter, release/* base-branch routing이 develop에 반영됐다(PR #40~#44, #52~#53).
+- Docker image는 opt-in worker CLI install layer, CA bundle, git/ssh runtime, auth/git credential readiness evidence를 갖췄다(PR #45, #55, 이번 follow-up). Docker live worker smoke는 실제로 시도했고, post-CA rerun에서 Codex는 exit `0`까지 확인했다. 이 환경에서 Claude Code managed connector는 container로 상속되지 않아 실제 Docker Claude call은 API-key mode 또는 container-local `claude /login` credential이 필요하다는 blocker를 구조화 evidence로 남겼다.
 - worker readiness/live smoke evidence는 structured JSON으로 남긴다.
 
-아직 아래는 남아 있다.
+아직 roadmap 항목으로 남은 것은 아래 하나다.
 
-- local daemon loop는 `PANDO_DAEMON_ENABLED=1`로 켤 수 있지만, 실행 명령이 너무 복잡하다. `pando start` 같은 단일 명령이 없다.
-- dashboard brief submit은 여전히 "brief 파일 경로" 중심이다. 사용자가 웹에 자연어 요청과 spec/doc 참고를 넣으면 pando가 canonical brief를 만들고 queue에 넣는 UX가 아니다.
-- pando self-dogfood는 가능해졌지만, prompt/schema/tooling을 여러 번 손봐야 했다. 자가개발을 안정적으로 반복하려면 worker stage observability와 UX가 더 필요하다.
-- Docker image 안에는 `claude`/`codex` CLI와 auth volume이 없다.
 - npm 배포 경로가 없다. CLI는 `pandoctl`로 점유했지만(ADR-010), 사용자가 `npm i -g pandoctl`로 설치해 `pandoctl start`/`pandoctl list`를 쓰는 경로는 미구현이다. 명령 표면도 `pando`/`pandoctl`/`agentctl`로 갈려 있고, 빌드 단계와 `better-sqlite3` native 의존성 처리가 남아 있다. → PR 10.
 
-따라서 다음 목표는 "새 기능 확장"이 아니라 **자가개발을 사람이 다시 돌리고 싶을 만큼 단순하게 만드는 것**이다. 우선순위는 one-command local run → web inline brief intake → docs/README parity → dashboard/agentctl review follow-up → Docker worker readiness 순서다.
+따라서 다음 목표는 **published `pandoctl` 하나로 local start + operations CLI를 배포 가능한 상태로 만드는 것**이다.
 
 ## 요구사항 요약
 
@@ -183,10 +179,11 @@ Follow-up:
 - README.md와 README.ko.md는 같은 local run/status/limitations를 계속 유지한다.
 - README는 아직 runbook으로 넘기는 부분이 많다. `pando start`가 생기면 5분 경로를 실제 단일 명령 중심으로 다시 쓴다.
 
-### PR 7: one-command local run
+### Done: PR 7 — one-command local run
 
 - Focus: Operator UX + Integration
 - Depends on: PR #35 runtime prompt/tool fix
+- Status: ✅ 완료, develop 반영(PR #41)
 - Files:
   - `src/cli/agentctl.ts` 또는 새 CLI entrypoint
   - `src/server.ts`
@@ -205,10 +202,11 @@ Follow-up:
 - Commit:
   - `feat(cli): add local pando start command`
 
-### PR 8: web inline brief intake
+### Done: PR 8 — web inline brief intake
 
 - Focus: Product UX + Intake
 - Depends on: one-command local run
+- Status: ✅ 완료, develop 반영(PR #54)
 - Files:
   - `dashboard/src/*`
   - `src/api/app.ts`
@@ -228,10 +226,11 @@ Follow-up:
 - Commit:
   - `feat(dashboard): add inline brief intake`
 
-### PR 9: Docker worker readiness hardening
+### Done: PR 9 — Docker worker readiness hardening
 
 - Focus: Deployment
 - Depends on: host daemon smoke가 먼저 통과한 뒤 착수
+- Status: ✅ readiness hardening 완료(PR #45/#55 + Docker live smoke follow-up). 실제 Docker live worker smoke는 Codex CA blocker를 제거한 뒤 재시도했고, post-CA rerun에서 Codex exit `0`와 Claude managed connector non-inheritance blocker를 확인했다. 다음 실행은 `ANTHROPIC_API_KEY` 또는 container-local `claude /login` credential로 수행한다.
 - Files:
   - `deploy/Dockerfile`
   - `deploy/docker-compose.yml`
@@ -323,7 +322,7 @@ README는 아래 순서가 좋다.
 
 ### 지금 당장 가능한 방식
 
-PR #36~#38 이후에는 작은 문서/운영 UX 작업을 pando self-dogfood batch로 끝까지 돌릴 수 있다. 다만 아직 사용자가 기대하는 "웹에 자연어로 할 일을 넣으면 알아서 brief/spec를 만들고 실행"하는 UX는 아니다. 현재 방식은 operator가 `/tmp` run root, config, concurrency, brief 파일 경로, daemon env를 직접 관리하는 개발자용 경로다.
+PR #36~#38 이후에는 작은 문서/운영 UX 작업을 pando self-dogfood batch로 끝까지 돌릴 수 있다. PR #41과 PR #54 이후에는 `pando start`로 local daemon/dashboard/API를 켜고, dashboard/API의 인라인 자연어 brief intake로 canonical brief를 만들 수 있다. 남은 큰 제품화 작업은 npm에 배포 가능한 `pandoctl` 하나로 start/list/show/retry/cancel/cleanup/watch/smoke 흐름을 제공하는 것이다.
 
 1. 새 Codex/Claude 세션을 연다.
 2. `docs/next-session-prompt.md`를 그대로 붙여 넣는다.
@@ -336,8 +335,8 @@ PR #36~#38 이후에는 작은 문서/운영 UX 작업을 pando self-dogfood bat
 ```text
 CLAUDE.md, docs/handoff.md, docs/practical-adoption-roadmap.md, docs/next-session-prompt.md를 읽고 develop 최신 상태에서 시작해줘.
 
-목표는 self-dogfood를 사람이 다시 쓰기 쉽게 만드는 작은 작업 하나야.
-우선순위는 one-command local run → web inline brief intake → README/docs parity → dashboard/agentctl follow-up이야.
+목표는 PR 10: published `pandoctl` npm distribution이야.
+`pandoctl start`와 기존 operations subcommand를 하나의 배포 바이너리로 통합하고, native dependency/install 전략을 검증해줘.
 비밀값은 출력/커밋하지 말고, evidence는 /tmp 아래에 남겨줘.
 완료 후 pnpm verify를 통과시키고 English commit message로 커밋해줘.
 ```
@@ -361,8 +360,8 @@ PANDO_API_URL=http://127.0.0.1:3210 \
   pnpm tsx src/cli/agentctl.ts list
 ```
 
-주의: 현재 runbook 경로는 env var가 길다. `pando start`가 생기기 전까지는 `docs/runbooks/local-pando-runner.md`를 따른다. 동일 tick에서 여러 job을 병렬 처리하려면 daemon 시작 전에 jobs를 queue에 넣고, `PANDO_GLOBAL_CONCURRENCY`와 repo profile `concurrency`를 둘 다 올린다.
+주의: local run은 이제 `pando start`가 기본이다. 동일 tick에서 여러 job을 병렬 처리하려면 daemon 시작 전에 jobs를 queue에 넣고, `--concurrency` 또는 `PANDO_GLOBAL_CONCURRENCY`와 repo profile `concurrency`를 둘 다 올린다.
 
 ## 다음 결정
 
-다음 작업은 **PR 7: one-command local run**으로 시작한다. 그 다음은 web inline brief intake → README/docs parity → dashboard/agentctl follow-up → Docker worker readiness 순서가 맞다.
+다음 작업은 **PR 10: pandoctl npm distribution**이다. PR 10 이후 W6 후보는 Docker live worker smoke를 API-key/container-local credential로 재실행, 3~5 job soak, notifications, failure analytics, provider backoff, GitHub/Jira write-back, auth hardening이다.

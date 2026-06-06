@@ -8,6 +8,10 @@ describe("Docker deployment contract", () => {
 
     expect(dockerfile).toContain("FROM node:22");
     expect(dockerfile).toContain("corepack enable");
+    expect(dockerfile).toContain("apt-get update");
+    expect(dockerfile).toContain("ca-certificates");
+    expect(dockerfile).toContain("git");
+    expect(dockerfile).toContain("openssh-client");
     expect(dockerfile).toContain("pnpm install --frozen-lockfile");
     expect(dockerfile).toContain("pnpm --filter @pando/dashboard build");
     expect(dockerfile).toContain("EXPOSE 3210");

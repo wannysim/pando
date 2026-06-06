@@ -93,8 +93,9 @@
   - `scripts/two-job-smoke.mjs`에 `--mode readiness`와 host/docker target evidence를 추가했다. evidence는 CLI availability, auth signal booleans, mount/path readiness, global cap 2~3 여부를 구조화 JSON으로 기록한다. secret 값은 기록하지 않는다.
   - Host readiness 통과: `claude 2.1.167 (Claude Code)`, `codex-cli 0.137.0`, `~/.claude`, `~/.codex`, `~/.ai-skills`, `~/.worktrees`, repo/config paths 모두 ready. 명시 API key env는 unset이지만 기본 auth dir 신호가 있음.
   - Host live worker 2-job smoke 통과: `PANDO_GLOBAL_CONCURRENCY=2`, `PANDO_WORKTREE_ROOT=/tmp/pando-live-worker-smoke`, evidence `/tmp/pando-live-worker-smoke/live-worker-smoke.json`. `SMOKE-LIVE-CLAUDE`와 `SMOKE-LIVE-CODEX` 둘 다 exit `0`, `timedOut=false`, worktree path distinct, provider cap pass, gate evidence pass. 초기 구현에서 Codex가 `execFile` stdin 대기로 timeout됐고, `spawn(..., stdio: ["ignore", "pipe", "pipe"])`로 고쳐 재실행 통과.
-  - Docker image build는 현재 코드 기준으로도 통과. Docker worker readiness는 아직 blocked: mount contract와 global cap은 pass지만 image 안에 `claude`/`codex`가 없고 Claude/Codex auth signal도 mount되지 않았다. Docker live worker smoke 전 최소 작업은 CLI 설치 방식 + auth volume/API-key mode + git credentials 확정.
-  - 범위 주의: 이 live worker smoke는 **worker probe**다. 2026-06-07에 별도로 full daemon live pipeline smoke를 호스트에서 수행했다. 이후 `PANDO_DAEMON_ENABLED=1` local daemon loop wiring이 붙었지만, one-command local run UX는 아직 후속이다.
+  - Docker readiness/live follow-up: opt-in Linux CLI install layer로 `claude 2.1.167`, `codex-cli 0.137.0`가 container에서 available해졌다. runtime image는 `ca-certificates`, `git`, `openssh-client`를 포함한다. readiness evidence는 `claude.configFilePresent`와 `codex.configDirWritable`까지 기록해 directory-only false positive를 막는다. Evidence root: `/tmp/pando-docker-live-worker-smoke-20260607/evidence`.
+  - Docker live worker smoke는 실제 실행했다. 최초 live evidence는 두 worker 모두 exit `1`: Claude는 `Not logged in`, Codex는 `no native root CA certificates found`. CA blocker를 runtime image 수정으로 제거한 뒤 `docker-live-worker-smoke-post-ca.json`을 재실행했고 readiness blockers는 `[]`, Codex는 exit `0`, Claude는 여전히 exit `1`이었다. 이 환경에서 Claude managed connector는 container로 상속되지 않으므로 다음 live pass는 `ANTHROPIC_API_KEY` 또는 container-local `claude /login` credential이 필요하다.
+  - 범위 주의: Docker live worker smoke는 **worker probe**다. Host full daemon live pipeline smoke는 별도로 완료됐고, local daemon/dashboard/API는 `pando start`로 켤 수 있다.
 - **Full daemon smoke contract (2026-06-07, branch `chore/full-daemon-live-smoke`)**:
   - `config/repos.yaml`에 `pando` self-profile을 brief-only target으로 추가했다. context providers는 비워 provider cap을 소비하지 않고, gates는 `pnpm test`/`pnpm lint`/`pnpm exec tsc --noEmit` package-action gate로 해석된다.
   - pass-path gate evidence를 DB event에 보존하도록 runner 계약을 보강했다. evidence는 command + exitCode JSON만 기록하고 worker output text는 gate 판정에 쓰지 않는다.
@@ -112,23 +113,23 @@
 - concurrency 3 self-dogfood batch 결과: `PANDO-3701` dashboard UX, `PANDO-3702` agentctl UX, `PANDO-3703` README/getting-started 모두 `DONE`. Evidence: `/tmp/pando-multi-run-20260607-024505/pando-multi-success-evidence.json`.
 - 해당 batch에서 pando가 만든 PR #36, #37, #38은 develop에 merge됐다.
 
-**다음 세션 시작점 — self-dogfood productization follow-ups.**
+**다음 세션 시작점 — pandoctl npm distribution.**
 
-W5의 최소 운영 준비와 첫 3-job self-dogfood batch는 닫혔다. 이후 운영 표면 다듬기에서 **pando start 단일 명령(#41), dashboard operations follow-up(#42), agentctl watch/smoke readiness(#40), draft PR gate(#44), pandoctl bin rename + README/docs parity(이 PR)** 가 닫혔다. 남은 우선순위는 **웹 inline brief intake → pandoctl npm distribution(roadmap PR 10) → Docker worker readiness** 다.
+W5의 최소 운영 준비와 첫 3-job self-dogfood batch는 닫혔다. 이후 운영 표면 다듬기에서 **pando start 단일 명령(#41), dashboard operations follow-up(#42), agentctl watch/smoke readiness(#40), draft PR gate(#44), pandoctl bin rename + README/docs parity(#51), real git checksum/diff gate adapter(#52), release/* base-branch routing(#53), web inline brief intake(#54), Docker worker readiness hardening(#55 + 이번 follow-up)** 이 닫혔다. 남은 roadmap 항목은 **pandoctl npm distribution(PR 10)** 하나다.
 
 ## 남아있는 작업
 
 1. ✅ **One-command local run UX** (PR #41) — `pando start`(= `pnpm pando start`) 한 번으로 `/tmp` run root 아래 local DB/worktree/config/dashboard/daemon을 켜고, dashboard URL·DB path·worktree root·종료(Ctrl+C)·cleanup(`rm -rf`)을 로그로 출력한다. port 충돌 시 다음 빈 port로 fallback한다.
-2. **Web inline brief intake** — 사용자는 웹에서 "무엇을 구현할지"와 "참고할 spec/docs/assets"를 자연어로 넣으면 된다고 기대한다. 현재는 `brief.md` 파일 경로를 직접 만들어 넘기는 개발자용 UX다. dashboard/API가 inline brief를 받아 canonical `brief.md`를 `/tmp` 또는 configured inbox에 materialize하고, SPEC 참고 문서/asset path를 WorkItem payload로 넘기는 흐름이 필요하다.
-3. ✅ **README/docs parity + pandoctl rename** (이 PR `refactor/pandoctl-cli-rename`) — `package.json` `bin`에 `pandoctl`(→ `bin/pandoctl.mjs` → `src/cli/agentctl.ts`)을 추가해 ADR-010이 예약한 운영 CLI 이름을 실제 bin으로 노출했다. `pando start`는 그대로 daemon 부트스트랩 명령으로 유지. README/README.ko/runbook이 같은 명령(`pando start`, `pandoctl …`)과 limitations를 설명하도록 맞췄다. 내부 모듈 이름 `agentctl`은 ADR-010에 따라 유지.
+2. ✅ **Web inline brief intake** (PR #54) — dashboard/API가 자연어 요청과 spec/docs/assets reference를 받아 canonical `brief.md`를 `/tmp` 또는 configured inbox에 materialize하고 WorkItem payload에 연결한다. 기존 file-path brief submit은 advanced/operator 경로로 유지된다.
+3. ✅ **README/docs parity + pandoctl rename** (PR #51) — `package.json` `bin`에 `pandoctl`(→ `bin/pandoctl.mjs` → `src/cli/agentctl.ts`)을 추가해 ADR-010이 예약한 운영 CLI 이름을 실제 bin으로 노출했다. `pando start`는 그대로 daemon 부트스트랩 명령으로 유지. README/README.ko/runbook이 같은 명령(`pando start`, `pandoctl …`)과 limitations를 설명하도록 맞췄다. 내부 모듈 이름 `agentctl`은 ADR-010에 따라 유지.
 4. ✅ **Dashboard follow-up** (PR #42) — branch/duration/cost 표시와 evidence copy를 포함한 operations follow-up을 반영했다.
 5. ✅ **Agentctl follow-up** (PR #40) — `pandoctl watch`와 `smoke readiness` command를 추가했다. API-backed mode와 local DB mode 차이는 `docs/runbooks/agentctl.md`에 문서화돼 있다.
 6. ✅ **PR-stage correctness** (PR #44) — deterministic gate로 draft PR을 강제한다.
-7. **Docker worker readiness** — 현재 single-container image는 Node daemon/API/static dashboard skeleton을 검증했다. 컨테이너 내부 Claude/Codex CLI 설치 방식, API key/auth volume, git credentials, Atlassian connector/API token fallback은 별도 smoke가 필요하다.
-8. **Gate adapter 연결** — checksum/diff/workspace scoping의 순수 계약은 완료됐지만, 실제 git diff/checksum 수집 adapter와 exit-code command scoping 연결은 후속 작업에서 필요 시 붙인다.
-9. **Release branch routing** — Jira `fixVersion` 기반 `release/*` base branch 매핑과 `WorkItem.baseBranch` override는 미해결이다.
+7. ✅ **Gate adapter 연결** (PR #52) — checksum/diff/workspace scoping의 순수 계약을 실제 git inspector adapter에 연결했다. local runtime IMPL gate가 real git diff 수집을 사용한다.
+8. ✅ **Release branch routing** (PR #53) — Jira `fixVersion` 기반 `release/*` base branch 매핑과 `WorkItem.baseBranch` override를 ADR-011과 코드/테스트로 고정했다.
+9. ✅ **Docker worker readiness** (PR #55 + 이번 follow-up) — opt-in Linux worker CLI install layer, CA bundle, git/ssh runtime, auth/git credential readiness evidence를 갖췄다. Docker live worker smoke는 실제 실행했고 post-CA rerun에서 Codex는 exit `0`, Claude는 auth blocker로 exit `1`이었다. 이 환경에서 Claude Code managed connector는 container로 상속되지 않아 실제 Docker Claude call은 `ANTHROPIC_API_KEY` 또는 container-local `claude /login` credential이 필요하다는 blocker를 evidence로 남겼다.
 10. **pandoctl npm distribution** (roadmap PR 10) — bin 이름은 `pandoctl`로 통일했지만, 빌드/번들된 npm 패키지 publish(`npm i -g pandoctl`), `better-sqlite3` native 의존성 처리, `pando start`+ops를 한 바이너리 서브커맨드로 합치는 명령 표면 통합은 아직 남아 있다.
-11. **W6 운영 확장 후보** — 3~5 job soak/nightly run, notifications, failure analytics, provider backoff, GitHub Issue/Jira write-back, auth hardening, Docker egress policy, split containers는 아직 범위 밖이다.
+11. **W6 운영 확장 후보** — Docker live worker smoke를 API-key/container-local credential로 재실행, 3~5 job soak/nightly run, notifications, failure analytics, provider backoff, GitHub Issue/Jira write-back, auth hardening, Docker egress policy, split containers는 PR 10 이후 범위다.
 
 새 세션에 그대로 전달할 상세 프롬프트는 `docs/next-session-prompt.md`에 있다.
 
@@ -140,9 +141,10 @@ W4 완료 판정:
 - ✅ acceptance 검증: fake engine + deterministic gate 성격의 unit/integration tests. 실제 Claude/Codex CLI 실행은 W4 본 구현 acceptance에서 제외
 
 W4/W5에서 의도적으로 남긴 것:
-- 실제 Claude/Codex worker 2-job probe와 host full-daemon live dogfood는 완료. `PANDO_DAEMON_ENABLED=1` local daemon loop wiring도 가능하지만, `pando start` 같은 단일 명령 UX와 Docker live worker smoke는 아직 별도 후속이다
-- Jira `fixVersion` 기반 release branch 매핑과 `WorkItem.baseBranch` override는 별도 ADR/후속 작업
-- monorepo 변경 workspace/file gate scoping의 순수 계약은 W5 PR #17에서 완료. 실제 git diff 수집/command scoping adapter 연결은 후속 작업에서 필요 시 진행
+- 실제 Claude/Codex worker 2-job probe와 host full-daemon live dogfood는 완료. `pando start`로 local daemon/dashboard/API를 켤 수 있다.
+- Docker live worker smoke는 시도 완료. Codex 쪽 image CA blocker는 제거했고 post-CA rerun에서 Codex는 exit `0`까지 확인했다. Claude managed connector는 이 환경에서 container로 상속되지 않는다. 다음 live pass는 `ANTHROPIC_API_KEY` 또는 container-local `claude /login` credential이 준비된 상태에서 재실행한다.
+- Jira `fixVersion` 기반 release branch 매핑과 `WorkItem.baseBranch` override는 PR #53/ADR-011로 완료.
+- monorepo 변경 workspace/file gate scoping의 순수 계약은 W5 PR #17에서 완료했고, 실제 git diff/checksum adapter 연결은 PR #52로 완료.
 - GitHub Issue intake/write-back, Stacked PR 자동화, provider별 정교한 backoff는 아직 범위 밖
 
 W5 우선순위(TDD):
@@ -158,8 +160,8 @@ W5 우선순위(TDD):
 - `docs/research-v1.md` — 도구/패턴 리서치 (모델명·가격은 2차 소스, 재확인 필요)
 - `docs/design-v2-multi-repo.md` — n×n 설계, `~/.ai-skills` 자산 매핑 (§4·§7 PLAN은 ADR-007 반영됨)
 - `docs/w5-operational-readiness.md` — W5 테스트 시나리오 매트릭스, dashboard/API MVP, Docker shape, W5/W6 경계
-- `docs/practical-adoption-roadmap.md` — PR #36~#38 이후 pando self-dogfood productization 순서(one-command local run, web inline brief intake, README/docs parity, dashboard/agentctl follow-up, Docker worker readiness)와 "pando에게 시키는 법"
-- `docs/adr/` — 001~009. **009**는 W5 dashboard/API/deploy 기본값(Vite React SPA + Hono + single container)을 고정한다. 바꾸려면 새 ADR 먼저
+- `docs/practical-adoption-roadmap.md` — PR #36~#55 이후 상태와 남은 PR 10(`pandoctl` npm distribution), Docker live worker credential blocker, "pando에게 시키는 법"
+- `docs/adr/` — 001~011. **009**는 W5 dashboard/API/deploy 기본값(Vite React SPA + Hono + single container)을 고정하고, **011**은 release/* base-branch routing을 고정한다. 바꾸려면 새 ADR 먼저
 - `docs/repo-structure.md` — 구조·인터페이스
 - `docs/engineering-standards.md` — 개발 방법론 (superpowers + agent-skills 채택분)
 - `docs/w1-runbook.md` — W1 절차 + 실행 로그

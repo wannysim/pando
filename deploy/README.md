@@ -1,6 +1,6 @@
 # Docker Deployment
 
-This is the W5 single-container skeleton. One container owns the Node daemon process, Hono API, static dashboard assets, and SQLite file.
+This is the W5 single-container runtime. One container owns the Node daemon process, Hono API, static dashboard assets, SQLite file, and the minimal runtime tools needed by workers (`ca-certificates`, `git`, `openssh-client`). Worker CLIs are still opt-in so the default image stays secret-free.
 
 ## Mount Contract
 
@@ -59,10 +59,12 @@ docker build -f deploy/Dockerfile --build-arg INSTALL_WORKER_CLIS=true .
 Versions are pinned via build args so the shipped image matches the tested host
 CLIs (defaults: `CLAUDE_CLI_VERSION=2.1.167`, `CODEX_CLI_VERSION=0.137.0`; override
 with `PANDO_CLAUDE_CLI_VERSION` / `PANDO_CODEX_CLI_VERSION`). Default is `false`, so
-the base image stays lean and secret-free. Then mount only the auth volumes
-(below). This yields a self-contained, cross-platform image at the cost of a
-larger image. Verified 2026-06-07: this layer plus the auth volumes drives the
-docker readiness probe to `blockers: []` (`workerCli.pass: true`).
+the base image stays lean and secret-free. Then provide auth (below). This yields
+a self-contained, cross-platform image at the cost of a larger image. Verified
+2026-06-07: this layer makes the docker readiness probe report
+`workerCli.pass: true` for `claude 2.1.167` and `codex-cli 0.137.0`. The runtime
+image also installs `ca-certificates`; without it Codex can fail live calls with
+`no native root CA certificates found`.
 
 ### Auth strategy and the managed-connector question
 
@@ -70,25 +72,29 @@ docker readiness probe to `blockers: []` (`workerCli.pass: true`).
 the claude.ai managed connector** rather than receiving an injected
 `--mcp-config`. That inheritance reads from `~/.claude` on the host.
 
-Whether that inheritance survives *inside the container* is **not yet verified
-live** (no live Docker worker smoke has run — see the runbook for why). Two
-outcomes, in order of preference:
+In this macOS Docker environment, that inheritance **does not survive inside the
+container**. Live probes with mounted host `.claude`, `.claude.json`, matching
+`HOME`, and a copied config directory still returned `Not logged in · Please run /login`.
+Treat mounted Claude host files as a readiness signal only, not as proof of usable
+live model auth.
 
-1. **Connector inheritance works.** Mount `~/.claude` (and `~/.codex`) read-only at
-   `/root/.claude` and `/root/.codex`. No API key needed. This is the default the
-   compose comments describe.
-2. **Connector inheritance does NOT work in the container.** Then fall back to:
-   - **API-key mode** — set `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` from the host env
-     or an untracked `.env` file (never committed). This bypasses the managed
-     connector for model access.
-   - **Jira REST fallback** — if the Atlassian MCP connector specifically cannot be
-     inherited, intake/context can fall back to direct Jira REST with a host-provided
-     token instead of the MCP tool.
+Supported Docker auth paths are now:
 
-   Both fallbacks are **ADR candidates**, not yet decided. They would amend or
-   sit beside ADR-004 (which currently assumes host connector inheritance). Do not
-   treat them as implemented until a live Docker smoke confirms which path is
-   needed and a new ADR records it.
+1. **API-key mode for Docker live smoke** — set `ANTHROPIC_API_KEY` (and
+   `OPENAI_API_KEY` if you do not use Codex's persisted auth) from the host env or
+   an untracked `.env` file. Never commit these values. This bypasses the managed
+   connector for model access.
+2. **Container-local CLI login** — run `claude /login` inside a throwaway or
+   persisted, untracked Docker volume, then mount that volume as the container's
+   Claude config. This keeps secrets out of the image but avoids macOS keychain /
+   host connector assumptions.
+3. **Jira REST fallback** — if the Atlassian MCP connector specifically cannot be
+   inherited, intake/context can fall back to direct Jira REST with a host-provided
+   token instead of the MCP tool. This remains an ADR candidate before product use.
+
+Codex auth has a separate runtime constraint: `CODEX_HOME` must be writable for
+live runs because the CLI writes local state before/during model calls. A
+read-only `~/.codex` mount can pass directory-presence checks but fail live.
 
 ### Git credentials / deploy key
 
@@ -120,8 +126,12 @@ container, see `docs/runbooks/two-job-smoke.md`) writes structured JSON that
 pinpoints which class of blocker is open:
 
 - `checks.workerCli.commands.claude/codex.available` — CLI blocker (mount #1 missing).
-- `checks.auth.signals.claude/codex` — auth blocker (mount #2 / API key missing).
-  Booleans only; no secret values are recorded.
+- `checks.auth.signals.claude.configFilePresent` — Claude config-file presence
+  blocker when no `ANTHROPIC_API_KEY` is provided. Booleans only; no secret values
+  are recorded. Note: presence still does not prove managed connector inheritance
+  works in Docker; the live probe is the final check.
+- `checks.auth.signals.codex.configDirWritable` — Codex auth-home writability
+  blocker when no `OPENAI_API_KEY` is provided.
 - `checks.gitCreds.signals` — git push / PR credential presence: `deployKeyPresent`,
   `knownHostsPresent`, `credentialStorePresent`, `gitconfigPresent`, `tokenEnvPresent`,
   plus `sshReady` / `httpsReady` and an overall `gitCreds.pass`. Booleans only
@@ -135,3 +145,10 @@ so a missing deploy key / credential store does not fail readiness. It surfaces 
 PR-stage prerequisite so you can confirm push/PR creation will work before a full
 pipeline run. `gitCreds.pass: false` with everything else green means workers can
 run but the PR stage still needs a credential mount.
+
+2026-06-07 live attempt summary: the Docker live worker probe ran inside the CLI
+image. Codex initially failed because the image lacked native CA certificates; the
+runtime now installs `ca-certificates`, and the post-CA rerun had Codex exit `0`
+with readiness blockers `[]`. Claude still failed with `Not logged in` because the
+host managed connector did not authenticate inside the container. Next live pass
+requires `ANTHROPIC_API_KEY` or a container-local `claude /login` credential.

@@ -20,7 +20,7 @@ It processes many repos × many tickets in flight, distinguishing company repos 
 
 ## Status
 
-Early implementation. A one-command local run (`pando start`) boots the daemon and dashboard, and brief-based self-dogfood against the pando repo works, but brief intake is still file-path based and worker auth/CLIs must be set up by hand. See the design docs under [docs/](./docs) (written in Korean):
+Early implementation. A one-command local run (`pando start`) boots the daemon and dashboard, inline natural-language brief intake is available in the dashboard/API, and brief-based self-dogfood against the pando repo works. Host worker smoke and host full-daemon dogfood have passed; Docker worker readiness is narrowed to explicit CLI/auth/git evidence. The remaining roadmap item is the real `pandoctl` npm distribution. See the design docs under [docs/](./docs) (written in Korean):
 
 - [research-v1.md](./docs/research-v1.md) — tooling & pattern research
 - [design-v2-multi-repo.md](./docs/design-v2-multi-repo.md) — n×n design built on reusable agent-skill assets
@@ -54,7 +54,7 @@ It prints the dashboard URL (`http://127.0.0.1:3210/dashboard`), the DB path, th
 
 ### Submit a brief job
 
-Follow the [runbook](./docs/runbooks/local-pando-runner.md) "Submit a brief" section to queue a job with your brief path.
+Use the dashboard inline brief form for the normal path: write the natural-language request and optional spec/doc/asset references, and pando materializes the canonical `brief.md` outside the repo before enqueueing. The file-path brief submit flow still exists as an advanced/operator path; see the [runbook](./docs/runbooks/local-pando-runner.md) "Submit a brief" section.
 
 ### Check status and stop
 
