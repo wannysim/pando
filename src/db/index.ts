@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { DatabaseSync } from "node:sqlite";
+import Database from "better-sqlite3";
 import { STAGE_ORDER } from "../core/state-machine";
 import type { JobStatus, RepoProfile, StageName, WorkItem } from "../core/types";
 
@@ -85,11 +85,11 @@ export function createSqliteJobStore(opts: SqliteJobStoreOptions): JobStore {
 }
 
 class SqliteJobStore implements JobStore {
-  private readonly db: DatabaseSync;
+  private readonly db: Database.Database;
   private readonly now: () => string;
 
   constructor(path: string, now: () => string) {
-    this.db = new DatabaseSync(path);
+    this.db = new Database(path);
     this.now = now;
     this.db.exec(readFileSync(schemaPath, "utf8"));
   }
