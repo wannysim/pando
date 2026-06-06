@@ -50,6 +50,13 @@ describe("collectChangedFiles", () => {
     const repo = await createRepo();
     await expect(collectChangedFiles(repo, "develop")).resolves.toEqual([]);
   });
+
+  it("wraps git failures with the failing command for non-repository directories", async () => {
+    const root = await mkdtemp(join(tmpdir(), "pando-git-inspector-bare-"));
+    roots.push(root);
+
+    await expect(collectChangedFiles(root, "develop")).rejects.toThrow(/git diff .* failed/i);
+  });
 });
 
 describe("collectFileChecksums", () => {
@@ -70,6 +77,11 @@ describe("collectFileChecksums", () => {
     // Same content yields a stable checksum.
     const again = await collectFileChecksums(repo, ["src/keep.ts"]);
     expect(again[0]?.checksum).toBe(checksums[0]?.checksum);
+  });
+
+  it("rethrows non-ENOENT read errors such as reading a directory", async () => {
+    const repo = await createRepo();
+    await expect(collectFileChecksums(repo, ["src"])).rejects.toMatchObject({ code: "EISDIR" });
   });
 });
 
@@ -93,24 +105,18 @@ describe("collectWorktreeDiff", () => {
 });
 
 async function createRepo(): Promise<string> {
-  const root = await mkdtemp(join(tmpdir(), "pando-git-inspector-"));
-  roots.push(root);
+  const repo = await mkdtemp(join(tmpdir(), "pando-git-inspector-"));
+  roots.push(repo);
 
-  const origin = join(root, "origin.git");
-  const repo = join(root, "repo");
-
-  await git(root, ["init", "--bare", origin]);
-  await git(root, ["clone", origin, repo]);
+  await git(repo, ["init", "-b", "develop"]);
   await git(repo, ["config", "user.email", "test@example.invalid"]);
   await git(repo, ["config", "user.name", "Pando Test"]);
-  await git(repo, ["switch", "-c", "develop"]);
   await mkdir(join(repo, "src"), { recursive: true });
   await writeFile(join(repo, "src/keep.ts"), "export const keep = 1;\n");
   await writeFile(join(repo, "src/remove.ts"), "export const remove = 1;\n");
   await writeFile(join(repo, "src/move-from.ts"), "export const move = 1;\n");
   await git(repo, ["add", "-A"]);
   await git(repo, ["commit", "-m", "seed"]);
-  await git(repo, ["push", "-u", "origin", "develop"]);
 
   return repo;
 }
