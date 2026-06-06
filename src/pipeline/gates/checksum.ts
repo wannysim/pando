@@ -53,6 +53,33 @@ export function createChecksumGate(expected: ChecksumManifest, actual: ChecksumM
   };
 }
 
+export type CollectChecksumsPort = (
+  worktree: string,
+  paths: readonly string[],
+) => Promise<readonly ChecksumFile[]>;
+
+export interface WorktreeChecksumGateOptions {
+  expected: ChecksumManifest;
+  collectChecksums: CollectChecksumsPort;
+}
+
+export function createWorktreeChecksumGate(opts: WorktreeChecksumGateOptions): Gate {
+  return {
+    name: "checksum",
+    async check(ctx) {
+      if (opts.expected.entries.length === 0) return { pass: true };
+      const files = await opts.collectChecksums(
+        ctx.worktree,
+        opts.expected.entries.map((entry) => entry.path),
+      );
+      const actual: ChecksumManifest = {
+        entries: files.map((file) => ({ checksum: file.checksum, path: file.path })),
+      };
+      return evaluateChecksumManifest(opts.expected, actual);
+    },
+  };
+}
+
 export function evaluateChecksumManifest(
   expected: ChecksumManifest,
   actual: ChecksumManifest,

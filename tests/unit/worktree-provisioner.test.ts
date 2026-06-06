@@ -58,6 +58,44 @@ describe("createWorktreeProvisioner", () => {
     expect(isolation?.env.PORT).toBe(String(isolation?.port));
   });
 
+  it("branches from the resolved base branch for a release-routed Jira item", async () => {
+    const calls: EnsureWorktreeOptions[] = [];
+    const provisioner = createWorktreeProvisioner({
+      ensureWorktree: async (opts) => {
+        calls.push(opts);
+        return { branch: opts.branch, path: "/worktrees/web/feat-DEMO-4001", reused: false };
+      },
+      worktreeRoot: "/worktrees",
+    });
+
+    await provisioner.ensure({
+      branch: "feat/DEMO-4001",
+      item: { ...workItem(), payload: { fixVersion: "1.0", kind: "jira", ticketKey: "DEMO-4001" } },
+      profile: { ...repoProfile(), releaseBranchTemplate: "release/{fixVersion}" },
+    });
+
+    expect(calls[0]?.baseBranch).toBe("release/1.0");
+  });
+
+  it("honors an explicit WorkItem.baseBranch override", async () => {
+    const calls: EnsureWorktreeOptions[] = [];
+    const provisioner = createWorktreeProvisioner({
+      ensureWorktree: async (opts) => {
+        calls.push(opts);
+        return { branch: opts.branch, path: "/worktrees/web/feat-DEMO-4001", reused: false };
+      },
+      worktreeRoot: "/worktrees",
+    });
+
+    await provisioner.ensure({
+      branch: "feat/DEMO-4001",
+      item: { ...workItem(), baseBranch: "release/9.9" },
+      profile: { ...repoProfile(), releaseBranchTemplate: "release/{fixVersion}" },
+    });
+
+    expect(calls[0]?.baseBranch).toBe("release/9.9");
+  });
+
   it("fails fast when the repo profile has no detected package manager", async () => {
     const provisioner = createWorktreeProvisioner({
       ensureWorktree: async (): Promise<EnsureWorktreeResult> => {

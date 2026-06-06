@@ -7,6 +7,7 @@ import { STAGE_ORDER } from "../core/state-machine";
 import type { JobStatus, StageName, WorkItem } from "../core/types";
 import type { JobEventRecord, JobStore } from "../db/index";
 import { loadBriefWorkItem, type BriefFileReader } from "../intake/brief";
+import { buildJiraWorkItem } from "../intake/jira";
 import { removeWorktree } from "../worktree/manager";
 
 export interface WorktreeCleaner {
@@ -235,14 +236,14 @@ function parseArgs(args: readonly string[]): ParsedArgs {
 }
 
 function jiraWorkItem(id: string, parsed: ParsedArgs): WorkItem {
-  return {
+  return buildJiraWorkItem({
+    baseBranch: optional(parsed, "base-branch"),
     branch: optional(parsed, "branch"),
-    id,
-    payload: { kind: "jira", ticketKey: id },
+    fixVersion: optional(parsed, "fix-version"),
     repo: required(parsed, "repo"),
-    source: "jira",
-    title: optional(parsed, "title") ?? id,
-  };
+    ticketKey: id,
+    title: optional(parsed, "title"),
+  });
 }
 
 async function briefWorkItem(parsed: ParsedArgs, reader: BriefFileReader): Promise<WorkItem> {
@@ -567,7 +568,7 @@ function optional(parsed: ParsedArgs, key: string): string | undefined {
 function usage(): string {
   return [
     "usage:",
-    "agentctl submit jira <ticket> --repo <repo> [--title <title>] [--branch <branch>]",
+    "agentctl submit jira <ticket> --repo <repo> [--title <title>] [--branch <branch>] [--fix-version <v>] [--base-branch <branch>]",
     "agentctl submit brief --repo <repo> --id <id> [--title <title>] [--brief-path <path>]",
     "agentctl list [--status <status>] [--watch] [--interval <ms>] [--max-polls <n>]",
     "agentctl daemon status",

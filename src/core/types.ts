@@ -19,9 +19,11 @@ export interface WorkItem {
   source: WorkItemSource;
   title: string;
   branch?: string;
+  /** Explicit base-branch override. Highest precedence in resolveBaseBranch (ADR-011). */
+  baseBranch?: string;
   dependsOn?: string[];
   payload:
-    | { kind: "jira"; ticketKey: string }
+    | { kind: "jira"; ticketKey: string; fixVersion?: string }
     | { kind: "brief"; briefPath: string; assets?: string[] }
     | { kind: "github_issue"; owner: string; repo: string; issueNumber: number };
 }
@@ -37,6 +39,11 @@ export interface RepoProfile {
   /** Backward-compatible provider list for W2 callers. Prefer context.providers. */
   contextProviders: ContextProvider[];
   conventions: string; // 스킬 이름 또는 "repo-local"
+  /**
+   * Optional template that maps a Jira fixVersion onto a base branch (ADR-011).
+   * `{fixVersion}` is substituted with the ticket's fixVersion, e.g. "release/{fixVersion}".
+   */
+  releaseBranchTemplate?: string;
   packageManager?: PackageManager;
   setup: PackageAction;
   gates: { test: PackageAction; lint?: PackageAction; types?: PackageAction };

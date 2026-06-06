@@ -20,7 +20,7 @@ SPEC -> PLAN -> TEST -> IMPL <-> REVIEW -> PR (draft)
 
 ## 상태
 
-초기 구현 단계입니다. 로컬 daemon/dashboard와 pando 자기 자신을 대상으로 한 brief 기반 self-dogfood는 동작하지만, 실행 UX는 아직 개발자용입니다. 자세한 설계 문서는 [docs/](./docs)를 참고하세요.
+초기 구현 단계입니다. 단일 명령 로컬 실행(`pando start`)으로 daemon과 dashboard를 띄울 수 있고, pando 자기 자신을 대상으로 한 brief 기반 self-dogfood도 동작합니다. 다만 brief 입력은 아직 파일 경로 기반이고, worker 인증/CLI는 직접 설정해야 합니다. 자세한 설계 문서는 [docs/](./docs)를 참고하세요.
 
 - [research-v1.md](./docs/research-v1.md) — 도구와 패턴 리서치
 - [design-v2-multi-repo.md](./docs/design-v2-multi-repo.md) — 재사용 가능한 agent-skill 자산 기반 n x n 설계
@@ -44,7 +44,13 @@ pnpm install
 
 ### daemon/dashboard 시작
 
-[runbook](./docs/runbooks/local-pando-runner.md)의 "Start local pando" 섹션에 따라 환경 변수를 설정하고 `pnpm start`를 실행한 뒤, `http://127.0.0.1:3210/dashboard`를 엽니다.
+한 번의 명령으로 `/tmp` run root 아래에 로컬 DB, worktree root, config, dashboard, daemon을 함께 띄웁니다.
+
+```bash
+pnpm pando start            # 또는 `pnpm link --global` 후 `pando start`
+```
+
+dashboard URL(`http://127.0.0.1:3210/dashboard`), DB 경로, worktree root, 종료/정리 방법을 로그로 출력합니다. 환경 변수를 직접 제어하려면 [runbook](./docs/runbooks/local-pando-runner.md)의 "Start local pando (manual env path)" 섹션을 참고하세요.
 
 ### brief job 제출
 
@@ -52,14 +58,15 @@ pnpm install
 
 ### 상태 확인과 종료
 
-CLI 이름은 **`pandoctl`** 입니다 ([npm](https://www.npmjs.com/package/pandoctl)에 예약 — 맨 이름 `pando`는 이미 선점됨). 로컬에서는 `pandoctl` package script로 실행합니다.
+운영 CLI 이름은 **`pandoctl`** 입니다 ([npm](https://www.npmjs.com/package/pandoctl)에 예약 — 맨 이름 `pando`는 이미 선점됨, [ADR-010](./docs/adr/010-cli-name-pandoctl.md) 참고). `pandoctl` bin은 운영 CLI에 연결되고, 위의 `pando start`는 별개의 daemon 부트스트랩 명령입니다. 아래는 모두 같은 진입점입니다.
 
 ```bash
-pnpm pandoctl list          # 실행 중인 daemon에 붙으려면 앞에 PANDO_API_URL=... 를 붙인다
+pnpm pandoctl list          # package script (실행 중인 daemon에 붙으려면 앞에 PANDO_API_URL=... 를 붙인다)
+pandoctl list               # `pnpm link --global` / `npm i -g .` 후 전역 bin
 pnpm pandoctl show <id>
 ```
 
-전체 env var prefix는 runbook을 참고하세요. 종료는 `pnpm start` 프로세스에서 **Ctrl-C**를 누릅니다. 임시 산출물은 `/tmp` 아래에 생성되며 실행 후 삭제할 수 있습니다.
+전체 env var prefix는 runbook을 참고하세요. 종료는 `pando start`(또는 `pnpm start`) 프로세스에서 **Ctrl-C**를 누릅니다. 임시 산출물은 `/tmp` 아래에 생성되며 실행 후 삭제할 수 있습니다.
 
 ## 개발
 
