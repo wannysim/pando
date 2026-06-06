@@ -329,6 +329,11 @@ code {
   overflow-wrap: anywhere;
 }
 
+.context-strip {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin: 14px 0 0;
+}
+
 .event-list {
   display: grid;
   gap: 8px;
@@ -348,6 +353,37 @@ code {
   gap: 10px;
   flex-wrap: wrap;
   color: #52616f;
+}
+
+.event-status {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 4px;
+  background: #eef1f2;
+  color: #43505c;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 0 4px;
+}
+
+.event-status.failed {
+  background: #f9e8e8;
+  color: #8b2f34;
+}
+
+.event-status.done {
+  background: #e6f3ea;
+  color: #21633c;
+}
+
+.event-reason {
+  margin: 6px 0 0;
+  color: #3d4a57;
+  font-size: 13px;
+}
+
+.event-evidence {
+  margin: 4px 0 0;
 }
 
 .brief-form {
