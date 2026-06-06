@@ -87,14 +87,8 @@ describe("loadStageConfigFromYaml", () => {
   it("resolves source-specific allowed tools before falling back to stage tools", () => {
     const config = loadStageConfigFromYaml(YAML);
 
-    expect(resolveStageAllowedTools(config, "spec", "brief")).toEqual([
-      "Read",
-      "Glob",
-      "Grep",
-    ]);
-    expect(resolveStageAllowedTools(config, "spec", "jira")).toContain(
-      "mcp__claude_ai_Atlassian",
-    );
+    expect(resolveStageAllowedTools(config, "spec", "brief")).toEqual(["Read", "Glob", "Grep"]);
+    expect(resolveStageAllowedTools(config, "spec", "jira")).toContain("mcp__claude_ai_Atlassian");
     expect(resolveStageAllowedTools(config, "plan", "brief")).toContain("Bash(git *)");
   });
 
@@ -105,21 +99,21 @@ describe("loadStageConfigFromYaml", () => {
   });
 
   it("rejects invalid engines and malformed allowed_tools with field paths", () => {
+    expect(() => loadStageConfigFromYaml(YAML.replace("engine: codex", "engine: aider"))).toThrow(
+      /stages\.test\.engine/i,
+    );
     expect(() =>
-      loadStageConfigFromYaml(YAML.replace("engine: codex", "engine: aider")),
-    ).toThrow(/stages\.test\.engine/i);
-    expect(() =>
-      loadStageConfigFromYaml(YAML.replace(
-        "brief: [Read, Glob, Grep]",
-        "brief: Read",
-      )),
+      loadStageConfigFromYaml(YAML.replace("brief: [Read, Glob, Grep]", "brief: Read")),
     ).toThrow(/stages\.spec\.allowed_tools_by_source\.brief/i);
   });
 
   it("rejects ambiguous skill declarations", () => {
     expect(() =>
       loadStageConfigFromYaml(
-        YAML.replace("skill: implement-jira", "skill: implement-jira\n    skills:\n      jira: other"),
+        YAML.replace(
+          "skill: implement-jira",
+          "skill: implement-jira\n    skills:\n      jira: other",
+        ),
       ),
     ).toThrow(/stages\.plan.*skill/i);
   });

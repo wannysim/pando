@@ -100,7 +100,9 @@ describe("spec artifact validation", () => {
     const spec = parseSpecArtifact("# Example spec\n\n## Requirements Overview\n\n- Build it\n");
 
     expect(spec.title).toBe("Example spec");
-    expect(validateSpecArtifact("# Example spec\n\n## Requirements Overview\n\n- Build it\n")).toEqual({
+    expect(
+      validateSpecArtifact("# Example spec\n\n## Requirements Overview\n\n- Build it\n"),
+    ).toEqual({
       errors: [],
       valid: true,
     });

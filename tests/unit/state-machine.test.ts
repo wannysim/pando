@@ -79,20 +79,14 @@ describe("review rework", () => {
   });
 
   it("rejects CHANGES_REQUESTED outside REVIEW", () => {
-    expect(() => transition(at("IMPL"), { type: "CHANGES_REQUESTED" }, BUDGET)).toThrow(
-      /invalid/i,
-    );
+    expect(() => transition(at("IMPL"), { type: "CHANGES_REQUESTED" }, BUDGET)).toThrow(/invalid/i);
   });
 });
 
 describe("escalation", () => {
   it("BLOCKING_QUESTIONS: SPEC or PLAN → ESCALATED", () => {
-    expect(transition(at("SPEC"), { type: "BLOCKING_QUESTIONS" }, BUDGET).status).toBe(
-      "ESCALATED",
-    );
-    expect(transition(at("PLAN"), { type: "BLOCKING_QUESTIONS" }, BUDGET).status).toBe(
-      "ESCALATED",
-    );
+    expect(transition(at("SPEC"), { type: "BLOCKING_QUESTIONS" }, BUDGET).status).toBe("ESCALATED");
+    expect(transition(at("PLAN"), { type: "BLOCKING_QUESTIONS" }, BUDGET).status).toBe("ESCALATED");
   });
 
   it("rejects BLOCKING_QUESTIONS after PLAN", () => {

@@ -1,9 +1,4 @@
-import {
-  chmod,
-  mkdtemp,
-  rm,
-  writeFile,
-} from "node:fs/promises";
+import { chmod, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -74,7 +69,7 @@ describe("ClaudeCodeEngine", () => {
     const calls: Parameters<CommandRunner>[] = [];
     const runner: CommandRunner = async (...args) => {
       calls.push(args);
-      return { exitCode: 0, stderr: "warn\n", stdout: "{\"ok\":true}\n" };
+      return { exitCode: 0, stderr: "warn\n", stdout: '{"ok":true}\n' };
     };
     const engine = new ClaudeCodeEngine({ command: "claude-test", runner });
 
@@ -88,7 +83,7 @@ describe("ClaudeCodeEngine", () => {
 
     expect(result).toEqual({
       ok: true,
-      output: "{\"ok\":true}\nwarn\n",
+      output: '{"ok":true}\nwarn\n',
     });
     expect(calls).toHaveLength(1);
     expect(calls[0]?.[0]).toBe("claude-test");
@@ -115,7 +110,9 @@ describe("ClaudeCodeEngine", () => {
   });
 
   it("collects successful CLI output through the default execFile runner", async () => {
-    const command = await fakeExecutable("process.stdout.write('ok\\n'); process.stderr.write('warn\\n');");
+    const command = await fakeExecutable(
+      "process.stdout.write('ok\\n'); process.stderr.write('warn\\n');",
+    );
     const engine = new ClaudeCodeEngine({ command });
 
     await expect(

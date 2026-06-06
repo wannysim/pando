@@ -6,10 +6,7 @@ describe("SqliteJobStore", () => {
   it("enqueues jobs and claims exactly one runnable job", () => {
     const store = createSqliteJobStore({
       path: ":memory:",
-      now: fixedClock([
-        "2026-06-06T00:00:00.000Z",
-        "2026-06-06T00:00:01.000Z",
-      ]),
+      now: fixedClock(["2026-06-06T00:00:00.000Z", "2026-06-06T00:00:01.000Z"]),
     });
 
     store.enqueueJob({ item: workItem("DEMO-1001"), retryBudget: 3 });

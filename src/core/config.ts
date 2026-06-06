@@ -1,10 +1,5 @@
 import { parse } from "yaml";
-import type {
-  ContextProvider,
-  PackageAction,
-  PackageManager,
-  RepoProfile,
-} from "./types";
+import type { ContextProvider, PackageAction, PackageManager, RepoProfile } from "./types";
 
 export type { PackageAction, PackageManager } from "./types";
 
@@ -85,19 +80,12 @@ function parseIntake(repo: Record<string, unknown>, name: string): RepoProfile["
   if (repo.intake !== undefined) {
     const intake = asRecord(repo.intake, `${name}.intake`);
     return {
-      sources: requiredNonEmptyEnumArray(
-        intake.sources,
-        INTAKE_SOURCES,
-        name,
-        "intake.sources",
-      ),
+      sources: requiredNonEmptyEnumArray(intake.sources, INTAKE_SOURCES, name, "intake.sources"),
     };
   }
 
   return {
-    sources: [
-      requiredEnum(repo.work_item_source, INTAKE_SOURCES, name, "work_item_source"),
-    ],
+    sources: [requiredEnum(repo.work_item_source, INTAKE_SOURCES, name, "work_item_source")],
   };
 }
 
@@ -112,11 +100,7 @@ function parseContext(repo: Record<string, unknown>, name: string): RepoProfile[
 
   return {
     policyRefs: [],
-    providers: optionalContextProviderArray(
-      repo.context_providers,
-      name,
-      "context_providers",
-    ),
+    providers: optionalContextProviderArray(repo.context_providers, name, "context_providers"),
   };
 }
 
@@ -237,11 +221,7 @@ function requiredStringArray(value: unknown, repo: string, field: string): strin
   return value;
 }
 
-function optionalStringArray(
-  value: unknown,
-  repo: string,
-  field: string,
-): string[] | undefined {
+function optionalStringArray(value: unknown, repo: string, field: string): string[] | undefined {
   if (value === undefined) return undefined;
   return requiredStringArray(value, repo, field);
 }

@@ -5,24 +5,16 @@ import {
   type EnsureWorktreeOptions,
   type EnsureWorktreeResult,
 } from "../worktree/manager";
-import type {
-  WorktreeProvisioner,
-  WorktreeProvisionInput,
-  WorktreeProvisionResult,
-} from "./loop";
+import type { WorktreeProvisioner, WorktreeProvisionInput, WorktreeProvisionResult } from "./loop";
 
 export interface WorktreeProvisionerOptions {
   worktreeRoot: string;
   ensureWorktree?: EnsureWorktreePort;
 }
 
-export type EnsureWorktreePort = (
-  opts: EnsureWorktreeOptions,
-) => Promise<EnsureWorktreeResult>;
+export type EnsureWorktreePort = (opts: EnsureWorktreeOptions) => Promise<EnsureWorktreeResult>;
 
-export function createWorktreeProvisioner(
-  opts: WorktreeProvisionerOptions,
-): WorktreeProvisioner {
+export function createWorktreeProvisioner(opts: WorktreeProvisionerOptions): WorktreeProvisioner {
   const ensureWorktree = opts.ensureWorktree ?? defaultEnsureWorktree;
 
   return {

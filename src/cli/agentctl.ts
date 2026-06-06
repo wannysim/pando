@@ -14,10 +14,7 @@ export interface AgentctlOptions {
   defaultRetryBudget?: number;
 }
 
-export async function runAgentctl(
-  args: readonly string[],
-  opts: AgentctlOptions,
-): Promise<number> {
+export async function runAgentctl(args: readonly string[], opts: AgentctlOptions): Promise<number> {
   const stdout = opts.stdout ?? (() => {});
   const stderr = opts.stderr ?? (() => {});
 
@@ -223,12 +220,7 @@ function nodeFileReader(): BriefFileReader {
 }
 
 function isNotFound(error: unknown): boolean {
-  return (
-    typeof error === "object" &&
-    error !== null &&
-    "code" in error &&
-    error.code === "ENOENT"
-  );
+  return typeof error === "object" && error !== null && "code" in error && error.code === "ENOENT";
 }
 
 function isDirectRun(): boolean {

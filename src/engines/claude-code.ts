@@ -1,10 +1,6 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import type {
-  WorkerEngine,
-  WorkerResult,
-  WorkerRunOptions,
-} from "../core/types";
+import type { WorkerEngine, WorkerResult, WorkerRunOptions } from "../core/types";
 
 const execFileAsync = promisify(execFile);
 

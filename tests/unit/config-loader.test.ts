@@ -1,9 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  loadRepoProfilesFromYaml,
-  packageCommand,
-  type FileProbe,
-} from "../../src/core/config";
+import { loadRepoProfilesFromYaml, packageCommand, type FileProbe } from "../../src/core/config";
 
 const YAML = `
 repos:
@@ -142,10 +138,13 @@ describe("loadRepoProfilesFromYaml", () => {
     ).rejects.toThrow(/web.*context\.providers/i);
 
     await expect(
-      loadRepoProfilesFromYaml(YAML.replace("providers: [confluence, figma]", "providers: [jira]"), {
-        homeDir: "/Users/me",
-        files: probe(["/Users/me/Github/web/yarn.lock"]),
-      }),
+      loadRepoProfilesFromYaml(
+        YAML.replace("providers: [confluence, figma]", "providers: [jira]"),
+        {
+          homeDir: "/Users/me",
+          files: probe(["/Users/me/Github/web/yarn.lock"]),
+        },
+      ),
     ).rejects.toThrow(/web.*context\.providers/i);
   });
 

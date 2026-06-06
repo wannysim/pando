@@ -1,8 +1,5 @@
 import { join } from "node:path";
-import {
-  validatePlanArtifact,
-  validateSpecArtifact,
-} from "../../core/artifacts";
+import { validatePlanArtifact, validateSpecArtifact } from "../../core/artifacts";
 import type { Gate, GateContext, GateResult } from "../../core/types";
 
 export interface TextFileReader {

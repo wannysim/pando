@@ -3,12 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { runAgentctl } from "../../src/cli/agentctl";
-import type {
-  JobEventRecord,
-  JobRecord,
-  JobStore,
-  RetryJobInput,
-} from "../../src/db/index";
+import type { JobEventRecord, JobRecord, JobStore, RetryJobInput } from "../../src/db/index";
 import type { RepoProfile, WorkItem } from "../../src/core/types";
 
 describe("runAgentctl", () => {
@@ -131,9 +126,7 @@ describe("runAgentctl", () => {
     );
 
     expect(exitCode).toBe(0);
-    expect(store.jobs.get("personal-site-20260606-a")?.item.title).toBe(
-      "Refresh home page",
-    );
+    expect(store.jobs.get("personal-site-20260606-a")?.item.title).toBe("Refresh home page");
   });
 
   it("reports missing brief files from the default disk reader", async () => {
@@ -230,9 +223,7 @@ describe("runAgentctl", () => {
     );
 
     expect(exitCode).toBe(0);
-    expect(store.retries).toEqual([
-      { attemptsLeft: 4, from: "IMPL", jobId: "DEMO-3003" },
-    ]);
+    expect(store.retries).toEqual([{ attemptsLeft: 4, from: "IMPL", jobId: "DEMO-3003" }]);
     expect(output).toEqual(["retry queued DEMO-3003 from IMPL"]);
   });
 

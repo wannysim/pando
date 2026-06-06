@@ -1,20 +1,10 @@
 import { execFile } from "node:child_process";
-import {
-  mkdir,
-  mkdtemp,
-  readFile,
-  rm,
-  writeFile,
-} from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import { promisify } from "node:util";
 import { afterEach, describe, expect, it } from "vitest";
-import {
-  branchSlug,
-  ensureWorktree,
-  worktreePathFor,
-} from "../../src/worktree/manager";
+import { branchSlug, ensureWorktree, worktreePathFor } from "../../src/worktree/manager";
 
 const execFileAsync = promisify(execFile);
 const roots: string[] = [];

@@ -14,11 +14,7 @@ import type {
   WorkItem,
   WorkerEngine,
 } from "../core/types";
-import type {
-  StageConfig,
-  WorkerEngineName,
-  WorkerStageKey,
-} from "../core/stage-config";
+import type { StageConfig, WorkerEngineName, WorkerStageKey } from "../core/stage-config";
 import { resolveStageAllowedTools } from "../core/stage-config";
 
 export interface PipelineRunnerOptions {
@@ -94,13 +90,7 @@ export async function runPipeline(opts: PipelineRunnerOptions): Promise<Pipeline
     }
 
     if (stageResult === "blocking") {
-      state = await applyTransition(
-        state,
-        { type: "BLOCKING_QUESTIONS" },
-        budget,
-        opts,
-        stage,
-      );
+      state = await applyTransition(state, { type: "BLOCKING_QUESTIONS" }, budget, opts, stage);
       continue;
     }
 
@@ -174,11 +164,7 @@ function canEscalateBlockingQuestions(stage: StageName): boolean {
   return stage === "SPEC" || stage === "PLAN";
 }
 
-function failedGateEvent(
-  stage: StageName,
-  gateName: string,
-  result: GateResult,
-): PipelineRunEvent {
+function failedGateEvent(stage: StageName, gateName: string, result: GateResult): PipelineRunEvent {
   return {
     evidence: result.evidence,
     gateName,

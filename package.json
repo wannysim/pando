@@ -1,39 +1,48 @@
 {
   "name": "pando",
   "version": "0.1.0",
-  "packageManager": "pnpm@11.5.2+sha512.71c631e382066efc25625d5cf029075de07b61b37f6e27350fbd84b1bda5864c8c1967adc280776b45c30a715c0359a3be08fef42d5bb09e2b99029979692916",
   "private": true,
-  "type": "module",
   "description": "Multi-repo background coding agent orchestrator — one root system, many trunks.",
+  "homepage": "https://github.com/wannysim/pando#readme",
+  "bugs": {
+    "url": "https://github.com/wannysim/pando/issues"
+  },
   "license": "MIT",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/wannysim/pando.git"
   },
-  "bugs": {
-    "url": "https://github.com/wannysim/pando/issues"
-  },
-  "homepage": "https://github.com/wannysim/pando#readme",
-  "engines": {
-    "node": ">=22"
-  },
+  "type": "module",
   "scripts": {
     "test": "vitest run",
     "test:watch": "vitest",
     "coverage": "vitest run --coverage",
-    "lint": "eslint .",
+    "lint": "oxlint .",
+    "lint:fix": "oxlint --fix .",
+    "format": "oxfmt --write .",
+    "format:check": "oxfmt --check .",
     "types": "tsc --noEmit",
-    "verify": "pnpm coverage && pnpm lint && pnpm types"
+    "verify": "pnpm coverage && pnpm lint && pnpm types",
+    "prepare": "husky"
+  },
+  "dependencies": {
+    "yaml": "^2.9.0"
   },
   "devDependencies": {
     "@types/node": "^25.9.2",
     "@vitest/coverage-v8": "^4.1.8",
-    "eslint": "^10.4.1",
+    "husky": "^9.1.7",
+    "lint-staged": "^17.0.7",
+    "oxfmt": "^0.53.0",
+    "oxlint": "^1.68.0",
     "typescript": "^6.0.3",
-    "typescript-eslint": "^8.60.1",
     "vitest": "^4.1.8"
   },
-  "dependencies": {
-    "yaml": "^2.9.0"
-  }
+  "lint-staged": {
+    "*.{js,jsx,ts,tsx,mjs,cjs,mts,cts,json,jsonc,json5,yml,yaml,md,mdx,html,css,scss,less,toml,graphql}": "oxfmt --write"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "packageManager": "pnpm@11.5.2+sha512.71c631e382066efc25625d5cf029075de07b61b37f6e27350fbd84b1bda5864c8c1967adc280776b45c30a715c0359a3be08fef42d5bb09e2b99029979692916"
 }

@@ -12,14 +12,7 @@
 
 import type { JobStatus, StageName } from "./types";
 
-export const STAGE_ORDER: readonly StageName[] = [
-  "SPEC",
-  "PLAN",
-  "TEST",
-  "IMPL",
-  "REVIEW",
-  "PR",
-];
+export const STAGE_ORDER: readonly StageName[] = ["SPEC", "PLAN", "TEST", "IMPL", "REVIEW", "PR"];
 
 const TERMINAL: readonly JobStatus[] = ["DONE", "FAILED", "ESCALATED"];
 
