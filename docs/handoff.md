@@ -81,6 +81,14 @@
 - 공개 repo hygiene: `tests/` 표면(`describe`/`it`, fixture 문구)은 영어로 정리. 실제 회사 티켓 키는 커밋하지 않고 `DEMO-1234` 같은 가상 키만 사용. `docs/`는 작업자용이라 한글 유지 허용
 
 **다음 세션 시작점 — W4 n×n 병렬.** 권장 순서(TDD):
+
+W4 진입 결정:
+- 기본 동시성 값은 현재 config를 따른다 (`global_concurrency: 6`, web 3, personal-site 2, confluence 3, figma 2). 단, 첫 live smoke는 실행 옵션에서 global 2~3으로 낮춰 돌린다.
+- W4 본 구현의 acceptance는 fake engine + deterministic gates 기반 scheduler/semaphore/parallel daemon loop다. 실제 Claude/Codex CLI 실행은 후속 smoke로 2개 job만 검증한다.
+- W4에서는 `RepoProfile.baseBranch`만 사용한다. Jira `fixVersion` 기반 release branch 매핑과 `WorkItem.baseBranch` override는 W4 이후 별도 ADR/계약 변경으로 미룬다.
+- 게이트 스코핑은 PM-agnostic command hook까지만 사용한다. monorepo 변경 workspace/file 감지는 W5의 diff/checksum gate 강화로 미룬다.
+- GitHub Issue intake/write-back, 웹 대시보드/API, Stacked PR 자동화, provider별 정교한 backoff는 W4 범위 밖이다.
+
 1. Scheduler/semaphore 계약을 `global / per-repo / per-provider` 3계층으로 고정하고, SQLite runnable job claim과 결합할 최소 인터페이스를 정한다
 2. provider cap은 `RepoProfile.context.providers`와 `config/orchestrator.yaml` provider key를 매핑해 적용한다. brief-only profile은 MCP provider cap을 소비하지 않아야 한다
 3. worktree provision 단계에서 port/cache/env 격리 값을 job별로 주입한다
