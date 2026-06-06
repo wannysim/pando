@@ -3,6 +3,7 @@ import {
   STAGE_ORDER,
   transition,
   type MachineState,
+  type PipelineEvent,
 } from "../core/state-machine.js";
 import type {
   Gate,
@@ -27,11 +28,21 @@ export interface PipelineRunnerOptions {
   engines: Record<WorkerEngineName, WorkerEngine>;
   gates?: Partial<Record<StageName, Gate[]>>;
   buildPrompt?: (stage: StageName) => string;
+  initialState?: MachineState;
+  onEvent?: (event: PipelineRunEvent) => MaybePromise<void>;
+  onStateChange?: (change: PipelineStateChange) => MaybePromise<void>;
 }
 
 export interface PipelineRunResult {
   final: MachineState;
   events: PipelineRunEvent[];
+}
+
+export interface PipelineStateChange {
+  previous: MachineState;
+  next: MachineState;
+  event: PipelineEvent["type"];
+  stage?: StageName;
 }
 
 export type PipelineRunEvent =
@@ -47,6 +58,9 @@ export type PipelineRunEvent =
     }
   | { type: "stage-pass"; stage: StageName };
 
+type MaybePromise<T> = T | Promise<T>;
+type EmitPipelineEvent = (event: PipelineRunEvent) => Promise<void>;
+
 const WORKER_STAGE_BY_STAGE: Partial<Record<StageName, WorkerStageKey>> = {
   IMPL: "impl",
   PLAN: "plan",
@@ -57,25 +71,39 @@ const WORKER_STAGE_BY_STAGE: Partial<Record<StageName, WorkerStageKey>> = {
 
 export async function runPipeline(opts: PipelineRunnerOptions): Promise<PipelineRunResult> {
   const budget = opts.stageConfig.defaults.retryBudget;
-  let state = transition(initialState(budget), { type: "START" }, budget);
+  let state = opts.initialState ?? initialState(budget);
   const events: PipelineRunEvent[] = [];
+  const emit: EmitPipelineEvent = async (event) => {
+    events.push(event);
+    await opts.onEvent?.(event);
+  };
+
+  if (state.status === "QUEUED") {
+    state = await applyTransition(state, { type: "START" }, budget, opts);
+  }
 
   while (isStageStatus(state.status)) {
     const stage = state.status;
-    const stageResult = await runStage(stage, opts, events);
+    const stageResult = await runStage(stage, opts, emit);
 
     if (stageResult === "pass") {
-      state = transition(state, { type: "GATE_PASS" }, budget);
-      events.push({ stage, type: "stage-pass" });
+      state = await applyTransition(state, { type: "GATE_PASS" }, budget, opts, stage);
+      await emit({ stage, type: "stage-pass" });
       continue;
     }
 
     if (stageResult === "blocking") {
-      state = transition(state, { type: "BLOCKING_QUESTIONS" }, budget);
+      state = await applyTransition(
+        state,
+        { type: "BLOCKING_QUESTIONS" },
+        budget,
+        opts,
+        stage,
+      );
       continue;
     }
 
-    state = transition(state, { type: "GATE_FAIL" }, budget);
+    state = await applyTransition(state, { type: "GATE_FAIL" }, budget, opts, stage);
   }
 
   return { events, final: state };
@@ -84,7 +112,7 @@ export async function runPipeline(opts: PipelineRunnerOptions): Promise<Pipeline
 async function runStage(
   stage: StageName,
   opts: PipelineRunnerOptions,
-  events: PipelineRunEvent[],
+  emit: EmitPipelineEvent,
 ): Promise<"pass" | "fail" | "blocking"> {
   const workerStage = WORKER_STAGE_BY_STAGE[stage];
 
@@ -100,7 +128,7 @@ async function runStage(
     });
 
     if (!result.ok) {
-      events.push({
+      await emit({
         evidence: result.output,
         reason: `${config.engine} returned ok=false`,
         stage,
@@ -109,16 +137,16 @@ async function runStage(
       return "fail";
     }
 
-    events.push({ stage, type: "engine-pass" });
+    await emit({ stage, type: "engine-pass" });
   }
 
-  return runGates(stage, opts, events);
+  return runGates(stage, opts, emit);
 }
 
 async function runGates(
   stage: StageName,
   opts: PipelineRunnerOptions,
-  events: PipelineRunEvent[],
+  emit: EmitPipelineEvent,
 ): Promise<"pass" | "fail" | "blocking"> {
   const ctx: GateContext = {
     item: opts.item,
@@ -129,13 +157,13 @@ async function runGates(
   for (const gate of opts.gates?.[stage] ?? []) {
     const result = await gate.check(ctx);
     if (!result.pass) {
-      events.push(failedGateEvent(stage, gate.name, result));
+      await emit(failedGateEvent(stage, gate.name, result));
       return result.failureKind === "blocking-questions" && stage === "PLAN"
         ? "blocking"
         : "fail";
     }
 
-    events.push({ gateName: gate.name, stage, type: "gate-pass" });
+    await emit({ gateName: gate.name, stage, type: "gate-pass" });
   }
 
   return "pass";
@@ -157,4 +185,21 @@ function failedGateEvent(
 
 function isStageStatus(status: JobStatus): status is StageName {
   return STAGE_ORDER.includes(status as StageName);
+}
+
+async function applyTransition(
+  previous: MachineState,
+  event: PipelineEvent,
+  budget: number,
+  opts: PipelineRunnerOptions,
+  stage?: StageName,
+): Promise<MachineState> {
+  const next = transition(previous, event, budget);
+  await opts.onStateChange?.({
+    event: event.type,
+    next,
+    previous,
+    stage,
+  });
+  return next;
 }

@@ -108,6 +108,65 @@ describe("runPipeline", () => {
     expect(result.final).toEqual({ attemptsLeft: 0, status: "FAILED" });
     expect(result.events.filter((event) => event.type === "gate-fail")).toHaveLength(2);
   });
+
+  it("resumes from a persisted stage without rerunning earlier stages", async () => {
+    const calls: string[] = [];
+
+    const result = await runPipeline({
+      engines: {
+        "claude-code": engine("claude-code", calls),
+        codex: engine("codex", calls),
+      },
+      initialState: { attemptsLeft: 4, status: "IMPL" },
+      item: workItem(),
+      profile: repoProfile(),
+      stageConfig: stageConfig(),
+      worktree: "/worktree",
+    });
+
+    expect(result.final.status).toBe("DONE");
+    expect(calls).toEqual([
+      "codex:Run IMPL",
+      "claude-code:Run REVIEW",
+    ]);
+  });
+
+  it("emits state changes and pipeline events for persistence adapters", async () => {
+    const transitions: string[] = [];
+    const persistedEvents: string[] = [];
+
+    await runPipeline({
+      engines: {
+        "claude-code": engine("claude-code", []),
+        codex: engine("codex", []),
+      },
+      gates: {
+        PLAN: [gate("plan-gate", () => ({ pass: true }))],
+      },
+      item: workItem(),
+      onEvent(event) {
+        persistedEvents.push(`${event.stage}:${event.type}`);
+      },
+      onStateChange(change) {
+        transitions.push(`${change.previous.status}->${change.next.status}:${change.event}`);
+      },
+      profile: repoProfile(),
+      stageConfig: stageConfig(),
+      worktree: "/worktree",
+    });
+
+    expect(transitions).toEqual([
+      "QUEUED->SPEC:START",
+      "SPEC->PLAN:GATE_PASS",
+      "PLAN->TEST:GATE_PASS",
+      "TEST->IMPL:GATE_PASS",
+      "IMPL->REVIEW:GATE_PASS",
+      "REVIEW->PR:GATE_PASS",
+      "PR->DONE:GATE_PASS",
+    ]);
+    expect(persistedEvents).toContain("PLAN:gate-pass");
+    expect(persistedEvents.at(-1)).toBe("PR:stage-pass");
+  });
 });
 
 function engine(name: WorkerEngine["name"], calls: string[]): WorkerEngine {
