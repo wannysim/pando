@@ -97,12 +97,14 @@ mkdir -p briefs/pando-small-task
 $EDITOR briefs/pando-small-task/brief.md
 
 PANDO_DB="$ROOT/pando.sqlite" \
-  pnpm tsx src/cli/agentctl.ts submit brief \
+  pnpm pandoctl submit brief \
   --repo pando \
   --id pando-small-task \
   --branch chore/pando-small-task \
   --brief-path briefs/pando-small-task/brief.md
 ```
+
+> CLI는 `pandoctl`이다 (npm 예약 이름; `pnpm pandoctl`은 `tsx src/cli/agentctl.ts`를 호출하는 package script). bin으로 묶이기 전까지 로컬 진입점은 이 script다.
 
 현재 dashboard submit도 같은 모델이다. 즉 "brief 파일 경로"를 이미 만들어 둔 뒤 queue에 넣는다. 제품 UX 목표는 웹에서 자연어 작업 설명, 참고할 spec/docs/assets path를 입력하면 pando가 canonical `brief.md`를 생성하고 queue에 넣는 것이다. file-path submit은 advanced/debug path로 남긴다.
 
@@ -110,10 +112,10 @@ PANDO_DB="$ROOT/pando.sqlite" \
 
 ```bash
 PANDO_API_URL=http://127.0.0.1:3210 \
-  pnpm tsx src/cli/agentctl.ts list
+  pnpm pandoctl list
 
 PANDO_DB="$ROOT/pando.sqlite" \
-  pnpm tsx src/cli/agentctl.ts show pando-small-task
+  pnpm pandoctl show pando-small-task
 ```
 
 ## PR behavior

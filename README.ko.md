@@ -52,7 +52,14 @@ pnpm install
 
 ### 상태 확인과 종료
 
-`agentctl list` / `agentctl show <id>`로 진행 상황을 확인합니다. 종료는 `pnpm start` 프로세스에서 **Ctrl-C**를 누릅니다. 임시 산출물은 `/tmp` 아래에 생성되며 실행 후 삭제할 수 있습니다.
+CLI 이름은 **`pandoctl`** 입니다 ([npm](https://www.npmjs.com/package/pandoctl)에 예약 — 맨 이름 `pando`는 이미 선점됨). 로컬에서는 `pandoctl` package script로 실행합니다.
+
+```bash
+pnpm pandoctl list          # 실행 중인 daemon에 붙으려면 앞에 PANDO_API_URL=... 를 붙인다
+pnpm pandoctl show <id>
+```
+
+전체 env var prefix는 runbook을 참고하세요. 종료는 `pnpm start` 프로세스에서 **Ctrl-C**를 누릅니다. 임시 산출물은 `/tmp` 아래에 생성되며 실행 후 삭제할 수 있습니다.
 
 ## 개발
 
