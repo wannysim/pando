@@ -114,20 +114,21 @@
 
 **다음 세션 시작점 — self-dogfood productization follow-ups.**
 
-W5의 최소 운영 준비와 첫 3-job self-dogfood batch는 닫혔다. 하지만 자가개발을 반복하기에는 아직 UX가 너무 개발자용이다. 다음 세션은 **pando start 단일 명령 → 웹 inline brief intake → README/README.ko/docs 정합성 → dashboard/agentctl follow-up 리뷰 이슈 → Docker worker readiness** 순서로 운영 표면을 다듬는 것이 우선이다.
+W5의 최소 운영 준비와 첫 3-job self-dogfood batch는 닫혔다. 이후 운영 표면 다듬기에서 **pando start 단일 명령(#41), dashboard operations follow-up(#42), agentctl watch/smoke readiness(#40), draft PR gate(#44), pandoctl bin rename + README/docs parity(이 PR)** 가 닫혔다. 남은 우선순위는 **웹 inline brief intake → pandoctl npm distribution(roadmap PR 10) → Docker worker readiness** 다.
 
 ## 남아있는 작업
 
-1. **One-command local run UX** — 지금은 `ROOT`, `PANDO_DB`, `PANDO_CONFIG_DIR`, `PANDO_WORKTREE_ROOT`, `PANDO_DAEMON_ENABLED`, `PANDO_GLOBAL_CONCURRENCY` 등을 직접 맞춰야 한다. 목표는 `pando start` 또는 `pnpm pando start` 한 번으로 local DB/worktree/config/dashboard/daemon을 켜고, 종료·cleanup 경로까지 알려주는 것이다.
+1. ✅ **One-command local run UX** (PR #41) — `pando start`(= `pnpm pando start`) 한 번으로 `/tmp` run root 아래 local DB/worktree/config/dashboard/daemon을 켜고, dashboard URL·DB path·worktree root·종료(Ctrl+C)·cleanup(`rm -rf`)을 로그로 출력한다. port 충돌 시 다음 빈 port로 fallback한다.
 2. **Web inline brief intake** — 사용자는 웹에서 "무엇을 구현할지"와 "참고할 spec/docs/assets"를 자연어로 넣으면 된다고 기대한다. 현재는 `brief.md` 파일 경로를 직접 만들어 넘기는 개발자용 UX다. dashboard/API가 inline brief를 받아 canonical `brief.md`를 `/tmp` 또는 configured inbox에 materialize하고, SPEC 참고 문서/asset path를 WorkItem payload로 넘기는 흐름이 필요하다.
-3. **README/docs parity** — PR #36은 README.md에 local run을 추가했지만 README.ko parity가 뒤늦게 보완됐다. 앞으로 public README/README.ko/docs/runbook은 같은 상태와 limitations를 말해야 한다.
-4. **Dashboard follow-up** — PR #37은 job detail context를 개선했지만 아직 follow-up이 필요하다. Branch는 worktree slug가 아니라 API의 `job.branch`를 우선해야 하고, event row는 `payload.durationMs`/`payload.costUsd`, evidence truncation/copy 같은 계획 항목을 끝까지 구현해야 한다.
-5. **Agentctl follow-up** — PR #38은 show/list readability를 개선했지만, API-backed mode와 DB-backed mode의 차이, watch/list --watch, smoke/readiness command는 아직 남아 있다.
-6. **PR-stage correctness** — PR stage는 Draft PR을 만들도록 prompt하지만 #37/#38은 non-draft로 생성됐다. `gh pr create --draft`를 강제하거나 PR stage output을 검증하는 deterministic check가 필요하다.
+3. ✅ **README/docs parity + pandoctl rename** (이 PR `refactor/pandoctl-cli-rename`) — `package.json` `bin`에 `pandoctl`(→ `bin/pandoctl.mjs` → `src/cli/agentctl.ts`)을 추가해 ADR-010이 예약한 운영 CLI 이름을 실제 bin으로 노출했다. `pando start`는 그대로 daemon 부트스트랩 명령으로 유지. README/README.ko/runbook이 같은 명령(`pando start`, `pandoctl …`)과 limitations를 설명하도록 맞췄다. 내부 모듈 이름 `agentctl`은 ADR-010에 따라 유지.
+4. ✅ **Dashboard follow-up** (PR #42) — branch/duration/cost 표시와 evidence copy를 포함한 operations follow-up을 반영했다.
+5. ✅ **Agentctl follow-up** (PR #40) — `pandoctl watch`와 `smoke readiness` command를 추가했다. API-backed mode와 local DB mode 차이는 `docs/runbooks/agentctl.md`에 문서화돼 있다.
+6. ✅ **PR-stage correctness** (PR #44) — deterministic gate로 draft PR을 강제한다.
 7. **Docker worker readiness** — 현재 single-container image는 Node daemon/API/static dashboard skeleton을 검증했다. 컨테이너 내부 Claude/Codex CLI 설치 방식, API key/auth volume, git credentials, Atlassian connector/API token fallback은 별도 smoke가 필요하다.
 8. **Gate adapter 연결** — checksum/diff/workspace scoping의 순수 계약은 완료됐지만, 실제 git diff/checksum 수집 adapter와 exit-code command scoping 연결은 후속 작업에서 필요 시 붙인다.
 9. **Release branch routing** — Jira `fixVersion` 기반 `release/*` base branch 매핑과 `WorkItem.baseBranch` override는 미해결이다.
-10. **W6 운영 확장 후보** — 3~5 job soak/nightly run, notifications, failure analytics, provider backoff, GitHub Issue/Jira write-back, auth hardening, Docker egress policy, split containers는 아직 범위 밖이다.
+10. **pandoctl npm distribution** (roadmap PR 10) — bin 이름은 `pandoctl`로 통일했지만, 빌드/번들된 npm 패키지 publish(`npm i -g pandoctl`), `better-sqlite3` native 의존성 처리, `pando start`+ops를 한 바이너리 서브커맨드로 합치는 명령 표면 통합은 아직 남아 있다.
+11. **W6 운영 확장 후보** — 3~5 job soak/nightly run, notifications, failure analytics, provider backoff, GitHub Issue/Jira write-back, auth hardening, Docker egress policy, split containers는 아직 범위 밖이다.
 
 새 세션에 그대로 전달할 상세 프롬프트는 `docs/next-session-prompt.md`에 있다.
 

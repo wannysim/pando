@@ -1,15 +1,22 @@
-# agentctl runbook
+# pandoctl runbook
 
-`agentctl` is the line-oriented operator CLI for pando. It speaks to the same
+`pandoctl` is the line-oriented operator CLI for pando. It speaks to the same
 SQLite store and Hono API the daemon uses, so it has two distinct execution
 modes. Pick the mode deliberately: they read and write the same job state but
 through different boundaries.
 
-Run it through the checked-in entrypoint:
-
-```bash
-pnpm tsx src/cli/agentctl.ts <command> [args]
-```
+> Naming: the published CLI is `pandoctl` (ADR-010 — the bare `pando` name is
+> taken on npm). `bin/pandoctl.mjs` resolves the operational CLI, whose internal
+> module is still `src/cli/agentctl.ts`. These are equivalent:
+>
+> ```bash
+> pandoctl <command> [args]                       # global bin after `pnpm link --global` / `npm i -g .`
+> pnpm pandoctl <command> [args]                  # package script, no link required
+> pnpm tsx src/cli/agentctl.ts <command> [args]   # direct entrypoint
+> ```
+>
+> Examples below use the direct entrypoint so they work from a fresh clone, but
+> `pandoctl <command>` is the operator-facing name.
 
 ## Two modes
 
