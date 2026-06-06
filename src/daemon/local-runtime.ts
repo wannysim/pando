@@ -13,6 +13,8 @@ import { CodexEngine } from "../engines/codex";
 import { createBriefIntakeGate } from "../intake/brief";
 import { createSpecArtifactGate, createPlanArtifactGate } from "../pipeline/gates/artifact-schema";
 import { createPackageActionGate, type GateCommandRunner } from "../pipeline/gates/exit-code";
+import { createWorktreeDiffRulesGate, type CollectChangesPort } from "../pipeline/gates/diff-rules";
+import { collectChangedFiles } from "../git/inspector";
 import { createRunScheduler } from "../scheduler/scheduler";
 import { runDaemonOnce } from "./loop";
 import { createWorktreeProvisioner, type EnsureWorktreePort } from "./worktree-provisioner";
@@ -43,6 +45,7 @@ export interface LocalDaemonRuntimeOptions {
   engines?: Record<WorkerEngineName, WorkerEngine>;
   ensureWorktree?: EnsureWorktreePort;
   gateRunner?: GateCommandRunner;
+  collectChanges?: CollectChangesPort;
 }
 
 const execAsync = promisify(exec);
@@ -110,6 +113,7 @@ export async function createLocalDaemonRuntime(
   const orchestrator = loadOrchestratorConfigFromYaml(orchestratorYaml);
   const store = createSqliteJobStore({ path: opts.dbPath });
   const gateRunner = opts.gateRunner ?? shellGateRunner;
+  const collectChanges = opts.collectChanges ?? collectChangedFiles;
   const scheduler = createRunScheduler({
     globalConcurrency: opts.globalConcurrency,
     providerConcurrency: orchestrator.providerConcurrency,
@@ -129,7 +133,10 @@ export async function createLocalDaemonRuntime(
           codex: new CodexEngine(),
         },
         gates: {
-          IMPL: [createPackageActionGate("lint", gateRunner)],
+          IMPL: [
+            createWorktreeDiffRulesGate({ collectChanges }),
+            createPackageActionGate("lint", gateRunner),
+          ],
           PLAN: [createPlanArtifactGate({ readText: optionalReadText })],
           PR: [
             createPackageActionGate("test", gateRunner),

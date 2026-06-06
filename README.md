@@ -20,7 +20,7 @@ It processes many repos × many tickets in flight, distinguishing company repos 
 
 ## Status
 
-Early implementation. The local daemon/dashboard path and brief-based self-dogfood against the pando repo work, but the execution UX is still developer-oriented. See the design docs under [docs/](./docs) (written in Korean):
+Early implementation. A one-command local run (`pando start`) boots the daemon and dashboard, and brief-based self-dogfood against the pando repo works, but brief intake is still file-path based and worker auth/CLIs must be set up by hand. See the design docs under [docs/](./docs) (written in Korean):
 
 - [research-v1.md](./docs/research-v1.md) — tooling & pattern research
 - [design-v2-multi-repo.md](./docs/design-v2-multi-repo.md) — n×n design built on reusable agent-skill assets
@@ -44,7 +44,13 @@ CLIs required: `claude` (Claude Code), `gh`, `git`. Ensure `gh auth status` pass
 
 ### Start the daemon and open the dashboard
 
-Follow the [runbook](./docs/runbooks/local-pando-runner.md) "Start local pando" section to set env vars and run `pnpm start`, then open `http://127.0.0.1:3210/dashboard`.
+One command boots a local DB, worktree root, config, dashboard, and daemon under a `/tmp` run root:
+
+```bash
+pnpm pando start            # or `pando start` after `pnpm link --global`
+```
+
+It prints the dashboard URL (`http://127.0.0.1:3210/dashboard`), the DB path, the worktree root, and how to stop and clean up. For the manual env-var path, see the [runbook](./docs/runbooks/local-pando-runner.md) "Start local pando (manual env path)" section.
 
 ### Submit a brief job
 
@@ -52,14 +58,15 @@ Follow the [runbook](./docs/runbooks/local-pando-runner.md) "Submit a brief" sec
 
 ### Check status and stop
 
-The CLI is named **`pandoctl`** (reserved on [npm](https://www.npmjs.com/package/pandoctl); the bare `pando` name was taken). Locally it runs via the `pandoctl` package script:
+The operational CLI is **`pandoctl`** (reserved on [npm](https://www.npmjs.com/package/pandoctl); the bare `pando` name was taken — see [ADR-010](./docs/adr/010-cli-name-pandoctl.md)). The `pandoctl` bin maps to the operational CLI; `pando start` is the separate daemon-bootstrap command above. Run any of these equivalents:
 
 ```bash
-pnpm pandoctl list          # prefix with PANDO_API_URL=... to reach the running daemon
+pnpm pandoctl list          # package script (prefix with PANDO_API_URL=... to reach a running daemon)
+pandoctl list               # global bin after `pnpm link --global` / `npm i -g .`
 pnpm pandoctl show <id>
 ```
 
-See the runbook for the full env-var prefixes. Stop: **Ctrl-C** the `pnpm start` process. Temporary artifacts live under `/tmp` and can be removed afterwards.
+See the runbook for the full env-var prefixes. Stop: **Ctrl-C** the `pando start` (or `pnpm start`) process. Temporary artifacts live under `/tmp` and can be removed afterwards.
 
 ## Development
 
