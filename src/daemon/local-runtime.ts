@@ -187,6 +187,7 @@ export function buildLocalPipelinePrompt(
     return `${header}
 
 Read the brief and write _spec.md.
+_spec.md must start with an H1 title and include a ## Requirements Overview section.
 Keep _spec.md focused on concrete requirements and acceptance criteria.
 Do not print secrets.`;
   }
@@ -195,6 +196,9 @@ Do not print secrets.`;
     return `${header}
 
 Read _spec.md and write PLAN.md.
+PLAN.md must start with an H1 title that includes [${item.id}].
+PLAN.md must include ## Requirements Overview, ## Implementation Roadmap, ## Acceptance Criteria, and ## Open Questions.
+Under ## Implementation Roadmap, use headings exactly like "### Commit 1: Short title" for each commit unit.
 Use one PR with task-sized commits unless the change is genuinely large.
 Record blockers as [Blocker] open questions only when work cannot continue.`;
   }

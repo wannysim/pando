@@ -133,6 +133,26 @@ describe("createLocalDaemonRuntime", () => {
 });
 
 describe("local runtime helpers", () => {
+  it("spells out required artifact sections in SPEC and PLAN prompts", () => {
+    const context = {
+      item: {
+        id: "DEMO-1",
+        payload: { briefPath: "/brief.md", kind: "brief" as const },
+        repo: "pando",
+        source: "brief" as const,
+        title: "Demo",
+      },
+      profile: repoProfile("/repo"),
+      worktree: "/worktree",
+    };
+
+    expect(buildLocalPipelinePrompt("SPEC", context)).toContain("## Requirements Overview");
+    expect(buildLocalPipelinePrompt("PLAN", context)).toContain("## Requirements Overview");
+    expect(buildLocalPipelinePrompt("PLAN", context)).toContain("## Implementation Roadmap");
+    expect(buildLocalPipelinePrompt("PLAN", context)).toContain("### Commit 1:");
+    expect(buildLocalPipelinePrompt("PLAN", context)).toContain("## Open Questions");
+  });
+
   it("builds PR prompts with base branch context and omits brief paths for non-brief work", () => {
     const prompt = buildLocalPipelinePrompt("PR", {
       item: {
