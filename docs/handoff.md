@@ -53,8 +53,8 @@
 | W1: 헤드리스 검증 | ✅ 완료 | worktree 생성, Claude PLAN, Codex IMPL, 수동 게이트 리스크 검증 완료 |
 | W2-A: 데몬 기반 계약/어댑터 | ✅ 완료 | config loader, artifact schema, worktree manager, Claude/Codex engine adapter 구현. `pnpm verify` 통과 |
 | W2-B: 파이프라인 결합 | ✅ 완료 | stage config loader, artifact/exit-code gate, pipeline runner skeleton, fake engine happy path/blocked/fail coverage |
-| W2-C: 상태 저장/운영 루프 | ⬅️ **다음 작업** | SQLite job/event 저장, retry budget persistence, daemon/agentctl 최소 루프 |
-| W3: brief 경로 | ⬜ 예정 | brief intake + personal-site 프로파일 E2E |
+| W2-C: 상태 저장/운영 루프 | ✅ 완료(기본형) | SQLite jobs/events/repos, runner persistence hook/resume, 단일 tick daemon loop, `agentctl submit/show/retry` handler |
+| W3: brief 경로 | ⬅️ **다음 작업** | brief intake + personal-site 프로파일 E2E |
 | W4: n×n 병렬 | ⬜ 예정 | global/per-repo/per-provider 세마포어, 포트/캐시 격리, 병렬 스케줄링 |
 | W5: 통제·운영 | ⬜ 예정 | diff/checksum gate 강화, 리뷰어 모델 분리, 비용 추적, 웹 대시보드/원격 투입 |
 
@@ -70,16 +70,20 @@
 - `src/core/stage-config.ts` — W2-B 완료. `config/stages.yaml` engine/model/skill/source별 skills/allowedTools/env/defaults 검증
 - `src/pipeline/gates/artifact-schema.ts` — W2-B 완료. `_spec.md`/`PLAN.md` artifact schema gate. PLAN blocker는 `failureKind: "blocking-questions"`로 보고
 - `src/pipeline/gates/exit-code.ts` — W2-B 완료. `RepoProfile.gates` PM-agnostic action을 package-manager command로 변환하고 exit code만 판정. workspace scope용 command builder hook 포함
-- `src/pipeline/runner.ts` — W2-B 완료. fake engine/gate 기반 runner skeleton. `SPEC→PLAN→TEST→IMPL→REVIEW→PR→DONE`, blocker→ESCALATED, gate retry budget→FAILED 테스트 포함
-- 검증: `pnpm verify` 통과(2026-06-06, `feat/w2-stage-config-loader`, 10 files / 67 tests)
+- `src/pipeline/runner.ts` — W2-B/W2-C 완료. fake engine/gate 기반 runner skeleton에 persistence hook(`onEvent`, `onStateChange`)과 persisted stage resume 지원 추가. `SPEC→PLAN→TEST→IMPL→REVIEW→PR→DONE`, blocker→ESCALATED, gate retry budget→FAILED 테스트 포함
+- `src/db/schema.sql`, `src/db/index.ts` — W2-C 완료. SQLite jobs/events/repos 저장소, `claimNextRunnable`, status update, event ordering, terminal retry, repo profile 저장/조회. 현재는 `node:sqlite` 사용으로 테스트 실행 시 ExperimentalWarning이 출력될 수 있음
+- `src/daemon/loop.ts` — W2-C 완료. 단일 in-flight `runDaemonOnce`: runnable job claim → worktree provision → runner 실행 → 상태/이벤트 persistence. worktree/provision 실패는 `daemon-error` event와 `FAILED` 상태로 기록
+- `src/daemon/worktree-provisioner.ts` — W2-C 완료. `RepoProfile` + `worktreeRoot`를 `ensureWorktree` 옵션으로 변환하고 setup command를 PM-agnostic action에서 생성
+- `src/cli/agentctl.ts` — W2-C 완료. 최소 handler: `submit jira`, `submit brief`, `show`, `retry`. SQLite store는 실행 진입점에서 동적 import로 개방
+- 검증: `pnpm verify` 통과(2026-06-06, `feat/w2-stage-config-loader`, 14 files / 92 tests, coverage all statements 92.88% / branches 85.98% / functions 95.97% / lines 94.79%). `node:sqlite` 사용으로 검증 중 ExperimentalWarning 1회 출력됨
 - 공개 repo hygiene: `tests/` 표면(`describe`/`it`, fixture 문구)은 영어로 정리. 실제 회사 티켓 키는 커밋하지 않고 `DEMO-1234` 같은 가상 키만 사용. `docs/`는 작업자용이라 한글 유지 허용
 
-**다음 세션 시작점 — W2-C 상태 저장/운영 루프.** 권장 순서(TDD):
-1. **SQLite schema + repository** — jobs/events/repos 최소 테이블, WAL, job 상태 저장/조회. fake clock 없이 결정적으로 테스트
-2. **pipeline runner persistence** — 단계 시작/완료/gate event를 events에 기록하고 crash 후 stage 단위 재개 가능하게 job status 저장
-3. **daemon 최소 루프** — 단일 in-flight로 queued job 1개를 가져와 worktree→runner→DONE/FAILED/ESCALATED까지 실행
-4. **agentctl 최소 CLI** — `submit brief|jira`, `show`, `retry` 중 W2-C에 필요한 최소 surface만 구현
-5. scheduler 세마포어는 n×n(W4) 전까지 단일 in-flight로 미뤄도 됨
+**다음 세션 시작점 — W3 brief 경로.** 권장 순서(TDD):
+1. `briefs/{id}/brief.md` intake template/loader — WorkItem(`source: brief`)으로 정규화
+2. personal-site 프로파일 기반 SPEC gate E2E — Jira/MCP 없이 `_spec.md` 계약을 만족하는지 검증
+3. `agentctl submit brief`와 intake 저장 흐름 연결 — 현재 handler는 이미 brief WorkItem enqueue까지 지원
+4. 개인 레포 1개에서 `runDaemonOnce` dry run/fake engine → 실제 engine 순으로 좁혀 검증
+5. scheduler 세마포어는 n×n(W4) 전까지 단일 in-flight로 유지
 
 ## 참조 문서 지도
 
