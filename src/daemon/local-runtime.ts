@@ -197,7 +197,8 @@ Do not print secrets.`;
 
 Read _spec.md and write PLAN.md.
 PLAN.md must start with an H1 title that includes [${item.id}].
-PLAN.md must include ## Requirements Overview, ## Implementation Roadmap with Commit units, ## Acceptance Criteria, and ## Open Questions.
+PLAN.md must include ## Requirements Overview, ## Implementation Roadmap, ## Acceptance Criteria, and ## Open Questions.
+Under ## Implementation Roadmap, use headings exactly like "### Commit 1: Short title" for each commit unit.
 Use one PR with task-sized commits unless the change is genuinely large.
 Record blockers as [Blocker] open questions only when work cannot continue.`;
   }

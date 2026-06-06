@@ -149,6 +149,7 @@ describe("local runtime helpers", () => {
     expect(buildLocalPipelinePrompt("SPEC", context)).toContain("## Requirements Overview");
     expect(buildLocalPipelinePrompt("PLAN", context)).toContain("## Requirements Overview");
     expect(buildLocalPipelinePrompt("PLAN", context)).toContain("## Implementation Roadmap");
+    expect(buildLocalPipelinePrompt("PLAN", context)).toContain("### Commit 1:");
     expect(buildLocalPipelinePrompt("PLAN", context)).toContain("## Open Questions");
   });
 
