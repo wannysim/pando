@@ -91,7 +91,7 @@ describe("personal-site brief SPEC path", () => {
     expect(result.final.status).toBe("DONE");
     expect(profile.intake.sources).toContain("brief");
     expect(profile.context.providers).toEqual([]);
-    expect(engineCalls[0]?.allowedTools).toEqual(["Read", "Glob", "Grep"]);
+    expect(engineCalls[0]?.allowedTools).toEqual(["Read", "Glob", "Grep", "Write"]);
   });
 });
 

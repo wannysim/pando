@@ -11,7 +11,7 @@ stages:
       brief: brief-intake
     allowed_tools_by_source:
       jira: [Read, Glob, Grep, Task, mcp__claude_ai_Atlassian]
-      brief: [Read, Glob, Grep]
+      brief: [Read, Glob, Grep, Write]
 
   plan:
     engine: claude-code

@@ -15,7 +15,7 @@ stages:
       brief: brief-intake
     allowed_tools_by_source:
       jira: [Read, Glob, Grep, Task, mcp__claude_ai_Atlassian]
-      brief: [Read, Glob, Grep]
+      brief: [Read, Glob, Grep, Write]
   plan:
     engine: claude-code
     model: opus
@@ -53,7 +53,7 @@ describe("loadStageConfigFromYaml", () => {
     expect(config.defaults).toEqual({ retryBudget: 10, timeoutMinutes: 30 });
     expect(config.stages.spec).toEqual({
       allowedToolsBySource: {
-        brief: ["Read", "Glob", "Grep"],
+        brief: ["Read", "Glob", "Grep", "Write"],
         jira: ["Read", "Glob", "Grep", "Task", "mcp__claude_ai_Atlassian"],
       },
       engine: "claude-code",
@@ -92,7 +92,12 @@ describe("loadStageConfigFromYaml", () => {
   it("resolves source-specific allowed tools before falling back to stage tools", () => {
     const config = loadStageConfigFromYaml(YAML);
 
-    expect(resolveStageAllowedTools(config, "spec", "brief")).toEqual(["Read", "Glob", "Grep"]);
+    expect(resolveStageAllowedTools(config, "spec", "brief")).toEqual([
+      "Read",
+      "Glob",
+      "Grep",
+      "Write",
+    ]);
     expect(resolveStageAllowedTools(config, "spec", "jira")).toContain("mcp__claude_ai_Atlassian");
     expect(resolveStageAllowedTools(config, "plan", "brief")).toContain("Bash(git *)");
   });
@@ -108,7 +113,7 @@ describe("loadStageConfigFromYaml", () => {
       /stages\.test\.engine/i,
     );
     expect(() =>
-      loadStageConfigFromYaml(YAML.replace("brief: [Read, Glob, Grep]", "brief: Read")),
+      loadStageConfigFromYaml(YAML.replace("brief: [Read, Glob, Grep, Write]", "brief: Read")),
     ).toThrow(/stages\.spec\.allowed_tools_by_source\.brief/i);
   });
 
