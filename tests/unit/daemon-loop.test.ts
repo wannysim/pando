@@ -253,6 +253,107 @@ describe("runDaemonOnce", () => {
     expect(runnerEnv).toEqual([isolation.env]);
   });
 
+  it("sends stop requests for cancel-requested active jobs without running the pipeline", async () => {
+    const item = workItem("DEMO-2301");
+    const store = new MemoryJobStore({
+      ...jobRecord(item, "IMPL", 2),
+      cancelRequestedAt: "2026-06-06T00:00:01.000Z",
+      worktreePath: "/worktrees/web/feat-DEMO-2301",
+    });
+    const stopRequests: Array<{
+      jobId: string;
+      status: JobStatus;
+      worktreePath?: string;
+    }> = [];
+
+    const result = await runDaemonOnce({
+      engines: {
+        "claude-code": engine("claude-code"),
+        codex: engine("codex"),
+      },
+      profiles: { web: repoProfile() },
+      runner: async () => {
+        throw new Error("cancel-requested jobs must not run the pipeline");
+      },
+      runningJobs: {
+        async requestStop(input) {
+          stopRequests.push({
+            jobId: input.job.item.id,
+            status: input.job.status,
+            worktreePath: input.job.worktreePath,
+          });
+        },
+      },
+      stageConfig: stageConfig(),
+      store,
+      worktrees: {
+        async ensure() {
+          throw new Error("cancel-requested jobs must not provision worktrees");
+        },
+      },
+    });
+
+    expect(result).toEqual({
+      finalStatus: "CANCELED",
+      jobId: "DEMO-2301",
+      status: "canceled",
+    });
+    expect(stopRequests).toEqual([
+      {
+        jobId: "DEMO-2301",
+        status: "IMPL",
+        worktreePath: "/worktrees/web/feat-DEMO-2301",
+      },
+    ]);
+    expect(store.job?.status).toBe("CANCELED");
+    expect(store.events.at(-1)).toMatchObject({
+      payload: { stoppedBy: "daemon" },
+      status: "CANCELED",
+      type: "canceled",
+    });
+  });
+
+  it("resumes a persisted active stage once after a crash", async () => {
+    const item = workItem("DEMO-2302");
+    const store = new QueueJobStore([jobRecord(item, "IMPL", 2)]);
+    const initialStates: string[] = [];
+    const ensured: string[] = [];
+
+    const result = await runDaemonOnce({
+      engines: {
+        "claude-code": engine("claude-code"),
+        codex: engine("codex"),
+      },
+      profiles: { web: repoProfile({ concurrency: 2 }) },
+      runner: async (runnerOpts) => {
+        initialStates.push(`${runnerOpts.item.id}:${runnerOpts.initialState?.status}`);
+        return { events: [], final: { attemptsLeft: 2, status: "DONE" } };
+      },
+      scheduler: createRunScheduler({
+        globalConcurrency: 2,
+        providerConcurrency: {},
+      }),
+      stageConfig: stageConfig(),
+      store,
+      worktrees: {
+        async ensure(input) {
+          ensured.push(input.item.id);
+          return {
+            branch: input.branch,
+            path: "/worktrees/web/feat-DEMO-2302",
+          };
+        },
+      },
+    });
+
+    expect(result).toEqual({
+      jobs: [{ finalStatus: "DONE", jobId: "DEMO-2302", status: "ran" }],
+      status: "ran",
+    });
+    expect(ensured).toEqual(["DEMO-2302"]);
+    expect(initialStates).toEqual(["DEMO-2302:IMPL"]);
+  });
+
   it("derives stable default branches and respects explicit branches", () => {
     expect(branchForItem(workItem("DEMO 2004/part A"))).toBe("feat/DEMO-2004-part-A");
     expect(branchForItem({ ...workItem("DEMO-2004"), branch: "fix/custom" })).toBe("fix/custom");
@@ -270,6 +371,7 @@ class MemoryJobStore implements JobStore {
   }
 
   claimNextRunnable(): JobRecord | undefined {
+    if (this.job?.cancelRequestedAt !== undefined) return undefined;
     return this.job;
   }
 
@@ -290,6 +392,38 @@ class MemoryJobStore implements JobStore {
   }
 
   retryJob(): JobRecord {
+    throw new Error("not used");
+  }
+
+  cancelJob(): JobRecord {
+    throw new Error("not used");
+  }
+
+  listCancelRequestedJobs(): JobRecord[] {
+    return this.job?.cancelRequestedAt === undefined ? [] : [this.job];
+  }
+
+  completeJobCancellation(input: { jobId: string; stoppedBy?: string }): JobRecord {
+    if (this.job === undefined) throw new Error("job not found");
+    this.job = { ...this.job, status: "CANCELED" };
+    this.appendEvent({
+      jobId: input.jobId,
+      payload: { stoppedBy: input.stoppedBy },
+      status: "CANCELED",
+      type: "canceled",
+    });
+    return this.job;
+  }
+
+  requestJobCleanup(): { job: JobRecord; worktreePath: string } {
+    throw new Error("not used");
+  }
+
+  completeJobCleanup(): JobRecord {
+    throw new Error("not used");
+  }
+
+  failJobCleanup(): JobRecord {
     throw new Error("not used");
   }
 
@@ -339,7 +473,8 @@ class QueueJobStore implements JobStore {
   claimNextRunnable(input?: { excludeJobIds?: readonly string[] }): JobRecord | undefined {
     const excluded = new Set(input?.excludeJobIds ?? []);
     const active = [...this.jobs.values()].find(
-      (job) => isActive(job.status) && !excluded.has(job.item.id),
+      (job) =>
+        isActive(job.status) && job.cancelRequestedAt === undefined && !excluded.has(job.item.id),
     );
     if (active !== undefined) return active;
 
@@ -374,6 +509,40 @@ class QueueJobStore implements JobStore {
   }
 
   retryJob(): JobRecord {
+    throw new Error("not used");
+  }
+
+  cancelJob(): JobRecord {
+    throw new Error("not used");
+  }
+
+  listCancelRequestedJobs(): JobRecord[] {
+    return [...this.jobs.values()].filter((job) => job.cancelRequestedAt !== undefined);
+  }
+
+  completeJobCancellation(input: { jobId: string; stoppedBy?: string }): JobRecord {
+    const job = this.jobs.get(input.jobId);
+    if (job === undefined) throw new Error("job not found");
+    const canceled = { ...job, status: "CANCELED" as const };
+    this.jobs.set(input.jobId, canceled);
+    this.appendEvent({
+      jobId: input.jobId,
+      payload: { stoppedBy: input.stoppedBy },
+      status: "CANCELED",
+      type: "canceled",
+    });
+    return canceled;
+  }
+
+  requestJobCleanup(): { job: JobRecord; worktreePath: string } {
+    throw new Error("not used");
+  }
+
+  completeJobCleanup(): JobRecord {
+    throw new Error("not used");
+  }
+
+  failJobCleanup(): JobRecord {
     throw new Error("not used");
   }
 

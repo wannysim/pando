@@ -125,7 +125,7 @@
 // core/types.ts — 전체 시스템이 공유하는 계약
 
 export type StageName = "SPEC" | "PLAN" | "TEST" | "IMPL" | "REVIEW" | "PR";
-export type JobStatus = StageName | "QUEUED" | "DONE" | "FAILED" | "ESCALATED";
+export type JobStatus = StageName | "QUEUED" | "DONE" | "FAILED" | "ESCALATED" | "CANCELED";
 export type WorkItemSource = "jira" | "brief" | "github_issue";
 export type ContextProvider = "confluence" | "figma";
 export type PackageManager = "yarn" | "pnpm" | "npm";
@@ -226,9 +226,11 @@ agentctl submit jira AP-1234 --repo web          # 수동 투입 (poller 외)
 agentctl submit brief --repo personal-site --id ID   # briefs/{id}/brief.md 투입
 agentctl show AP-1234                            # 단계/게이트/이벤트 로그 상세
 agentctl retry AP-1234 [--from IMPL]             # 특정 단계부터 재시작
+agentctl cancel AP-1234                           # queued는 CANCELED, active는 cancel request 저장
+agentctl cleanup AP-1234                          # terminal job의 worktree cleanup
 ```
 
-`list`, `cancel`, `cleanup`, `daemon` CLI는 W5 운영 UX에서 추가한다. worktree 경로 규약은 이미 `dispatch --list`/`--cleanup`과 호환되도록 유지한다. W5에서 실제로 여러 job을 맡기려면 최소한 현재 queue/in-flight/terminal 상태 조회, 취소, stale worktree 정리가 필요하다. W5부터 `agentctl`은 Hono API client로 점진 전환한다.
+`cancel`, `cleanup`은 W5 PR 2에서 직접 store 기반으로 먼저 추가했다. `list`, `daemon` CLI와 Hono API client 전환은 후속 PR에서 추가한다. worktree 경로 규약은 이미 `dispatch --list`/`--cleanup`과 호환되도록 유지한다. W5에서 실제로 여러 job을 맡기려면 최소한 현재 queue/in-flight/terminal 상태 조회, 취소, stale worktree 정리가 필요하다. W5부터 `agentctl`은 Hono API client로 점진 전환한다.
 
 ---
 
@@ -238,7 +240,7 @@ agentctl retry AP-1234 [--from IMPL]             # 특정 단계부터 재시작
 - scheduler는 실행 슬롯만 관리한다. runnable job claim과 상태 persistence의 source of truth는 계속 SQLite다.
 - 워커는 `child_process.spawn`으로 `claude -p` / `codex exec` 실행 — 동시 N개는 자식 프로세스라 이벤트 루프 부담 없음
 - 상태는 전부 SQLite (WAL 모드). 데몬이 죽어도 jobs 테이블에서 재개 — 단계 시작 전 상태만 기록하면 단계 단위 재실행으로 충분 (단계는 멱등: worktree가 이미 있으면 재사용)
-- W4 기준 `runDaemonOnce`는 scheduler cap 안에서 여러 job을 시작할 수 있다. `claimNextRunnable({ excludeJobIds })`는 같은 daemon tick에서 이미 in-flight인 job을 다시 잡지 않기 위한 최소 필터다.
+- W4 기준 `runDaemonOnce`는 scheduler cap 안에서 여러 job을 시작할 수 있다. `claimNextRunnable({ excludeJobIds })`는 같은 daemon tick에서 이미 in-flight인 job을 다시 잡지 않기 위한 최소 필터다. W5 PR 2부터 running cancel request가 저장된 active job은 runnable claim에서 제외하고, daemon tick은 `RunningJobController` port로 stop request를 보낸 뒤 `CANCELED` terminal 상태로 완료한다.
 - worktree setup/runner에는 job별 port/cache env가 들어간다: `PORT`, `PANDO_ASSIGNED_PORT`, `PANDO_CACHE_DIR`, `PANDO_JOB_ID`, `XDG_CACHE_HOME`.
 - 멀티 머신 스케일아웃이 필요해질 때만 새 ADR로 큐 인터페이스와 BullMQ 같은 외부 큐를 검토한다. 단일 머신이면 SQLite로 끝까지 가도 무방하다 — Docker 전환의 실체는 "맥 → 리눅스 컨테이너 + 영속 볼륨"이지 큐 교체가 아님
 

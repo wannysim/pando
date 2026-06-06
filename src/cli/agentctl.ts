@@ -5,10 +5,23 @@ import { STAGE_ORDER } from "../core/state-machine";
 import type { StageName, WorkItem } from "../core/types";
 import type { JobEventRecord, JobStore } from "../db/index";
 import { loadBriefWorkItem, type BriefFileReader } from "../intake/brief";
+import { removeWorktree } from "../worktree/manager";
+
+export interface WorktreeCleaner {
+  cleanup(input: WorktreeCleanupInput): Promise<void>;
+}
+
+export interface WorktreeCleanupInput {
+  jobId: string;
+  repo: string;
+  repoPath?: string;
+  worktreePath: string;
+}
 
 export interface AgentctlOptions {
   store: JobStore;
   briefReader?: BriefFileReader;
+  worktreeCleaner?: WorktreeCleaner;
   stdout?: (line: string) => void;
   stderr?: (line: string) => void;
   defaultRetryBudget?: number;
@@ -56,6 +69,21 @@ export async function runAgentctl(args: readonly string[], opts: AgentctlOptions
       return 0;
     }
 
+    if (command === "cancel" && subcommand !== undefined) {
+      const job = opts.store.cancelJob({
+        jobId: subcommand,
+        requestedBy: "agentctl",
+      });
+      stdout(
+        job.status === "CANCELED" ? `canceled ${job.item.id}` : `cancel requested ${job.item.id}`,
+      );
+      return 0;
+    }
+
+    if (command === "cleanup" && subcommand !== undefined) {
+      return await cleanupJob(subcommand, opts, stdout);
+    }
+
     stderr(usage());
     return 1;
   } catch (error) {
@@ -75,6 +103,16 @@ export async function main(args = process.argv.slice(2)): Promise<number> {
       store,
       stderr: (line) => console.error(line),
       stdout: (line) => console.log(line),
+      worktreeCleaner: {
+        async cleanup(input) {
+          if (input.repoPath === undefined)
+            throw new Error(`repo profile not found: ${input.repo}`);
+          await removeWorktree({
+            repoPath: input.repoPath,
+            worktreePath: input.worktreePath,
+          });
+        },
+      },
     });
   } finally {
     store.close();
@@ -140,6 +178,42 @@ async function briefWorkItem(parsed: ParsedArgs, reader: BriefFileReader): Promi
   });
 }
 
+async function cleanupJob(
+  jobId: string,
+  opts: AgentctlOptions,
+  stdout: (line: string) => void,
+): Promise<number> {
+  const request = opts.store.requestJobCleanup({
+    jobId,
+    requestedBy: "agentctl",
+  });
+  const profile = opts.store.getRepoProfile(request.job.item.repo);
+  const cleaner = opts.worktreeCleaner ?? missingWorktreeCleaner();
+
+  try {
+    await cleaner.cleanup({
+      jobId,
+      repo: request.job.item.repo,
+      repoPath: profile?.path,
+      worktreePath: request.worktreePath,
+    });
+    opts.store.completeJobCleanup({
+      jobId,
+      worktreePath: request.worktreePath,
+    });
+    stdout(`cleaned up ${request.job.item.id} ${request.worktreePath}`);
+    return 0;
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    opts.store.failJobCleanup({
+      jobId,
+      reason,
+      worktreePath: request.worktreePath,
+    });
+    throw error;
+  }
+}
+
 function showJob(
   jobId: string,
   store: JobStore,
@@ -203,7 +277,17 @@ function usage(): string {
     "agentctl submit brief --repo <repo> --id <id> [--title <title>] [--brief-path <path>]",
     "agentctl show <job-id>",
     "agentctl retry <job-id> --from <stage> [--attempts <n>]",
+    "agentctl cancel <job-id>",
+    "agentctl cleanup <job-id>",
   ].join("\n");
+}
+
+function missingWorktreeCleaner(): WorktreeCleaner {
+  return {
+    async cleanup() {
+      throw new Error("worktree cleaner is not configured");
+    },
+  };
 }
 
 function nodeFileReader(): BriefFileReader {

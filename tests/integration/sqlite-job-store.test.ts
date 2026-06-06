@@ -147,6 +147,255 @@ describe("SqliteJobStore", () => {
     store.close();
   });
 
+  it("cancels queued jobs as terminal records with structured events", () => {
+    const store = createSqliteJobStore({
+      path: ":memory:",
+      now: fixedClock([
+        "2026-06-06T00:00:00.000Z",
+        "2026-06-06T00:00:01.000Z",
+        "2026-06-06T00:00:02.000Z",
+        "2026-06-06T00:00:03.000Z",
+      ]),
+    });
+
+    store.enqueueJob({ item: workItem("DEMO-1005"), retryBudget: 2 });
+
+    const canceled = store.cancelJob({
+      jobId: "DEMO-1005",
+      reason: "operator requested",
+      requestedBy: "agentctl",
+    });
+
+    expect(canceled).toMatchObject({
+      attemptsLeft: 2,
+      status: "CANCELED",
+      item: { id: "DEMO-1005" },
+    });
+    expect(canceled.finishedAt).toBeDefined();
+    expect(store.claimNextRunnable()).toBeUndefined();
+    expect(store.listEvents("DEMO-1005")).toEqual([
+      expect.objectContaining({
+        payload: {
+          previousStatus: "QUEUED",
+          reason: "operator requested",
+          requestedBy: "agentctl",
+        },
+        status: "QUEUED",
+        type: "cancel-requested",
+      }),
+      expect.objectContaining({
+        payload: {
+          previousStatus: "QUEUED",
+          reason: "operator requested",
+          requestedBy: "agentctl",
+        },
+        status: "CANCELED",
+        type: "canceled",
+      }),
+    ]);
+
+    store.close();
+  });
+
+  it("stores running cancel requests and excludes them from runnable claims", () => {
+    const store = createSqliteJobStore({
+      path: ":memory:",
+      now: fixedClock([
+        "2026-06-06T00:00:00.000Z",
+        "2026-06-06T00:00:01.000Z",
+        "2026-06-06T00:00:02.000Z",
+        "2026-06-06T00:00:03.000Z",
+        "2026-06-06T00:00:04.000Z",
+      ]),
+    });
+
+    store.enqueueJob({ item: workItem("DEMO-1006"), retryBudget: 3 });
+    expect(store.claimNextRunnable()?.status).toBe("SPEC");
+
+    const requested = store.cancelJob({
+      jobId: "DEMO-1006",
+      requestedBy: "agentctl",
+    });
+
+    expect(requested).toMatchObject({
+      status: "SPEC",
+    });
+    expect(requested.cancelRequestedAt).toBeDefined();
+    expect(store.claimNextRunnable()).toBeUndefined();
+    expect(store.listCancelRequestedJobs().map((job) => job.item.id)).toEqual(["DEMO-1006"]);
+
+    const completed = store.completeJobCancellation({
+      jobId: "DEMO-1006",
+      stoppedBy: "daemon",
+    });
+
+    expect(completed).toMatchObject({
+      status: "CANCELED",
+    });
+    expect(completed.cancelRequestedAt).toBe(requested.cancelRequestedAt);
+    expect(store.listEvents("DEMO-1006").map((event) => event.type)).toEqual([
+      "cancel-requested",
+      "canceled",
+    ]);
+
+    store.close();
+  });
+
+  it("cleans up terminal jobs with worktree paths and records completion events", () => {
+    const store = createSqliteJobStore({
+      path: ":memory:",
+      now: fixedClock([
+        "2026-06-06T00:00:00.000Z",
+        "2026-06-06T00:00:01.000Z",
+        "2026-06-06T00:00:02.000Z",
+        "2026-06-06T00:00:03.000Z",
+      ]),
+    });
+
+    store.enqueueJob({ item: workItem("DEMO-1007"), retryBudget: 1 });
+    store.updateJobStatus({
+      attemptsLeft: 1,
+      jobId: "DEMO-1007",
+      status: "DONE",
+      worktreePath: "/worktrees/web/feat-DEMO-1007",
+    });
+
+    const request = store.requestJobCleanup({
+      jobId: "DEMO-1007",
+      requestedBy: "agentctl",
+    });
+    const cleaned = store.completeJobCleanup({
+      jobId: "DEMO-1007",
+      worktreePath: request.worktreePath,
+    });
+
+    expect(request.worktreePath).toBe("/worktrees/web/feat-DEMO-1007");
+    expect(cleaned).toMatchObject({
+      status: "DONE",
+      worktreePath: undefined,
+    });
+    expect(store.listEvents("DEMO-1007")).toEqual([
+      expect.objectContaining({
+        payload: {
+          requestedBy: "agentctl",
+          status: "DONE",
+          worktreePath: "/worktrees/web/feat-DEMO-1007",
+        },
+        status: "DONE",
+        type: "cleanup-requested",
+      }),
+      expect.objectContaining({
+        payload: { worktreePath: "/worktrees/web/feat-DEMO-1007" },
+        status: "DONE",
+        type: "cleanup-completed",
+      }),
+    ]);
+
+    store.close();
+  });
+
+  it("records cleanup failures without clearing the worktree path", () => {
+    const store = createSqliteJobStore({
+      path: ":memory:",
+      now: fixedClock([
+        "2026-06-06T00:00:00.000Z",
+        "2026-06-06T00:00:01.000Z",
+        "2026-06-06T00:00:02.000Z",
+        "2026-06-06T00:00:03.000Z",
+      ]),
+    });
+
+    store.enqueueJob({ item: workItem("DEMO-1008"), retryBudget: 1 });
+    store.updateJobStatus({
+      attemptsLeft: 0,
+      jobId: "DEMO-1008",
+      status: "FAILED",
+      worktreePath: "/worktrees/web/feat-DEMO-1008",
+    });
+
+    const request = store.requestJobCleanup({ jobId: "DEMO-1008" });
+    const failed = store.failJobCleanup({
+      evidence: "permission denied",
+      jobId: "DEMO-1008",
+      reason: "git worktree remove failed",
+      worktreePath: request.worktreePath,
+    });
+
+    expect(failed.worktreePath).toBe("/worktrees/web/feat-DEMO-1008");
+    expect(store.listEvents("DEMO-1008").at(-1)).toMatchObject({
+      evidence: "permission denied",
+      payload: { worktreePath: "/worktrees/web/feat-DEMO-1008" },
+      reason: "git worktree remove failed",
+      status: "FAILED",
+      type: "cleanup-failed",
+    });
+
+    store.close();
+  });
+
+  it("rejects cleanup for non-terminal jobs and terminal jobs without worktree paths", () => {
+    const store = createSqliteJobStore({
+      path: ":memory:",
+      now: fixedClock(["2026-06-06T00:00:00.000Z", "2026-06-06T00:00:01.000Z"]),
+    });
+
+    store.enqueueJob({ item: workItem("DEMO-1009"), retryBudget: 1 });
+    expect(() => store.requestJobCleanup({ jobId: "DEMO-1009" })).toThrow(/not terminal/i);
+
+    store.updateJobStatus({ attemptsLeft: 0, jobId: "DEMO-1009", status: "FAILED" });
+    expect(() => store.requestJobCleanup({ jobId: "DEMO-1009" })).toThrow(/worktree path/i);
+
+    store.close();
+  });
+
+  it("allows canceled and cleaned up terminal jobs to be retried", () => {
+    const store = createSqliteJobStore({
+      path: ":memory:",
+      now: fixedClock([
+        "2026-06-06T00:00:00.000Z",
+        "2026-06-06T00:00:01.000Z",
+        "2026-06-06T00:00:02.000Z",
+        "2026-06-06T00:00:03.000Z",
+        "2026-06-06T00:00:04.000Z",
+        "2026-06-06T00:00:05.000Z",
+      ]),
+    });
+
+    store.enqueueJob({ item: workItem("DEMO-1010"), retryBudget: 1 });
+    store.cancelJob({ jobId: "DEMO-1010", requestedBy: "agentctl" });
+    const retriedCanceled = store.retryJob({
+      attemptsLeft: 2,
+      from: "TEST",
+      jobId: "DEMO-1010",
+    });
+
+    expect(retriedCanceled).toMatchObject({
+      cancelRequestedAt: undefined,
+      status: "TEST",
+    });
+
+    store.updateJobStatus({
+      attemptsLeft: 0,
+      jobId: "DEMO-1010",
+      status: "FAILED",
+      worktreePath: "/worktrees/web/feat-DEMO-1010",
+    });
+    const cleanup = store.requestJobCleanup({ jobId: "DEMO-1010" });
+    store.completeJobCleanup({ jobId: "DEMO-1010", worktreePath: cleanup.worktreePath });
+    const retriedCleaned = store.retryJob({
+      attemptsLeft: 3,
+      from: "IMPL",
+      jobId: "DEMO-1010",
+    });
+
+    expect(retriedCleaned).toMatchObject({
+      status: "IMPL",
+      worktreePath: undefined,
+    });
+
+    store.close();
+  });
+
   it("round-trips brief jobs with branches and dependencies", () => {
     const store = createSqliteJobStore({
       path: ":memory:",

@@ -33,6 +33,14 @@ export interface WorktreeProvisionResult {
   isolation?: WorktreeIsolation;
 }
 
+export interface RunningJobController {
+  requestStop(input: RunningJobStopRequest): Promise<void>;
+}
+
+export interface RunningJobStopRequest {
+  job: JobRecord;
+}
+
 export interface DaemonOnceOptions extends Pick<
   PipelineRunnerOptions,
   "buildPrompt" | "engines" | "gates" | "stageConfig"
@@ -43,10 +51,11 @@ export interface DaemonOnceOptions extends Pick<
   scheduler?: RunScheduler;
   isolationCacheRoot?: string;
   runner?: (opts: PipelineRunnerOptions) => Promise<PipelineRunResult>;
+  runningJobs?: RunningJobController;
 }
 
 export interface DaemonJobResult {
-  status: "ran" | "failed";
+  status: "ran" | "failed" | "canceled";
   jobId: string;
   finalStatus: JobStatus;
 }
@@ -61,6 +70,7 @@ export async function runDaemonOnce(opts: DaemonOnceOptions): Promise<DaemonOnce
     opts.scheduler ?? createRunScheduler({ globalConcurrency: 1, providerConcurrency: {} });
   const multiRun = opts.scheduler !== undefined;
   const deniedJobIds: string[] = [];
+  const controlResults = await processCancelRequestedJobs(opts);
   const running: Promise<DaemonJobResult>[] = [];
 
   while (scheduler.hasCapacity() && running.length < scheduler.maxConcurrency) {
@@ -87,9 +97,9 @@ export async function runDaemonOnce(opts: DaemonOnceOptions): Promise<DaemonOnce
     running.push(runClaimedJob(opts, job, profile, lease));
   }
 
-  if (running.length === 0) return { status: "idle" };
+  if (running.length === 0 && controlResults.length === 0) return { status: "idle" };
 
-  const jobs = await Promise.all(running);
+  const jobs = [...controlResults, ...(await Promise.all(running))];
   if (!multiRun && jobs.length === 1) {
     const [job] = jobs;
     if (job !== undefined) return job;
@@ -157,6 +167,42 @@ async function runClaimedJob(
     return failClaimedJob(opts, job, evidence);
   } finally {
     lease.release();
+  }
+}
+
+async function processCancelRequestedJobs(opts: DaemonOnceOptions): Promise<DaemonJobResult[]> {
+  const results: DaemonJobResult[] = [];
+  for (const job of opts.store.listCancelRequestedJobs()) {
+    results.push(await stopCancelRequestedJob(opts, job));
+  }
+  return results;
+}
+
+async function stopCancelRequestedJob(
+  opts: DaemonOnceOptions,
+  job: JobRecord,
+): Promise<DaemonJobResult> {
+  try {
+    if (opts.runningJobs === undefined) {
+      throw new Error("running job controller is not configured");
+    }
+
+    await opts.runningJobs.requestStop({ job });
+    const canceled = opts.store.completeJobCancellation({
+      jobId: job.item.id,
+      stoppedBy: "daemon",
+    });
+    return { finalStatus: canceled.status, jobId: job.item.id, status: "canceled" };
+  } catch (error) {
+    const evidence = error instanceof Error ? error.message : String(error);
+    opts.store.appendEvent({
+      evidence,
+      jobId: job.item.id,
+      reason: "running cancel request failed",
+      status: job.status,
+      type: "cancel-stop-failed",
+    });
+    return { finalStatus: job.status, jobId: job.item.id, status: "failed" };
   }
 }
 
