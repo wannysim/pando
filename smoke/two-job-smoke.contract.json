@@ -32,7 +32,15 @@
       "mount-contract"
     ],
     "workerCommands": ["claude", "codex"],
-    "authSignals": ["ANTHROPIC_API_KEY", "CLAUDE_CONFIG_DIR", "OPENAI_API_KEY", "CODEX_HOME"],
+    "authSignals": [
+      "ANTHROPIC_API_KEY",
+      "CLAUDE_CONFIG_DIR",
+      "CLAUDE_CONFIG_FILE",
+      "Claude config file present",
+      "OPENAI_API_KEY",
+      "CODEX_HOME",
+      "Codex config dir writable"
+    ],
     "gitCredentialSignals": [
       "PANDO_DEPLOY_KEY",
       "PANDO_SSH_KNOWN_HOSTS",

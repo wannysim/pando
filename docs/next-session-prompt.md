@@ -1,9 +1,9 @@
-# Next Session Prompt — pando self-dogfood follow-up
+# Next Session Prompt — pandoctl npm distribution
 
-아래 프롬프트를 새 Codex 세션 첫 메시지로 그대로 붙여 넣는다.
+아래 프롬프트를 새 Codex/Claude 세션 첫 메시지로 그대로 붙여 넣는다.
 
 ```text
-CLAUDE.md, docs/handoff.md, docs/practical-adoption-roadmap.md, docs/runbooks/two-job-smoke.md를 읽고 최신 origin/develop 상태에서 다음 작업을 시작해줘.
+CLAUDE.md, docs/handoff.md, docs/practical-adoption-roadmap.md, docs/runbooks/two-job-smoke.md를 읽고 최신 origin/develop 상태에서 PR 10을 시작해줘.
 
 작업 시작 순서:
 1. git fetch origin --prune --tags
@@ -15,46 +15,38 @@ CLAUDE.md, docs/handoff.md, docs/practical-adoption-roadmap.md, docs/runbooks/tw
 1. CLAUDE.md
 2. docs/handoff.md
 3. docs/practical-adoption-roadmap.md
-4. docs/runbooks/two-job-smoke.md
-5. docs/w5-operational-readiness.md
-6. docs/repo-structure.md
-7. docs/engineering-standards.md
+4. docs/runbooks/local-pando-runner.md
+5. docs/runbooks/agentctl.md
+6. docs/runbooks/two-job-smoke.md
+7. docs/repo-structure.md
+8. docs/engineering-standards.md
 
 현재 상태:
-- PR #28로 pando self-profile과 host full-daemon contract smoke가 develop에 반영됐다.
-- PR #29로 host full-daemon live 2-job smoke와 단일 pando self-dogfood job이 develop에 반영됐다.
-- PR #33~#35로 기본 self-dogfood 운영 profile을 all-Claude로 전환하고, local runtime artifact prompt와 TEST/IMPL edit-stage toolset을 보강했다.
-- PR #36~#38로 pando가 concurrency 3 batch에서 README/getting-started, dashboard operations context, agentctl operations status 작업을 끝까지 수행했다. Evidence: `/tmp/pando-multi-run-20260607-024505/pando-multi-success-evidence.json`.
-- Host worker readiness는 통과했다.
-  - `claude 2.1.167 (Claude Code)`
-  - `codex-cli 0.137.0`
-  - 기본 auth dirs `~/.claude`, `~/.codex` 존재
-  - config/repos/worktrees/skills paths ready
-- Host live worker 2-job probe는 통과했다.
-  - `PANDO_GLOBAL_CONCURRENCY=2`
-  - evidence: `/tmp/pando-live-worker-smoke/live-worker-smoke.json`
-  - `SMOKE-LIVE-CLAUDE` exit `0`, `timedOut=false`
-  - `SMOKE-LIVE-CODEX` exit `0`, `timedOut=false`
-  - worktree collision 없음, provider cap pass, deterministic gate evidence pass
-- Host full-daemon live smoke는 같은 두 job/global 2로 완료됐다.
-  - baseline contract evidence: `/tmp/pando-full-daemon-smoke-contract-20260607-003713/full-daemon-smoke.json`
-  - initial live failure evidence: `/tmp/pando-full-daemon-smoke-live-20260607-003749/live-failure-evidence.json`
-  - resume evidence: `/tmp/pando-full-daemon-smoke-live-20260607-003749/live-resume-evidence.json`
-  - dogfood evidence: `/tmp/pando-full-daemon-dogfood-20260607-010122/dogfood-evidence.json`
-- Docker worker readiness는 blocked다.
-  - mount contract와 global cap은 pass
-  - image 안에 `claude`/`codex` CLI 없음
-  - Claude/Codex auth signal이 컨테이너에 mount되지 않음
-- local daemon loop는 `PANDO_DAEMON_ENABLED=1`로 켤 수 있다. 다만 현재 실행 경로는 env var가 많고, 웹 submit도 brief file path 중심이라 실제 사용자 UX와 거리가 있다.
+- Host worker readiness, host live worker 2-job probe, host full-daemon live dogfood는 완료됐다.
+- `pando start` one-command local run은 PR #41로 develop에 들어왔다.
+- Dashboard/API inline natural-language brief intake는 PR #54로 develop에 들어왔다.
+- Dashboard/CLI follow-up, draft PR gate, pandoctl bin rename/docs parity는 PR #40~#44/#51로 들어왔다.
+- Real git checksum/diff adapter는 PR #52, release/* base-branch routing은 PR #53으로 들어왔다.
+- Docker worker readiness는 PR #55와 follow-up으로 정리됐다.
+  - opt-in Linux worker CLI install layer가 있다.
+  - runtime image에는 CA bundle, git, openssh-client가 있다.
+  - readiness evidence는 worker CLI, Claude config file, Codex writable config dir, auth signal, mount, git credential presence를 secret 없이 기록한다.
+  - Docker live worker smoke는 실제 시도했고 post-CA rerun에서 Codex는 exit `0`까지 확인했다.
+  - 이 환경에서 Claude Code managed connector는 container로 상속되지 않는다. 실제 Docker Claude call은 `ANTHROPIC_API_KEY` 또는 container-local `claude /login` credential이 필요하다.
+- 남은 roadmap 항목은 pandoctl npm distribution(PR 10) 하나다.
 
-이번 세션 목표:
-- full daemon live smoke를 다시 목표로 삼지 않는다. PR #36~#38 이후에는 self-dogfood를 사람이 반복해서 쓰기 쉽게 만드는 것이 목표다.
-- 우선순위는 one-command local run, web inline brief intake, README/README.ko/docs parity, dashboard/agentctl follow-up, Docker worker readiness 순서다.
-- 작업이 작고 안전하면 pando self-dogfood 흐름으로 실행할 수 있는지 확인하되, pando 실행 자체가 과하게 복잡하면 먼저 UX 개선 작업을 직접 고친다.
-- self-dogfood를 실행한다면 정확한 job 수, worktree path, final status, deterministic gate evidence를 `/tmp` structured JSON으로 남긴다.
-- self-dogfood 실행이 과하거나 불필요하면 그 이유를 docs/handoff.md 또는 최종 응답에 구체적으로 남긴다.
+다음 세션 목표는 PR 10: pandoctl npm distribution.
+
+PR 10 구현 목표:
+- published binary는 `pandoctl` 하나로 정리한다.
+- `pandoctl start`는 현재 `pando start`와 같은 local daemon/dashboard bootstrap을 제공한다.
+- `pandoctl submit/list/show/retry/cancel/cleanup/watch/smoke`는 현재 operations CLI 기능을 제공한다.
+- 배포 패키지는 tsx 직접 실행이 아니라 빌드/번들된 JS + shebang bin을 담는다.
+- `packages/pandoctl/package.json`의 placeholder `0.0.1`/stub을 실제 publish 후보로 교체한다.
+- `better-sqlite3` native dependency 글로벌 설치 전략을 검증하거나, 실패 시 구조화된 이유와 다음 결정을 문서화한다.
 
 TDD/계약 우선 작업:
+- 실패하는 bin/package test를 먼저 작성한다.
 - 새 DB table은 추가하지 않는다.
 - public auth는 추가하지 않는다.
 - src/core, src/pipeline, src/scheduler에는 I/O import를 추가하지 않는다.
@@ -63,34 +55,22 @@ TDD/계약 우선 작업:
 - 비밀값을 출력하거나 커밋하지 않는다.
 - evidence 파일은 커밋하지 않는다.
 
-가능한 구현 범위:
-- one-command local run: 긴 env var 블록 없이 `pando start` 또는 `pnpm pando start`로 daemon/dashboard/local DB/worktree를 띄우는 흐름.
-- web inline brief intake: dashboard에서 자연어 작업 설명과 spec/docs/assets reference를 입력하면 pando가 canonical brief를 만들고 queue에 넣는 흐름.
-- README/README.ko/docs parity: README.md, README.ko.md, runbook, handoff가 같은 current status와 limitations를 설명하도록 맞춤.
-- dashboard follow-up: branch display를 `job.branch` 우선으로 수정하고 duration/cost/evidence truncation/copy를 마저 구현.
-- terminal follow-up: `agentctl watch`, smoke/readiness command, API-backed vs DB-backed mode 문서화.
-- Docker worker readiness: CLI/auth/git credentials blocker를 구조화 evidence와 문서로 좁힌다.
-
 이번 세션에서 하지 말 것:
-- full daemon live smoke 자체를 다시 주요 목표로 삼기
-- dashboard analytics/charts/filter 대규모 확장
 - public auth/OIDC/token auth 구현
 - GitHub Issue/Jira write-back
 - provider backoff 정교화
 - multi-container split
 - 3~5 job soak/nightly run
 - full-screen TUI
-- public auth
 - 새 DB table 추가
 - 비밀값 커밋
 
 성공 기준:
-1. 선택한 작은 작업이 docs/practical-adoption-roadmap.md의 현재 우선순위와 맞다.
-2. 변경 범위가 작고 리뷰하기 쉽다.
-3. 필요한 테스트 또는 문서 검증이 실행된다.
-4. `pnpm format:check` 통과
-5. 가능한 경우 `pnpm verify` 통과
-6. 실패가 있으면 실패 사유와 로그 요약을 `/tmp` 아래 structured JSON evidence로 남긴다.
+1. PR 10 범위에 맞는 작은 변경 단위로 진행한다.
+2. 필요한 테스트 또는 문서 검증이 실행된다.
+3. `pnpm format:check` 통과
+4. 가능한 경우 `pnpm verify` 통과
+5. 실패가 있으면 실패 사유와 로그 요약을 `/tmp` 아래 structured JSON evidence로 남긴다.
 
 검증 후:
 - 변경이 있으면 English commit message로 커밋한다.
@@ -101,4 +81,4 @@ TDD/계약 우선 작업:
 
 ## Why This Is Next
 
-Host full-daemon contract/live smoke와 3-job pando self-dogfood batch는 이미 develop에 들어왔다. 다음 리스크는 "돌릴 수 있느냐"가 아니라 "사람이 웹/CLI에서 자연스럽게 다시 돌릴 수 있느냐"다. 특히 local start command와 inline brief intake가 없으면 자가개발은 계속 운영자 수동 절차에 묶인다.
+자가개발을 반복하기 위한 local start, inline brief intake, dashboard/CLI operations follow-up, deterministic gates, release branch routing, Docker readiness hardening은 develop에 들어왔다. 다음 병목은 설치 경로다. 사용자가 repo clone 없이 `npm i -g pandoctl` 또는 `npx pandoctl`로 시작하고 운영 CLI를 쓸 수 있어야 한다.

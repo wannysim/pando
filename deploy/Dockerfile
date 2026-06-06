@@ -21,11 +21,11 @@ ENV PANDO_PORT=3210
 ENV PANDO_DB=/data/pando.sqlite
 ENV PANDO_STATIC_DASHBOARD_ROOT=/app/dashboard/dist
 
-# Worker CLI strategy: host-mounted, NOT baked into the image.
+# Worker CLI strategy: secret-free base image, opt-in worker CLI layer.
 #
 # The daemon/API/dashboard run from this image, but the SPEC->...->PR pipeline
 # shells out to the `claude` / `codex` worker CLIs. We deliberately do NOT install
-# those CLIs in this layer:
+# those CLIs by default:
 #   1. Auth cannot be baked. Both CLIs authenticate through managed-connector
 #      tokens / config stored in ~/.claude and ~/.codex on the host. The image
 #      would still need those host volumes mounted, so baking the binary alone
@@ -47,12 +47,22 @@ ENV PANDO_STATIC_DASHBOARD_ROOT=/app/dashboard/dist
 #         --build-arg INSTALL_WORKER_CLIS=true
 #      (compose: PANDO_INSTALL_WORKER_CLIS=true). Versions are pinned via build
 #      args so "what shipped" matches "what was tested" (handoff: claude 2.1.167,
-#      codex-cli 0.137.0). Verified 2026-06-07: with this layer + auth volumes the
-#      docker readiness probe reports blockers=[] (workerCli.pass=true).
-# Either way the auth volumes (~/.claude, ~/.codex) must be mounted; see
-# deploy/docker-compose.yml and deploy/README.md "Worker readiness".
+#      codex-cli 0.137.0). Verified 2026-06-07: this layer makes the docker
+#      readiness probe report workerCli.pass=true; auth still needs API keys or
+#      usable runtime credentials.
+# Either way auth must come from API keys or mounted runtime credentials; never
+# bake secrets into the image. See deploy/docker-compose.yml and deploy/README.md
+# "Worker readiness". The runtime also includes ca-certificates/git/ssh because
+# live worker calls and PR-stage git operations need them.
 ENV PANDO_WORKER_BIN=/worker-bin
 ENV PATH="/worker-bin:${PATH}"
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+      ca-certificates \
+      git \
+      openssh-client \
+    && rm -rf /var/lib/apt/lists/*
 
 RUN corepack enable
 COPY --from=build /app /app

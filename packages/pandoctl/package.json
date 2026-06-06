@@ -2,25 +2,24 @@
   "name": "pandoctl",
   "version": "0.0.1",
   "description": "CLI for pando — multi-repo background coding agent orchestrator. Placeholder release; the real CLI is in active development.",
-  "license": "MIT",
+  "keywords": [
+    "agent",
+    "cli",
+    "git-worktree",
+    "orchestrator",
+    "pando",
+    "pandoctl"
+  ],
   "homepage": "https://github.com/wannysim/pando#readme",
+  "bugs": {
+    "url": "https://github.com/wannysim/pando/issues"
+  },
+  "license": "MIT",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/wannysim/pando.git",
     "directory": "packages/pandoctl"
   },
-  "bugs": {
-    "url": "https://github.com/wannysim/pando/issues"
-  },
-  "keywords": [
-    "pando",
-    "pandoctl",
-    "cli",
-    "agent",
-    "orchestrator",
-    "git-worktree"
-  ],
-  "type": "module",
   "bin": {
     "pandoctl": "bin/pandoctl.mjs"
   },
@@ -28,10 +27,11 @@
     "bin",
     "README.md"
   ],
-  "engines": {
-    "node": ">=22.13.0"
-  },
+  "type": "module",
   "publishConfig": {
     "access": "public"
+  },
+  "engines": {
+    "node": ">=22.13.0"
   }
 }

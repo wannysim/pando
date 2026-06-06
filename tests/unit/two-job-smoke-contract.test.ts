@@ -52,7 +52,15 @@ describe("two-job smoke contract", () => {
     );
     expect(contract.fallback).toEqual({ allowed: true, recordReason: true });
     expect(contract.readiness).toEqual({
-      authSignals: ["ANTHROPIC_API_KEY", "CLAUDE_CONFIG_DIR", "OPENAI_API_KEY", "CODEX_HOME"],
+      authSignals: [
+        "ANTHROPIC_API_KEY",
+        "CLAUDE_CONFIG_DIR",
+        "CLAUDE_CONFIG_FILE",
+        "Claude config file present",
+        "OPENAI_API_KEY",
+        "CODEX_HOME",
+        "Codex config dir writable",
+      ],
       gitCredentialSignals: [
         "PANDO_DEPLOY_KEY",
         "PANDO_SSH_KNOWN_HOSTS",
@@ -194,14 +202,17 @@ describe("two-job smoke contract", () => {
     expect(evidence.mode).toBe("readiness");
     expect(evidence.target).toBe("host");
     expect(evidence.blockers).toEqual([]);
-    expect(evidence.checks.globalConcurrency).toEqual({ value: 2, withinLiveCap: true });
+    expect(evidence.checks.globalConcurrency).toEqual({
+      value: 2,
+      withinLiveCap: true,
+    });
     expect(evidence.checks.workerCli.pass).toBe(true);
     expect(evidence.checks.auth.pass).toBe(true);
-    expect(evidence.checks.auth.signals.claude).toEqual({
+    expect(evidence.checks.auth.signals.claude).toMatchObject({
       apiKeyPresent: true,
       configDirPresent: false,
     });
-    expect(evidence.checks.auth.signals.codex).toEqual({
+    expect(evidence.checks.auth.signals.codex).toMatchObject({
       apiKeyPresent: true,
       configDirPresent: false,
     });
@@ -213,6 +224,113 @@ describe("two-job smoke contract", () => {
     expect(evidence.checks.gitCreds.signals.tokenEnvPresent).toBe(false);
     expect(JSON.stringify(evidence)).not.toContain("redacted");
     expect(JSON.stringify(evidence)).not.toContain("PRIVATE-KEY-SECRET");
+  });
+
+  it("does not treat Docker auth directories alone as live-ready", () => {
+    const dir = mkdtempSync(join(tmpdir(), "pando-docker-auth-"));
+    const evidencePath = join(dir, "readiness.json");
+    const fakeBin = join(dir, "bin");
+    const claudeDir = join(dir, "claude");
+    const codexDir = join(dir, "codex");
+    const configDir = join(dir, "config");
+    const dataDir = join(dir, "data");
+    const homeDir = join(dir, "home");
+    const reposDir = join(dir, "repos");
+    const skillsDir = join(dir, "skills");
+    const worktreesDir = join(dir, "worktrees");
+
+    for (const made of [
+      fakeBin,
+      claudeDir,
+      codexDir,
+      configDir,
+      dataDir,
+      homeDir,
+      reposDir,
+      skillsDir,
+      worktreesDir,
+    ]) {
+      mkdirSync(made);
+    }
+    for (const command of ["claude", "codex"]) {
+      const commandPath = join(fakeBin, command);
+      writeFileSync(commandPath, "#!/bin/sh\nexit 0\n");
+      chmodSync(commandPath, 0o755);
+    }
+    chmodSync(codexDir, 0o555);
+
+    try {
+      execFileSync(
+        process.execPath,
+        [
+          "scripts/two-job-smoke.mjs",
+          "--mode",
+          "readiness",
+          "--target",
+          "docker",
+          "--evidence",
+          evidencePath,
+        ],
+        {
+          env: {
+            ...process.env,
+            CLAUDE_CONFIG_DIR: claudeDir,
+            CODEX_HOME: codexDir,
+            HOME: homeDir,
+            PANDO_CONFIG_DIR: configDir,
+            PANDO_DB: join(dataDir, "pando.sqlite"),
+            PANDO_GLOBAL_CONCURRENCY: "2",
+            PANDO_REPOS_ROOT: reposDir,
+            PANDO_SKILLS_ROOT: skillsDir,
+            PANDO_WORKTREE_ROOT: worktreesDir,
+            PATH: `${fakeBin}:${process.env.PATH ?? ""}`,
+          },
+        },
+      );
+    } finally {
+      chmodSync(codexDir, 0o755);
+    }
+
+    const evidence = JSON.parse(readFileSync(evidencePath, "utf8")) as {
+      blockers: string[];
+      checks: {
+        auth: {
+          pass: boolean;
+          signals: {
+            claude: {
+              apiKeyPresent: boolean;
+              configDirPresent: boolean;
+              configFilePresent: boolean;
+            };
+            codex: {
+              apiKeyPresent: boolean;
+              configDirPresent: boolean;
+              configDirWritable: boolean;
+            };
+          };
+        };
+      };
+      target: string;
+    };
+
+    expect(evidence.target).toBe("docker");
+    expect(evidence.checks.auth.pass).toBe(false);
+    expect(evidence.checks.auth.signals.claude).toEqual({
+      apiKeyPresent: false,
+      configDirPresent: true,
+      configFilePresent: false,
+    });
+    expect(evidence.checks.auth.signals.codex).toEqual({
+      apiKeyPresent: false,
+      configDirPresent: true,
+      configDirWritable: false,
+    });
+    expect(evidence.blockers).toEqual(
+      expect.arrayContaining([
+        "Claude authentication is not configured",
+        "Codex authentication is not configured",
+      ]),
+    );
   });
 
   it("records a git-credentials readiness signal without making it a hard live blocker", () => {
@@ -377,7 +495,11 @@ describe("two-job smoke contract", () => {
         worktreeCollision: { pass: boolean };
       };
       jobs: Array<{
-        gateEvidence: Array<{ evidence: string; gateName: string; stage: string }>;
+        gateEvidence: Array<{
+          evidence: string;
+          gateName: string;
+          stage: string;
+        }>;
         id: string;
         worker: { engine: string; exitCode: number };
         worktreePath: string;

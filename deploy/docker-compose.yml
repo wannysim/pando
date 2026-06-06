@@ -45,10 +45,13 @@ services:
       #    the CLI in the image instead (see deploy/README.md option B).
       # - "${PANDO_WORKER_BIN_ROOT:-~/.local/bin}:/worker-bin:ro"
       #
-      # 2) Worker auth (read-only). Claude Code and Codex read managed-connector
-      #    tokens / config from these dirs. NEVER bake these into the image.
+      # 2) Worker auth. NEVER bake auth into the image.
+      #    Claude: mounted host files may not authenticate inside Docker on macOS;
+      #    prefer ANTHROPIC_API_KEY or a container-local `claude /login` volume for
+      #    live Docker workers. A read-only mount is useful as a readiness signal.
       # - "${PANDO_CLAUDE_CONFIG:-~/.claude}:/root/.claude:ro"
-      # - "${PANDO_CODEX_CONFIG:-~/.codex}:/root/.codex:ro"
+      #    Codex: CODEX_HOME must be writable because the CLI writes local state.
+      # - "${PANDO_CODEX_CONFIG:-~/.codex}:/root/.codex"
       #
       # 3) Git credentials for push / PR creation. Pick ONE:
       #    a) Deploy key (preferred for a single repo): mount a read-only SSH key
@@ -58,9 +61,10 @@ services:
       #    b) gh / HTTPS token via git credential store (host-managed, read-only):
       # - "${PANDO_GIT_CREDENTIALS:-~/.git-credentials}:/root/.git-credentials:ro"
       # - "${PANDO_GITCONFIG:-~/.gitconfig}:/root/.gitconfig:ro"
-    # If Claude Code cannot inherit the host managed connector inside the
-    # container, set API-key mode here instead (values come from the host env or
-    # an untracked .env file; do NOT commit secrets). See deploy/README.md.
+    # For Docker live workers, set API-key mode or mount a container-local
+    # Claude login volume if host managed-connector inheritance fails (observed on
+    # macOS). Values come from the host env or an untracked .env file; do NOT
+    # commit secrets. See deploy/README.md.
     # environment additions (uncomment in the environment: block above):
     #   ANTHROPIC_API_KEY: "${ANTHROPIC_API_KEY:-}"
     #   OPENAI_API_KEY: "${OPENAI_API_KEY:-}"
