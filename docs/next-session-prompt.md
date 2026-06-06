@@ -23,6 +23,8 @@ CLAUDE.md, docs/handoff.md, docs/practical-adoption-roadmap.md, docs/runbooks/tw
 현재 상태:
 - PR #28로 pando self-profile과 host full-daemon contract smoke가 develop에 반영됐다.
 - PR #29로 host full-daemon live 2-job smoke와 단일 pando self-dogfood job이 develop에 반영됐다.
+- PR #33~#35로 기본 self-dogfood 운영 profile을 all-Claude로 전환하고, local runtime artifact prompt와 TEST/IMPL edit-stage toolset을 보강했다.
+- PR #36~#38로 pando가 concurrency 3 batch에서 README/getting-started, dashboard operations context, agentctl operations status 작업을 끝까지 수행했다. Evidence: `/tmp/pando-multi-run-20260607-024505/pando-multi-success-evidence.json`.
 - Host worker readiness는 통과했다.
   - `claude 2.1.167 (Claude Code)`
   - `codex-cli 0.137.0`
@@ -43,12 +45,12 @@ CLAUDE.md, docs/handoff.md, docs/practical-adoption-roadmap.md, docs/runbooks/tw
   - mount contract와 global cap은 pass
   - image 안에 `claude`/`codex` CLI 없음
   - Claude/Codex auth signal이 컨테이너에 mount되지 않음
-- production `src/server.ts`는 아직 상시 daemon loop를 돌리지 않는다. 지금 server는 API/static dashboard entrypoint다.
+- local daemon loop는 `PANDO_DAEMON_ENABLED=1`로 켤 수 있다. 다만 현재 실행 경로는 env var가 많고, 웹 submit도 brief file path 중심이라 실제 사용자 UX와 거리가 있다.
 
 이번 세션 목표:
-- full daemon live smoke를 다시 목표로 삼지 않는다. PR #29 이후에는 작은 pando self-dogfood 작업을 선택해 끝까지 돌리는 것이 목표다.
-- 우선순위는 docs consistency, dashboard operations UX, terminal UX, README/getting-started, Docker worker readiness 순서다.
-- 작업이 작고 안전하면 brief 기반 pando self-dogfood 흐름으로 실행할 수 있는지 확인한다.
+- full daemon live smoke를 다시 목표로 삼지 않는다. PR #36~#38 이후에는 self-dogfood를 사람이 반복해서 쓰기 쉽게 만드는 것이 목표다.
+- 우선순위는 one-command local run, web inline brief intake, README/README.ko/docs parity, dashboard/agentctl follow-up, Docker worker readiness 순서다.
+- 작업이 작고 안전하면 pando self-dogfood 흐름으로 실행할 수 있는지 확인하되, pando 실행 자체가 과하게 복잡하면 먼저 UX 개선 작업을 직접 고친다.
 - self-dogfood를 실행한다면 정확한 job 수, worktree path, final status, deterministic gate evidence를 `/tmp` structured JSON으로 남긴다.
 - self-dogfood 실행이 과하거나 불필요하면 그 이유를 docs/handoff.md 또는 최종 응답에 구체적으로 남긴다.
 
@@ -62,10 +64,11 @@ TDD/계약 우선 작업:
 - evidence 파일은 커밋하지 않는다.
 
 가능한 구현 범위:
-- docs consistency: roadmap, handoff, next-session prompt, runbook의 PR #29 이후 상태 정리.
-- dashboard operations UX: job list/detail에서 status, stage, attempts, latest reason/evidence, worktree path, cost/duration을 더 잘 보이게 하는 작은 개선.
-- terminal UX: `agentctl show/list/smoke`의 operator 흐름을 작게 개선하고 tests로 고정.
-- README/getting-started: 현재 smoke 종류와 limitations를 처음 보는 사용자 기준으로 정리.
+- one-command local run: 긴 env var 블록 없이 `pando start` 또는 `pnpm pando start`로 daemon/dashboard/local DB/worktree를 띄우는 흐름.
+- web inline brief intake: dashboard에서 자연어 작업 설명과 spec/docs/assets reference를 입력하면 pando가 canonical brief를 만들고 queue에 넣는 흐름.
+- README/README.ko/docs parity: README.md, README.ko.md, runbook, handoff가 같은 current status와 limitations를 설명하도록 맞춤.
+- dashboard follow-up: branch display를 `job.branch` 우선으로 수정하고 duration/cost/evidence truncation/copy를 마저 구현.
+- terminal follow-up: `agentctl watch`, smoke/readiness command, API-backed vs DB-backed mode 문서화.
 - Docker worker readiness: CLI/auth/git credentials blocker를 구조화 evidence와 문서로 좁힌다.
 
 이번 세션에서 하지 말 것:
@@ -76,6 +79,8 @@ TDD/계약 우선 작업:
 - provider backoff 정교화
 - multi-container split
 - 3~5 job soak/nightly run
+- full-screen TUI
+- public auth
 - 새 DB table 추가
 - 비밀값 커밋
 
@@ -96,4 +101,4 @@ TDD/계약 우선 작업:
 
 ## Why This Is Next
 
-Host full-daemon contract/live smoke와 단일 pando self-dogfood job은 이미 develop에 들어왔다. 다음 리스크는 같은 흐름을 작은 실제 작업에 반복 적용할 때 문서, dashboard, terminal, README, Docker readiness가 운영자가 이해할 수 있는 상태인지다.
+Host full-daemon contract/live smoke와 3-job pando self-dogfood batch는 이미 develop에 들어왔다. 다음 리스크는 "돌릴 수 있느냐"가 아니라 "사람이 웹/CLI에서 자연스럽게 다시 돌릴 수 있느냐"다. 특히 local start command와 inline brief intake가 없으면 자가개발은 계속 운영자 수동 절차에 묶인다.

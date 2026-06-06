@@ -11,15 +11,17 @@
 - Host에서 실제 `claude`/`codex` CLI worker 2-job probe가 통과했다.
 - PR #28에서 `pando` self-profile과 host full-daemon contract smoke가 develop에 반영됐다.
 - PR #29에서 host full-daemon live 2-job smoke와 단일 pando self-dogfood job이 develop에 반영됐다.
+- PR #36~#38에서 pando가 concurrency 3 self-dogfood batch로 README/getting-started, dashboard operations context, agentctl operations status 작업을 끝까지 돌리고 PR까지 만들었다.
 - worker readiness/live smoke evidence는 structured JSON으로 남긴다.
 
 아직 아래는 남아 있다.
 
-- `src/server.ts`가 production daemon loop를 돌리지 않는다. 지금 server는 API/static dashboard entrypoint다.
-- dashboard/API로 job을 넣으면 DB에 queued job이 생기지만, real `runDaemonOnce` + real worker engines + worktree provisioner + gates가 상시 실행되지는 않는다.
+- local daemon loop는 `PANDO_DAEMON_ENABLED=1`로 켤 수 있지만, 실행 명령이 너무 복잡하다. `pando start` 같은 단일 명령이 없다.
+- dashboard brief submit은 여전히 "brief 파일 경로" 중심이다. 사용자가 웹에 자연어 요청과 spec/doc 참고를 넣으면 pando가 canonical brief를 만들고 queue에 넣는 UX가 아니다.
+- pando self-dogfood는 가능해졌지만, prompt/schema/tooling을 여러 번 손봐야 했다. 자가개발을 안정적으로 반복하려면 worker stage observability와 UX가 더 필요하다.
 - Docker image 안에는 `claude`/`codex` CLI와 auth volume이 없다.
 
-따라서 다음 목표는 "새 기능 확장"이 아니라 **PR #29 이후 문서 정합성을 맞춘 뒤 pando self-dogfood로 작은 작업을 반복 실행할 수 있게 운영 표면을 다듬는 것**이다. 우선순위는 docs consistency → dashboard operations UX → terminal UX → README/getting-started → Docker worker readiness 순서다.
+따라서 다음 목표는 "새 기능 확장"이 아니라 **자가개발을 사람이 다시 돌리고 싶을 만큼 단순하게 만드는 것**이다. 우선순위는 one-command local run → web inline brief intake → docs/README parity → dashboard/agentctl review follow-up → Docker worker readiness 순서다.
 
 ## 요구사항 요약
 
@@ -28,6 +30,8 @@
 - Dashboard UX: queued/running/failed 상태와 readiness blocker를 눈으로 이해할 수 있어야 한다.
 - Terminal UX: `agentctl`로 submit/list/show/retry/cancel/cleanup/status/smoke 흐름을 빠르게 확인할 수 있어야 한다.
 - README/getting started: 처음 보는 사용자가 5분 안에 dashboard를 열고, fake/readiness/live smoke 중 하나를 실행할 수 있어야 한다.
+- Web brief UX: 사용자가 file path가 아니라 자연어 요청, spec/doc reference, asset reference를 입력하면 pando가 canonical brief를 만들 수 있어야 한다.
+- Local start UX: 환경 변수 긴 블록 없이 pando daemon/dashboard를 시작할 수 있어야 한다.
 - 결정은 계속 deterministic evidence를 기준으로 한다. LLM output text를 pass/fail로 쓰지 않는다.
 
 ## Stacked PR Roadmap
@@ -74,10 +78,11 @@
 - Commit:
   - `chore: run host daemon live smoke`
 
-### PR 3: docs consistency after dogfood
+### Done: PR 3 — docs consistency after dogfood
 
 - Focus: Docs
 - Depends on: PR 1~2
+- Status: ✅ 완료, develop 반영(PR #30). 이후 PR #36~#38 결과와 실행 UX 발견사항을 이 문서에서 다시 반영.
 - Files:
   - `docs/practical-adoption-roadmap.md`
   - `docs/next-session-prompt.md`
@@ -90,16 +95,17 @@
   - 다음 세션 목표를 pando self-dogfood로 작은 문서/운영 UX 작업을 돌리는 흐름으로 정리한다.
 - Acceptance:
   - docs가 host full-daemon contract/live dogfood 완료 상태를 일관되게 설명한다.
-  - 남은 한계는 production server loop, operations UX, Docker worker readiness처럼 실제로 남은 항목만 말한다.
+  - 남은 한계는 operations UX, local start UX, Docker worker readiness처럼 실제로 남은 항목만 말한다.
   - `pnpm format:check` 통과.
   - 가능하면 `pnpm verify` 통과.
 - Commit:
   - `docs: update roadmap after full daemon dogfood`
 
-### PR 4: dashboard operations UX pass
+### Done: PR 4 — dashboard operations UX pass
 
 - Focus: Atomic UI + Integration
 - Depends on: PR 3
+- Status: ✅ 1차 완료, develop 반영(PR #37). Follow-up 필요.
 - Files:
   - `dashboard/src/*`
   - `src/api/schema.ts`, `src/api/app.ts` if response shape needs small additions
@@ -118,10 +124,17 @@
 - Commit:
   - `feat(dashboard): improve operations workflow`
 
-### PR 5: terminal UX and smoke commands
+Follow-up:
+- Branch display는 worktree slug가 아니라 API의 `job.branch`를 우선한다.
+- Event row에 `payload.durationMs`/`payload.costUsd`를 사람이 읽는 형태로 보여준다.
+- Evidence truncation과 copy-to-clipboard를 추가한다.
+- #37 tests는 AC 주석 중심이라 실제 사용자 동작 assertion을 더 강화한다.
+
+### Done: PR 5 — terminal UX first pass
 
 - Focus: Data/Logic + Integration
 - Depends on: PR 3
+- Status: ✅ 1차 완료, develop 반영(PR #38). Follow-up 필요.
 - Files:
   - `src/cli/agentctl.ts`
   - `scripts/two-job-smoke.mjs`
@@ -137,10 +150,16 @@
 - Commit:
   - `feat(cli): add operator smoke commands`
 
-### PR 6: README and getting started page
+Follow-up:
+- `agentctl watch <job-id>` 또는 `agentctl list --watch`를 추가한다.
+- `agentctl smoke readiness --target host|docker`를 검토한다.
+- API-backed mode와 local DB mode의 차이를 README/runbook에 더 명확히 쓴다.
+
+### Done: PR 6 — README and getting started page
 
 - Focus: Docs + polish
 - Depends on: PR 3~5 중 실제 동작하는 범위
+- Status: ✅ 1차 완료, develop 반영(PR #36). README.ko parity는 이 문서 정리에서 보완.
 - Files:
   - `README.md`
   - `README.ko.md`
@@ -159,7 +178,56 @@
 - Commit:
   - `docs: add getting started guide`
 
-### PR 7: Docker worker readiness hardening
+Follow-up:
+- README.md와 README.ko.md는 같은 local run/status/limitations를 계속 유지한다.
+- README는 아직 runbook으로 넘기는 부분이 많다. `pando start`가 생기면 5분 경로를 실제 단일 명령 중심으로 다시 쓴다.
+
+### PR 7: one-command local run
+
+- Focus: Operator UX + Integration
+- Depends on: PR #35 runtime prompt/tool fix
+- Files:
+  - `src/cli/agentctl.ts` 또는 새 CLI entrypoint
+  - `src/server.ts`
+  - `package.json`
+  - `docs/runbooks/local-pando-runner.md`
+  - CLI/server tests
+- Work:
+  - `pando start` 또는 `pnpm pando start`에 해당하는 단일 local start command를 만든다.
+  - 기본값은 `/tmp/pando-local-{timestamp}` DB/worktree, `config/`, dashboard `3210`, daemon enabled, global concurrency 1~3이다.
+  - 시작 로그에 dashboard URL, DB path, worktree root, stop 방법, cleanup 방법을 출력한다.
+  - 이미 포트가 사용 중이면 명확한 에러 또는 대체 포트를 제공한다.
+- Acceptance:
+  - README/runbook의 local start path가 긴 env block 없이 동작한다.
+  - command가 secret 값을 출력하지 않는다.
+  - local daemon/dashboard/API health가 한 명령으로 확인된다.
+- Commit:
+  - `feat(cli): add local pando start command`
+
+### PR 8: web inline brief intake
+
+- Focus: Product UX + Intake
+- Depends on: one-command local run
+- Files:
+  - `dashboard/src/*`
+  - `src/api/app.ts`
+  - `src/intake/brief.ts`
+  - tests
+  - docs/runbooks
+- Work:
+  - dashboard에서 brief file path 대신 자연어 요청 textarea를 기본 입력으로 둔다.
+  - spec/docs/assets reference를 텍스트로 함께 넣을 수 있게 한다.
+  - API가 inline brief를 받아 canonical `brief.md`를 repo 밖 configured inbox 또는 `/tmp`에 materialize한 뒤 WorkItem payload에 연결한다.
+  - 기존 file-path brief submit은 advanced mode로 남긴다.
+- Acceptance:
+  - 사용자가 "무엇을 구현할지"와 "어디를 참고할지"만 입력해도 queue에 들어간다.
+  - 생성된 brief는 기존 brief schema gate를 통과한다.
+  - validation 실패 reason이 dashboard에 표시된다.
+  - secrets를 저장하거나 출력하지 않는다.
+- Commit:
+  - `feat(dashboard): add inline brief intake`
+
+### PR 9: Docker worker readiness hardening
 
 - Focus: Deployment
 - Depends on: host daemon smoke가 먼저 통과한 뒤 착수
@@ -226,27 +294,28 @@ README는 아래 순서가 좋다.
 
 ### 지금 당장 가능한 방식
 
-PR #29 이후에는 pando self-profile과 host full-daemon smoke path가 있으므로, 작은 문서/운영 UX 작업을 brief로 넣어 self-dogfood하는 흐름을 실험할 수 있다. 다만 production `src/server.ts` 상시 daemon loop는 아직 붙지 않았으므로, 완전한 상시 운영보다 host smoke/dogfood 경로로 작게 실행하는 방식이 맞다.
+PR #36~#38 이후에는 작은 문서/운영 UX 작업을 pando self-dogfood batch로 끝까지 돌릴 수 있다. 다만 아직 사용자가 기대하는 "웹에 자연어로 할 일을 넣으면 알아서 brief/spec를 만들고 실행"하는 UX는 아니다. 현재 방식은 operator가 `/tmp` run root, config, concurrency, brief 파일 경로, daemon env를 직접 관리하는 개발자용 경로다.
 
 1. 새 Codex/Claude 세션을 연다.
 2. `docs/next-session-prompt.md`를 그대로 붙여 넣는다.
 3. 이번 문서(`docs/practical-adoption-roadmap.md`)를 읽고 현재 첫 우선순위부터 진행하라고 시킨다.
-4. 작업이 끝나면 `pnpm verify`, smoke evidence, docs/handoff 업데이트, English commit을 요구한다.
+4. pando self-dogfood를 사용할 경우, jobs를 먼저 queue에 넣고 daemon을 concurrency 2~3으로 켜야 같은 tick에서 병렬 처리된다.
+5. 작업이 끝나면 `pnpm verify`, `/tmp` structured evidence, docs/handoff 업데이트, English commit을 요구한다.
 
 붙여 넣을 수 있는 짧은 지시:
 
 ```text
 CLAUDE.md, docs/handoff.md, docs/practical-adoption-roadmap.md, docs/next-session-prompt.md를 읽고 develop 최신 상태에서 시작해줘.
 
-목표는 pando self-dogfood로 작은 docs consistency 작업 하나를 끝까지 돌리는 거야.
-full daemon smoke는 PR #29로 이미 develop에 반영됐으니, 다음 우선순위 문서를 확인하고 작은 변경만 진행해줘.
+목표는 self-dogfood를 사람이 다시 쓰기 쉽게 만드는 작은 작업 하나야.
+우선순위는 one-command local run → web inline brief intake → README/docs parity → dashboard/agentctl follow-up이야.
 비밀값은 출력/커밋하지 말고, evidence는 /tmp 아래에 남겨줘.
 완료 후 pnpm verify를 통과시키고 English commit message로 커밋해줘.
 ```
 
 ### self-dogfood 방식
 
-작은 작업은 pando 자신에게 brief를 넣는 방식으로 전환한다.
+작은 작업은 pando 자신에게 brief를 넣는 방식으로 전환할 수 있다. 현재는 아직 file-path 기반이라 아래처럼 brief 파일을 먼저 만든다.
 
 예상 흐름:
 
@@ -263,8 +332,8 @@ PANDO_API_URL=http://127.0.0.1:3210 \
   pnpm tsx src/cli/agentctl.ts list
 ```
 
-주의: production server loop는 아직 상시 실행되지 않는다. 실제 worker 실행까지 확인하려면 PR #29의 host full-daemon smoke/dogfood runbook처럼 명시적인 host 실행 경로와 `/tmp` structured evidence를 사용한다.
+주의: 현재 runbook 경로는 env var가 길다. `pando start`가 생기기 전까지는 `docs/runbooks/local-pando-runner.md`를 따른다. 동일 tick에서 여러 job을 병렬 처리하려면 daemon 시작 전에 jobs를 queue에 넣고, `PANDO_GLOBAL_CONCURRENCY`와 repo profile `concurrency`를 둘 다 올린다.
 
 ## 다음 결정
 
-다음 작업은 **PR 3: docs consistency after dogfood**로 시작한다. 이후 순서는 dashboard operations UX → terminal UX → README/getting-started → Docker worker readiness가 맞다.
+다음 작업은 **PR 7: one-command local run**으로 시작한다. 그 다음은 web inline brief intake → README/docs parity → dashboard/agentctl follow-up → Docker worker readiness 순서가 맞다.
