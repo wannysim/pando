@@ -28,19 +28,21 @@
 
 ## 1. 핵심 추상화 ①: RepoProfile — `repo-scope`의 일반화
 
-지금 `repo-scope`는 `acme | external | unknown` 3값 분기다. n개 레포를 돌리려면 이걸 **레포별 선언적 프로파일**로 승격한다:
+지금 `repo-scope`는 `acme | external | unknown` 3값 분기다. n개 레포를 돌리려면 이걸 **레포별 선언적 프로파일**로 승격한다. W3부터는 ADR-008에 따라 "할 일의 출처"인 intake source와 "해석 보조 맥락"인 context source/provider를 분리한다:
 
 ```yaml
-# ~/.agent-orchestrator/repos.yaml
+# config/repos.yaml은 public 예시만 둔다.
+# 실제 회사 Jira/Confluence/Figma 설정은 ~/.config/pando/*.yaml 같은 private config에 둔다.
 repos:
   web:
     path: ~/Github/web
     scope: acme
     base_branch: develop            # release/* 동적 지정 가능
-    work_item_source: jira          # 티켓이 곧 스펙
-    context_providers:              # SPEC 단계에서 쓸 수집기
-      - atlassian-mcp               # jira-context-gatherer 경로
-      - figma-mcp                   # figma-spec-extractor 경로
+    intake:
+      sources: [jira]               # 티켓이 WorkItem 원천
+    context:
+      providers: [confluence, figma] # SPEC 단계에서 쓸 정책/디자인 맥락
+      policy_refs: []               # 실제 회사 page/file id는 private config에만
     conventions: acme-conventions
     setup: "pnpm install"
     gates:
@@ -57,8 +59,10 @@ repos:
     path: ~/Github/personal-site
     scope: external
     base_branch: main
-    work_item_source: brief         # ★ 채팅/파일로 받은 기획이 곧 스펙
-    context_providers: []           # MCP 없음 — brief가 전부
+    intake:
+      sources: [brief]              # 채팅/파일로 받은 기획이 WorkItem 원천
+    context:
+      providers: []
     conventions: repo-local         # 최근 커밋/CONTRIBUTING 기준
     setup: "pnpm install"
     gates:
@@ -71,6 +75,8 @@ repos:
 포인트:
 
 - `repo-scope`의 판정 로직(owner 감지)은 프로파일 등록 시 1회 검증용으로 강등. 런타임 분기는 전부 프로파일이 담당
+- intake source(Jira/brief/GitHub Issue)는 WorkItem을 만든다. context source(Confluence/Figma/assets)는 SPEC 단계가 WorkItem을 해석하는 데만 쓴다
+- public repo에는 실제 회사 Jira project key, Confluence page id, Figma file/team 정보, 내부 URL을 커밋하지 않는다
 - 스킬들이 `[[repo-scope]]`를 로드하던 자리에 **오케스트레이터가 프로파일을 주입** — 워커 프롬프트에 "이 작업의 scope는 X, 컨벤션은 Y" 식으로 명시. 스킬 수정 최소화
 - `implement-jira`의 가드("`scope != acme`이면 일반 계획으로 전환")가 이미 이 구조를 예비해놨음
 
@@ -84,12 +90,13 @@ personal-site에는 Jira도 Confluence도 Figma도 없다. 그래서 **입력을
 type WorkItem = {
   id: string;                  // "AP-1234" | "personal-site-2026-0606-a"
   repo: string;                // RepoProfile 키
-  source: "jira" | "brief";
+  source: "jira" | "brief" | "github_issue";
   title: string;
   branch?: string;             // 미지정 시 컨벤션으로 생성
   payload:
     | { ticketKey: string }                          // jira
-    | { briefPath: string; assets?: string[] };      // brief: md 파일 + 첨부(스크린샷 등)
+    | { briefPath: string; assets?: string[] }        // brief: md 파일 + 첨부(스크린샷 등)
+    | { owner: string; repo: string; issueNumber: number }; // github_issue
 };
 ```
 
@@ -112,13 +119,17 @@ type WorkItem = {
 
 핵심 설계 판단: **모호함 해소를 파이프라인 진입 전에 끝낸다.** `implement-jira` batch mode의 원칙("batch에서는 사용자 인터럽트가 없다 — 모르는 건 Open Questions로")을 그대로 계승하되, brief는 Jira 티켓보다 훨씬 엉성하므로 intake에서 1회 왕복 비용을 지불하는 게 IMPL 단계 retry budget 낭비보다 싸다.
 
-brief 템플릿은 `jira-context-gatherer`의 출력 포맷(요구사항 요약 / 수용 기준 / 모호한 지점)을 재사용 — SPEC 단계 입장에선 두 소스가 구분 불가능해진다.
+brief 템플릿은 `jira-context-gatherer`의 출력 포맷(요구사항 요약 / 수용 기준 / 모호한 지점)을 재사용 — SPEC 단계 입장에선 두 소스가 구분 불가능해진다. W3의 최소 템플릿은 ADR-008의 `Goal / User Story / Acceptance Criteria / Screens or Behavior / Non-Goals / Assets / Open Questions` 섹션을 따른다.
 
 ### 2.3 디자인 전달 (개인 프로젝트)
 
 - 말로 전달한 디자인 → brief의 "화면·동작 묘사" 섹션
 - 스크린샷/레퍼런스 이미지 → `briefs/{id}/assets/`에 저장, SPEC 워커가 멀티모달로 읽음
 - 나중에 개인 Figma가 생기면 `context_providers: [figma-mcp]`만 추가하면 회사 경로와 합류
+
+### 2.4 GitHub Issue 경로 — 후순위
+
+개인 repo에서 GitHub Issue를 todo source로 쓰는 경우는 WorkItem `source: "github_issue"`로 들어오게 한다. 단, W3 구현은 brief only로 제한한다. GitHub Issue polling/상태 write-back은 W4/W5에서 adapter로 추가한다.
 
 ---
 
