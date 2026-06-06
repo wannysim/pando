@@ -235,10 +235,38 @@ function showJob(
 
 function formatEvent(event: JobEventRecord): string {
   const stage = event.stage ?? "-";
+  const telemetry = formatTelemetryDetails(event);
+  if (telemetry.length > 0) return `#${event.sequence} ${stage} ${event.type} ${telemetry}`;
+
   const detail = event.reason ?? event.gateName ?? event.status ?? "";
   return detail.length === 0
     ? `#${event.sequence} ${stage} ${event.type}`
     : `#${event.sequence} ${stage} ${event.type} ${detail}`;
+}
+
+function formatTelemetryDetails(event: JobEventRecord): string {
+  if (Object.keys(event.payload).length === 0) return "";
+
+  const pairs: Array<[string, unknown]> = [];
+  const add = (key: string, value: unknown) => {
+    if (value !== undefined) pairs.push([key, value]);
+  };
+
+  add("reason", event.reason ?? event.payload.reason);
+  add("evidence", event.evidence ?? event.payload.evidence);
+  for (const key of ["durationMs", "costUsd", "failureKind", "gateName", "engine", "model"]) {
+    add(key, event.payload[key]);
+  }
+
+  return pairs.map(([key, value]) => `${key}=${formatTelemetryValue(value)}`).join(" ");
+}
+
+function formatTelemetryValue(value: unknown): string {
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
+
+  const text = typeof value === "string" ? value : JSON.stringify(value);
+  if (/^[A-Za-z0-9_.:/-]+$/.test(text)) return text;
+  return JSON.stringify(text);
 }
 
 function stageOption(parsed: ParsedArgs, key: string): StageName {

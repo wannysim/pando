@@ -230,10 +230,12 @@ W5는 한 PR로 처리하지 않는다.
    - daemon tick cancellation hook와 running job stop request port
    - `agentctl cancel <jobId>`, `agentctl cleanup <jobId>` 직접 store 기반 최소 구현
    - crash 이후 persisted active stage를 한 번만 resume하는 daemon 계약 테스트
-3. ⬅️ **PR 3: telemetry**
-   - stage duration/cost event schema
+3. ✅ **PR 3: review separation and telemetry**
+   - REVIEW 단계가 IMPL과 다른 engine/model/allowedTools/env/prompt stage를 쓰는 계약
+   - injected clock 기반 stage duration/cost/failure event schema
    - `agentctl show` event rendering 보강
-4. **PR 4: Hono API foundation**
+   - Hono API/dashboard/Docker는 범위 밖으로 유지
+4. ⬅️ **PR 4: Hono API foundation**
    - `/health`, `/jobs`, `/jobs/:id`, retry/cancel endpoints
    - CLI API client 전환의 시작
 5. **PR 5: operational CLI**
@@ -255,6 +257,7 @@ W5가 길어지면 PR 6~7은 W6로 넘긴다. 그 경우 W5 완료 기준은 saf
 1. ✅ Safety gate scenario tests를 먼저 추가한다.
 2. ✅ checksum/diff gate를 순수 계층으로 구현한다.
 3. ✅ cancel/cleanup 상태와 DB 계약을 고정한다.
-4. ⬅️ API response schema를 만든다.
-5. CLI를 API client로 점진 이행한다.
-6. dashboard는 API가 안정된 뒤 최소 화면만 만든다.
+4. ✅ REVIEW 분리와 telemetry event schema를 고정한다.
+5. ⬅️ API response schema를 만든다.
+6. CLI를 API client로 점진 이행한다.
+7. dashboard는 API가 안정된 뒤 최소 화면만 만든다.

@@ -43,7 +43,7 @@ export interface RunningJobStopRequest {
 
 export interface DaemonOnceOptions extends Pick<
   PipelineRunnerOptions,
-  "buildPrompt" | "engines" | "gates" | "stageConfig"
+  "buildPrompt" | "clock" | "engines" | "gates" | "stageConfig"
 > {
   store: JobStore;
   profiles?: Record<string, RepoProfile>;
@@ -144,6 +144,7 @@ async function runClaimedJob(
     const initial = persistWorktreePath(opts.store, job, worktree.path);
     const result = await (opts.runner ?? runPipeline)({
       buildPrompt: opts.buildPrompt,
+      clock: opts.clock ?? SYSTEM_CLOCK,
       engines: opts.engines,
       env: worktree.isolation?.env,
       gates: opts.gates,
@@ -265,6 +266,7 @@ function persistPipelineEvent(store: JobStore, jobId: string, event: PipelineRun
     evidence: "evidence" in event ? event.evidence : undefined,
     gateName: "gateName" in event ? event.gateName : undefined,
     jobId,
+    payload: "payload" in event ? event.payload : undefined,
     reason: "reason" in event ? event.reason : undefined,
     stage: event.stage,
     type: event.type,
@@ -304,3 +306,9 @@ function sanitizeBranchSegment(value: string): string {
     .replaceAll("/", "-")
     .replace(/[^A-Za-z0-9._-]+/g, "-");
 }
+
+const SYSTEM_CLOCK = {
+  nowMs() {
+    return Date.now();
+  },
+};

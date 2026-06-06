@@ -41,7 +41,9 @@ describe("runPipeline", () => {
       "codex:prompt:IMPL",
       "claude-code:prompt:REVIEW",
     ]);
-    expect(runner.events.map((event) => `${event.stage}:${event.type}`)).toEqual([
+    expect(
+      runner.events.filter(isLegacyEvent).map((event) => `${event.stage}:${event.type}`),
+    ).toEqual([
       "SPEC:engine-pass",
       "SPEC:stage-pass",
       "PLAN:engine-pass",
@@ -82,13 +84,17 @@ describe("runPipeline", () => {
     });
 
     expect(result.final.status).toBe("ESCALATED");
-    expect(result.events.at(-1)).toMatchObject({
-      evidence: "base branch missing",
-      gateName: "plan-artifact-schema",
-      reason: "PLAN.md has blocking open questions",
-      stage: "PLAN",
-      type: "gate-blocking",
-    });
+    expect(result.events).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          evidence: "base branch missing",
+          gateName: "plan-artifact-schema",
+          reason: "PLAN.md has blocking open questions",
+          stage: "PLAN",
+          type: "gate-blocking",
+        }),
+      ]),
+    );
   });
 
   it("maps blocking SPEC gate failures to ESCALATED before planning", async () => {
@@ -121,13 +127,17 @@ describe("runPipeline", () => {
 
     expect(result.final.status).toBe("ESCALATED");
     expect(calls).toEqual(["claude-code:Run SPEC"]);
-    expect(result.events.at(-1)).toMatchObject({
-      evidence: "[Blocker] Need final copy",
-      gateName: "brief-intake-schema",
-      reason: "brief has blocking open questions",
-      stage: "SPEC",
-      type: "gate-blocking",
-    });
+    expect(result.events).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          evidence: "[Blocker] Need final copy",
+          gateName: "brief-intake-schema",
+          reason: "brief has blocking open questions",
+          stage: "SPEC",
+          type: "gate-blocking",
+        }),
+      ]),
+    );
   });
 
   it("passes source-specific allowed tools to worker engines", async () => {
@@ -169,6 +179,165 @@ describe("runPipeline", () => {
     });
 
     expect(allowedTools[0]).toEqual(["Read", "Glob", "Grep"]);
+  });
+
+  it("keeps IMPL and REVIEW worker configs independently resolved", async () => {
+    const calls: Array<{
+      allowedTools?: string[];
+      engine: string;
+      env?: Record<string, string>;
+      model: string;
+      prompt: string;
+    }> = [];
+    const config: StageConfig = {
+      ...stageConfig(),
+      stages: {
+        ...stageConfig().stages,
+        impl: {
+          allowedTools: ["Read", "Write", "Bash(pnpm test)"],
+          engine: "codex",
+          env: { IMPL_ONLY: "1" },
+          model: "impl-model",
+        },
+        review: {
+          allowedTools: ["Read", "Grep", "Bash(git diff *)"],
+          engine: "claude-code",
+          env: { REVIEW_ONLY: "1" },
+          model: "review-model",
+          skill: "reviewer",
+        },
+      },
+    };
+
+    const result = await runPipeline({
+      buildPrompt(stage) {
+        return `prompt:${stage}`;
+      },
+      engines: {
+        "claude-code": recordingEngine("claude-code", calls),
+        codex: recordingEngine("codex", calls),
+      },
+      env: { JOB_ENV: "shared" },
+      initialState: { attemptsLeft: 3, status: "IMPL" },
+      item: workItem(),
+      profile: repoProfile(),
+      stageConfig: config,
+      worktree: "/worktree",
+    });
+
+    expect(result.final.status).toBe("DONE");
+    expect(calls).toEqual([
+      {
+        allowedTools: ["Read", "Write", "Bash(pnpm test)"],
+        engine: "codex",
+        env: { IMPL_ONLY: "1", JOB_ENV: "shared" },
+        model: "impl-model",
+        prompt: "prompt:IMPL",
+      },
+      {
+        allowedTools: ["Read", "Grep", "Bash(git diff *)"],
+        engine: "claude-code",
+        env: { JOB_ENV: "shared", REVIEW_ONLY: "1" },
+        model: "review-model",
+        prompt: "prompt:REVIEW",
+      },
+    ]);
+  });
+
+  it("emits stage duration and worker cost telemetry from an injected clock", async () => {
+    const result = await runPipeline({
+      clock: sequenceClock([1_000, 1_375, 2_000, 2_250, 3_000, 3_050]),
+      engines: {
+        "claude-code": engine("claude-code", []),
+        codex: {
+          name: "codex",
+          async run() {
+            return { costUsd: 0.42, ok: true, output: "ok" };
+          },
+        },
+      },
+      initialState: { attemptsLeft: 3, status: "IMPL" },
+      item: workItem(),
+      profile: repoProfile(),
+      stageConfig: stageConfig(),
+      worktree: "/worktree",
+    });
+
+    expect(result.events).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          payload: { engine: "codex", model: "gpt-5-codex" },
+          stage: "IMPL",
+          type: "stage-started",
+        }),
+        expect.objectContaining({
+          payload: { costUsd: 0.42, engine: "codex", model: "gpt-5-codex" },
+          stage: "IMPL",
+          type: "worker-cost",
+        }),
+        expect.objectContaining({
+          payload: { durationMs: 375, engine: "codex", model: "gpt-5-codex" },
+          stage: "IMPL",
+          type: "stage-completed",
+        }),
+      ]),
+    );
+  });
+
+  it("emits structured failure telemetry for failed gates", async () => {
+    const result = await runPipeline({
+      clock: sequenceClock([10, 35]),
+      engines: {
+        "claude-code": engine("claude-code", []),
+        codex: engine("codex", []),
+      },
+      gates: {
+        IMPL: [
+          gate("checksum", () => ({
+            evidence: '{"changed":["src/example.test.ts"]}',
+            pass: false,
+            reason: "test checksum changed",
+          })),
+        ],
+      },
+      initialState: { attemptsLeft: 1, status: "IMPL" },
+      item: workItem(),
+      profile: repoProfile(),
+      stageConfig: stageConfig(),
+      worktree: "/worktree",
+    });
+
+    expect(result.final.status).toBe("FAILED");
+    expect(result.events).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          evidence: '{"changed":["src/example.test.ts"]}',
+          gateName: "checksum",
+          payload: expect.objectContaining({
+            evidence: '{"changed":["src/example.test.ts"]}',
+            failureKind: "gate-fail",
+            gateName: "checksum",
+            reason: "test checksum changed",
+          }),
+          reason: "test checksum changed",
+          stage: "IMPL",
+          type: "gate-fail",
+        }),
+        expect.objectContaining({
+          evidence: '{"changed":["src/example.test.ts"]}',
+          payload: expect.objectContaining({
+            durationMs: 25,
+            evidence: '{"changed":["src/example.test.ts"]}',
+            failureKind: "gate-fail",
+            gateName: "checksum",
+            reason: "test checksum changed",
+          }),
+          reason: "test checksum changed",
+          stage: "IMPL",
+          type: "stage-failed",
+        }),
+      ]),
+    );
   });
 
   it("retries deterministic gate failures until the budget is exhausted", async () => {
@@ -257,11 +426,49 @@ function engine(name: WorkerEngine["name"], calls: string[]): WorkerEngine {
   };
 }
 
+function recordingEngine(
+  name: WorkerEngine["name"],
+  calls: Array<{
+    allowedTools?: string[];
+    engine: string;
+    env?: Record<string, string>;
+    model: string;
+    prompt: string;
+  }>,
+): WorkerEngine {
+  return {
+    name,
+    async run(opts: WorkerRunOptions): Promise<WorkerResult> {
+      calls.push({
+        allowedTools: opts.allowedTools,
+        engine: name,
+        env: opts.env,
+        model: opts.model,
+        prompt: opts.prompt,
+      });
+      return { ok: true, output: "ok" };
+    },
+  };
+}
+
 function gate(name: string, check: (ctx: GateContext) => GateResult): Gate {
   return {
     name,
     async check(ctx) {
       return check(ctx);
+    },
+  };
+}
+
+function isLegacyEvent(event: { type: string }): boolean {
+  return !["stage-started", "stage-completed", "stage-failed", "worker-cost"].includes(event.type);
+}
+
+function sequenceClock(values: readonly number[]) {
+  let index = 0;
+  return {
+    nowMs() {
+      return values[Math.min(index++, values.length - 1)] ?? 0;
     },
   };
 }
