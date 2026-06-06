@@ -656,6 +656,7 @@ function stageConfig(): StageConfig {
     stages: {
       impl: { engine: "codex", model: "gpt-5-codex" },
       plan: { engine: "claude-code", model: "opus", skill: "implement-jira" },
+      pr: { engine: "claude-code", model: "sonnet", skill: "create-pr" },
       review: { engine: "claude-code", model: "opus", skill: "verifier" },
       spec: { engine: "claude-code", model: "sonnet" },
       test: { engine: "codex", model: "gpt-5-codex", skill: "test-writer" },

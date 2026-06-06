@@ -35,6 +35,11 @@ stages:
     model: opus
     skill: verifier
     allowed_tools: [Read, Glob, Grep, "Bash(git *)"]
+  pr:
+    engine: claude-code
+    model: sonnet
+    skill: create-pr
+    allowed_tools: [Read, Glob, Grep, "Bash(git *)", "Bash(gh pr *)", "Bash(pnpm *)"]
 
 defaults:
   retry_budget: 10

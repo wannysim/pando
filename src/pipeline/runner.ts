@@ -24,12 +24,18 @@ export interface PipelineRunnerOptions {
   stageConfig: StageConfig;
   engines: Record<WorkerEngineName, WorkerEngine>;
   gates?: Partial<Record<StageName, Gate[]>>;
-  buildPrompt?: (stage: StageName) => string;
+  buildPrompt?: (stage: StageName, context: PromptBuildContext) => string;
   env?: Record<string, string>;
   initialState?: MachineState;
   onEvent?: (event: PipelineRunEvent) => MaybePromise<void>;
   onStateChange?: (change: PipelineStateChange) => MaybePromise<void>;
   clock?: PipelineClock;
+}
+
+export interface PromptBuildContext {
+  item: WorkItem;
+  profile: GateContext["profile"];
+  worktree: string;
 }
 
 export interface PipelineRunResult {
@@ -106,6 +112,7 @@ type EmitPipelineEvent = (event: PipelineRunEvent) => Promise<void>;
 const WORKER_STAGE_BY_STAGE: Partial<Record<StageName, WorkerStageKey>> = {
   IMPL: "impl",
   PLAN: "plan",
+  PR: "pr",
   REVIEW: "review",
   SPEC: "spec",
   TEST: "test",
@@ -165,7 +172,12 @@ async function runStage(
       cwd: opts.worktree,
       env: mergeEnv(config.env, opts.env),
       model: config.model,
-      prompt: opts.buildPrompt?.(stage) ?? `Run ${stage}`,
+      prompt:
+        opts.buildPrompt?.(stage, {
+          item: opts.item,
+          profile: opts.profile,
+          worktree: opts.worktree,
+        }) ?? `Run ${stage}`,
       timeoutMs: opts.stageConfig.defaults.timeoutMinutes * 60_000,
     });
 

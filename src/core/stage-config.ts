@@ -1,7 +1,7 @@
 import { parse } from "yaml";
 import type { WorkItemSource } from "./types";
 
-export const WORKER_STAGE_KEYS = ["spec", "plan", "test", "impl", "review"] as const;
+export const WORKER_STAGE_KEYS = ["spec", "plan", "test", "impl", "review", "pr"] as const;
 
 export type WorkerStageKey = (typeof WORKER_STAGE_KEYS)[number];
 

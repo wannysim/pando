@@ -40,6 +40,7 @@ describe("runPipeline", () => {
       "codex:prompt:TEST",
       "codex:prompt:IMPL",
       "claude-code:prompt:REVIEW",
+      "claude-code:prompt:PR",
     ]);
     expect(
       runner.events.filter(isLegacyEvent).map((event) => `${event.stage}:${event.type}`),
@@ -56,6 +57,7 @@ describe("runPipeline", () => {
       "IMPL:stage-pass",
       "REVIEW:engine-pass",
       "REVIEW:stage-pass",
+      "PR:engine-pass",
       "PR:gate-pass",
       "PR:stage-pass",
     ]);
@@ -241,6 +243,13 @@ describe("runPipeline", () => {
         model: "review-model",
         prompt: "prompt:REVIEW",
       },
+      {
+        allowedTools: undefined,
+        engine: "claude-code",
+        env: { JOB_ENV: "shared" },
+        model: "sonnet",
+        prompt: "prompt:PR",
+      },
     ]);
   });
 
@@ -409,7 +418,7 @@ describe("runPipeline", () => {
     });
 
     expect(result.final.status).toBe("DONE");
-    expect(calls).toEqual(["codex:Run IMPL", "claude-code:Run REVIEW"]);
+    expect(calls).toEqual(["codex:Run IMPL", "claude-code:Run REVIEW", "claude-code:Run PR"]);
   });
 
   it("emits state changes and pipeline events for persistence adapters", async () => {
@@ -513,6 +522,7 @@ function stageConfig(): StageConfig {
     stages: {
       impl: { engine: "codex", model: "gpt-5-codex" },
       plan: { engine: "claude-code", model: "opus", skill: "implement-jira" },
+      pr: { engine: "claude-code", model: "sonnet", skill: "create-pr" },
       review: { engine: "claude-code", model: "opus", skill: "verifier" },
       spec: { engine: "claude-code", model: "sonnet" },
       test: { engine: "codex", model: "gpt-5-codex", skill: "test-writer" },
