@@ -43,6 +43,16 @@ stages:
     model: sonnet
     skill: create-pr
     allowed_tools: [Read, Glob, Grep, "Bash(git *)", "Bash(gh pr *)", "Bash(pnpm *)"]
+    # The pr-draft gate verdict is deterministic: it reads pr.json only.
+    # The prompt MUST create a draft PR and write that structured artifact.
+    prompt: |
+      Create the pull request as a DRAFT. You MUST pass --draft to gh:
+        gh pr create --draft --base <base> --title "<title>" --body "<body>"
+      After creating the PR, write a deterministic artifact the gate reads.
+      Run from the worktree root and capture the structured JSON verbatim:
+        gh pr view --json isDraft,number,url > pr.json
+      Do not hand-edit pr.json; it must be the exact gh output. The pr-draft
+      gate fails the stage unless pr.json reports isDraft true.
 
 defaults:
   retry_budget: 10
