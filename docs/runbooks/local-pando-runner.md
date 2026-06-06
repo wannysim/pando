@@ -2,6 +2,8 @@
 
 이 runbook은 로컬에서 pando API/dashboard를 띄운 뒤, 같은 SQLite queue를 local daemon loop가 처리하게 하는 최소 경로다.
 
+> 현재 이 절차는 의도적으로 자세한 개발자용 경로다. 실제 사용 UX 목표는 `pando start` 또는 `pnpm pando start` 같은 단일 명령으로 DB/worktree/dashboard/daemon을 함께 띄우는 것이다. 그 전까지는 아래 env var 경로를 source of truth로 둔다.
+
 ## Preconditions
 
 - `pnpm install` 완료
@@ -49,6 +51,8 @@ PANDO_DB="$ROOT/pando.sqlite" \
   --brief-path briefs/pando-small-task/brief.md
 ```
 
+현재 dashboard submit도 같은 모델이다. 즉 "brief 파일 경로"를 이미 만들어 둔 뒤 queue에 넣는다. 제품 UX 목표는 웹에서 자연어 작업 설명, 참고할 spec/docs/assets path를 입력하면 pando가 canonical `brief.md`를 생성하고 queue에 넣는 것이다. file-path submit은 advanced/debug path로 남긴다.
+
 ## Watch status
 
 ```bash
@@ -69,3 +73,10 @@ The `PR` stage is a real worker stage. It asks Claude Code to:
 4. create a Draft PR against the repo base branch with `gh pr create`
 
 Do not expose this server outside a private local network. Public auth is intentionally not implemented.
+
+## Current friction found by self-dogfood
+
+- Starting pando still requires too many environment variables.
+- To run multiple pando self-dogfood jobs concurrently, jobs should be queued before starting the daemon, and both `PANDO_GLOBAL_CONCURRENCY` and the repo profile `concurrency` must allow the desired count.
+- The PR stage prompt says Draft PR, but recent self-dogfood produced non-draft PRs. Add a deterministic check or force `gh pr create --draft`.
+- Evidence and temporary DB/worktrees should stay under `/tmp`; do not commit them.
