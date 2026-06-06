@@ -14,7 +14,7 @@ import type { JobStatus, StageName } from "./types";
 
 export const STAGE_ORDER: readonly StageName[] = ["SPEC", "PLAN", "TEST", "IMPL", "REVIEW", "PR"];
 
-const TERMINAL: readonly JobStatus[] = ["DONE", "FAILED", "ESCALATED"];
+const TERMINAL: readonly JobStatus[] = ["DONE", "FAILED", "ESCALATED", "CANCELED"];
 
 export type PipelineEvent =
   | { type: "START" }

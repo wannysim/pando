@@ -31,6 +31,12 @@ export interface WorktreePathOptions {
   worktreeRoot: string;
 }
 
+export interface RemoveWorktreeOptions {
+  repoPath: string;
+  worktreePath: string;
+  force?: boolean;
+}
+
 export function branchSlug(branch: string): string {
   return branch.replaceAll("/", "-").replace(/-+/g, "-");
 }
@@ -78,6 +84,13 @@ export async function ensureWorktree(opts: EnsureWorktreeOptions): Promise<Ensur
       return { path, branch: opts.branch, reused: false };
     },
   );
+}
+
+export async function removeWorktree(opts: RemoveWorktreeOptions): Promise<void> {
+  const args = ["worktree", "remove"];
+  if (opts.force ?? true) args.push("--force");
+  args.push(opts.worktreePath);
+  await git(opts.repoPath, args);
 }
 
 async function assertWorktreeBranch(path: string, expectedBranch: string): Promise<void> {

@@ -18,6 +18,7 @@ CREATE TABLE IF NOT EXISTS jobs (
   status TEXT NOT NULL,
   attempts_left INTEGER NOT NULL,
   worktree_path TEXT,
+  cancel_requested_at TEXT,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,
   started_at TEXT,

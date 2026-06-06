@@ -5,7 +5,7 @@
 
 export type StageName = "SPEC" | "PLAN" | "TEST" | "IMPL" | "REVIEW" | "PR";
 
-export type JobStatus = StageName | "QUEUED" | "DONE" | "FAILED" | "ESCALATED";
+export type JobStatus = StageName | "QUEUED" | "DONE" | "FAILED" | "ESCALATED" | "CANCELED";
 
 export type WorkItemSource = "jira" | "brief" | "github_issue";
 

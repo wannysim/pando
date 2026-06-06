@@ -227,17 +227,127 @@ describe("runAgentctl", () => {
     expect(output).toEqual(["retry queued DEMO-3003 from IMPL"]);
   });
 
+  it("cancels queued jobs from the CLI", async () => {
+    const store = new AgentctlMemoryStore();
+    store.enqueueJob({ item: workItem("DEMO-3004"), retryBudget: 2 });
+    const output: string[] = [];
+
+    const exitCode = await runAgentctl(["cancel", "DEMO-3004"], {
+      store,
+      stdout: (line) => output.push(line),
+    });
+
+    expect(exitCode).toBe(0);
+    expect(store.jobs.get("DEMO-3004")).toMatchObject({
+      status: "CANCELED",
+    });
+    expect(store.listEvents("DEMO-3004").map((event) => event.type)).toEqual([
+      "cancel-requested",
+      "canceled",
+    ]);
+    expect(output).toEqual(["canceled DEMO-3004"]);
+  });
+
+  it("stores running cancel requests from the CLI", async () => {
+    const store = new AgentctlMemoryStore();
+    store.enqueueJob({ item: workItem("DEMO-3005"), retryBudget: 2 });
+    store.updateJobStatus({ attemptsLeft: 2, jobId: "DEMO-3005", status: "IMPL" });
+    const output: string[] = [];
+
+    const exitCode = await runAgentctl(["cancel", "DEMO-3005"], {
+      store,
+      stdout: (line) => output.push(line),
+    });
+
+    expect(exitCode).toBe(0);
+    expect(store.jobs.get("DEMO-3005")).toMatchObject({
+      cancelRequestedAt: "2026-06-06T00:00:00.000Z",
+      status: "IMPL",
+    });
+    expect(store.listEvents("DEMO-3005").at(-1)).toMatchObject({
+      payload: { previousStatus: "IMPL", requestedBy: "agentctl" },
+      status: "IMPL",
+      type: "cancel-requested",
+    });
+    expect(output).toEqual(["cancel requested DEMO-3005"]);
+  });
+
+  it("cleans up terminal job worktrees from the CLI", async () => {
+    const store = new AgentctlMemoryStore();
+    store.enqueueJob({ item: workItem("DEMO-3006"), retryBudget: 1 });
+    store.updateJobStatus({
+      attemptsLeft: 1,
+      jobId: "DEMO-3006",
+      status: "DONE",
+      worktreePath: "/worktrees/web/feat-DEMO-3006",
+    });
+    const cleaned: string[] = [];
+    const output: string[] = [];
+
+    const exitCode = await runAgentctl(["cleanup", "DEMO-3006"], {
+      store,
+      stdout: (line) => output.push(line),
+      worktreeCleaner: {
+        async cleanup(input) {
+          cleaned.push(`${input.jobId}:${input.worktreePath}`);
+        },
+      },
+    });
+
+    expect(exitCode).toBe(0);
+    expect(cleaned).toEqual(["DEMO-3006:/worktrees/web/feat-DEMO-3006"]);
+    expect(store.jobs.get("DEMO-3006")).toMatchObject({
+      status: "DONE",
+      worktreePath: undefined,
+    });
+    expect(store.listEvents("DEMO-3006").map((event) => event.type)).toEqual([
+      "cleanup-requested",
+      "cleanup-completed",
+    ]);
+    expect(output).toEqual(["cleaned up DEMO-3006 /worktrees/web/feat-DEMO-3006"]);
+  });
+
+  it("records cleanup failures from the CLI", async () => {
+    const store = new AgentctlMemoryStore();
+    store.enqueueJob({ item: workItem("DEMO-3007"), retryBudget: 1 });
+    store.updateJobStatus({
+      attemptsLeft: 0,
+      jobId: "DEMO-3007",
+      status: "FAILED",
+      worktreePath: "/worktrees/web/feat-DEMO-3007",
+    });
+    const stderr: string[] = [];
+
+    const exitCode = await runAgentctl(["cleanup", "DEMO-3007"], {
+      stderr: (line) => stderr.push(line),
+      store,
+      worktreeCleaner: {
+        async cleanup() {
+          throw new Error("remove failed");
+        },
+      },
+    });
+
+    expect(exitCode).toBe(1);
+    expect(store.jobs.get("DEMO-3007")?.worktreePath).toBe("/worktrees/web/feat-DEMO-3007");
+    expect(store.listEvents("DEMO-3007").at(-1)).toMatchObject({
+      reason: "remove failed",
+      type: "cleanup-failed",
+    });
+    expect(stderr).toEqual(["remove failed"]);
+  });
+
   it("rejects invalid retry stages and malformed numeric options", async () => {
     const stderr: string[] = [];
 
     await expect(
-      runAgentctl(["retry", "DEMO-3004", "--from", "UNKNOWN"], {
+      runAgentctl(["retry", "DEMO-3008", "--from", "UNKNOWN"], {
         stderr: (line) => stderr.push(line),
         store: new AgentctlMemoryStore(),
       }),
     ).resolves.toBe(1);
     await expect(
-      runAgentctl(["submit", "jira", "DEMO-3004", "--repo", "web", "--attempts", "0"], {
+      runAgentctl(["submit", "jira", "DEMO-3008", "--repo", "web", "--attempts", "0"], {
         stderr: (line) => stderr.push(line),
         store: new AgentctlMemoryStore(),
       }),
@@ -274,6 +384,7 @@ class AgentctlMemoryStore implements JobStore {
   readonly events = new Map<string, JobEventRecord[]>();
   readonly jobs = new Map<string, JobRecord>();
   readonly retries: RetryJobInput[] = [];
+  private now = "2026-06-06T00:00:00.000Z";
 
   enqueueJob(input: Parameters<JobStore["enqueueJob"]>[0]): JobRecord {
     const job: JobRecord = {
@@ -314,6 +425,114 @@ class AgentctlMemoryStore implements JobStore {
       jobId: input.jobId,
       status: input.from,
     });
+  }
+
+  cancelJob(input: { jobId: string; reason?: string; requestedBy?: string }): JobRecord {
+    const job = this.requiredJob(input.jobId);
+    const payload = {
+      previousStatus: job.status,
+      reason: input.reason,
+      requestedBy: input.requestedBy,
+    };
+    this.appendEvent({
+      jobId: input.jobId,
+      payload,
+      status: job.status,
+      type: "cancel-requested",
+    });
+    if (job.status === "QUEUED") {
+      const canceled = {
+        ...job,
+        status: "CANCELED" as const,
+      };
+      this.jobs.set(input.jobId, canceled);
+      this.appendEvent({
+        jobId: input.jobId,
+        payload,
+        status: "CANCELED",
+        type: "canceled",
+      });
+      return canceled;
+    }
+
+    const requested = {
+      ...job,
+      cancelRequestedAt: this.now,
+    };
+    this.jobs.set(input.jobId, requested);
+    return requested;
+  }
+
+  listCancelRequestedJobs(): JobRecord[] {
+    return [...this.jobs.values()].filter((job) => job.cancelRequestedAt !== undefined);
+  }
+
+  completeJobCancellation(input: { jobId: string; stoppedBy?: string }): JobRecord {
+    const job = this.requiredJob(input.jobId);
+    const canceled = { ...job, status: "CANCELED" as const };
+    this.jobs.set(input.jobId, canceled);
+    this.appendEvent({
+      jobId: input.jobId,
+      payload: { stoppedBy: input.stoppedBy },
+      status: "CANCELED",
+      type: "canceled",
+    });
+    return canceled;
+  }
+
+  requestJobCleanup(input: { jobId: string; requestedBy?: string }): {
+    job: JobRecord;
+    worktreePath: string;
+  } {
+    const job = this.requiredJob(input.jobId);
+    if (!["DONE", "FAILED", "ESCALATED", "CANCELED"].includes(job.status)) {
+      throw new Error(`job ${input.jobId} is not terminal: ${job.status}`);
+    }
+    if (job.worktreePath === undefined) {
+      throw new Error(`job ${input.jobId} has no worktree path to cleanup`);
+    }
+    this.appendEvent({
+      jobId: input.jobId,
+      payload: {
+        requestedBy: input.requestedBy,
+        status: job.status,
+        worktreePath: job.worktreePath,
+      },
+      status: job.status,
+      type: "cleanup-requested",
+    });
+    return { job, worktreePath: job.worktreePath };
+  }
+
+  completeJobCleanup(input: { jobId: string; worktreePath: string }): JobRecord {
+    const job = this.requiredJob(input.jobId);
+    const cleaned = { ...job, worktreePath: undefined };
+    this.jobs.set(input.jobId, cleaned);
+    this.appendEvent({
+      jobId: input.jobId,
+      payload: { worktreePath: input.worktreePath },
+      status: job.status,
+      type: "cleanup-completed",
+    });
+    return cleaned;
+  }
+
+  failJobCleanup(input: {
+    evidence?: string;
+    jobId: string;
+    reason: string;
+    worktreePath: string;
+  }): JobRecord {
+    const job = this.requiredJob(input.jobId);
+    this.appendEvent({
+      evidence: input.evidence,
+      jobId: input.jobId,
+      payload: { worktreePath: input.worktreePath },
+      reason: input.reason,
+      status: job.status,
+      type: "cleanup-failed",
+    });
+    return job;
   }
 
   appendEvent(input: Parameters<JobStore["appendEvent"]>[0]): JobEventRecord {

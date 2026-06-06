@@ -116,7 +116,7 @@ describe("invalid transitions", () => {
       { type: "CHANGES_REQUESTED" },
       { type: "BLOCKING_QUESTIONS" },
     ] as const;
-    for (const status of ["DONE", "FAILED", "ESCALATED"] as const) {
+    for (const status of ["DONE", "FAILED", "ESCALATED", "CANCELED"] as const) {
       for (const event of events) {
         expect(() => transition(at(status), event, BUDGET)).toThrow(/terminal/i);
       }
