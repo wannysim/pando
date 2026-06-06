@@ -278,6 +278,7 @@ function cleanupResponse(): ApiJobCleanupResponse {
 function jobSummary(jobId: string, status: JobStatus): ApiJobSummary {
   return {
     attemptsLeft: 2,
+    branch: null,
     cancelRequestedAt: null,
     createdAt: "2026-06-06T00:00:00.000Z",
     finishedAt: null,

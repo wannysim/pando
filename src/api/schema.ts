@@ -39,6 +39,7 @@ export interface ApiHealth {
 
 export interface ApiJobSummary {
   attemptsLeft: number;
+  branch: string | null;
   cancelRequestedAt: string | null;
   createdAt: string;
   finishedAt: string | null;
@@ -122,6 +123,7 @@ export function formatStageList(): string {
 export function toApiJobSummary(job: JobRecord): ApiJobSummary {
   return {
     attemptsLeft: job.attemptsLeft,
+    branch: job.item.branch ?? null,
     cancelRequestedAt: job.cancelRequestedAt ?? null,
     createdAt: job.createdAt,
     finishedAt: job.finishedAt ?? null,

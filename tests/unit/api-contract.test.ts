@@ -71,6 +71,7 @@ describe("Pando Hono API", () => {
         jobs: [
           {
             attemptsLeft: 1,
+            branch: null,
             cancelRequestedAt: "2026-06-06T00:02:00.000Z",
             createdAt: "2026-06-06T00:01:00.000Z",
             finishedAt: null,
@@ -85,6 +86,7 @@ describe("Pando Hono API", () => {
           },
           {
             attemptsLeft: 3,
+            branch: null,
             cancelRequestedAt: null,
             createdAt: "2026-06-06T00:00:00.000Z",
             finishedAt: null,
@@ -168,6 +170,7 @@ describe("Pando Hono API", () => {
       data: {
         job: {
           attemptsLeft: 2,
+          branch: null,
           cancelRequestedAt: null,
           createdAt: "2026-06-06T00:00:00.000Z",
           finishedAt: null,

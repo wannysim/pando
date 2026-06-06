@@ -267,11 +267,39 @@ function showJob(
     return 1;
   }
 
-  stdout(`${job.item.id} ${job.status} repo=${job.item.repo} attemptsLeft=${job.attemptsLeft}`);
-  for (const event of store.listEvents(jobId)) {
+  stdout(
+    [
+      job.item.id,
+      job.status,
+      `repo=${job.item.repo}`,
+      `branch=${formatNullable(job.item.branch ?? null)}`,
+      `title=${formatTelemetryValue(job.item.title)}`,
+      `worktreePath=${formatNullable(job.worktreePath ?? null)}`,
+      `attemptsLeft=${job.attemptsLeft}`,
+      `startedAt=${formatNullable(job.startedAt ?? null)}`,
+      `cancelRequestedAt=${formatNullable(job.cancelRequestedAt ?? null)}`,
+    ].join(" "),
+  );
+  const events = store.listEvents(jobId);
+  if (job.status === "FAILED" || job.status === "ESCALATED") {
+    const failureLine = formatFailureSummary(events);
+    if (failureLine !== undefined) stdout(failureLine);
+  }
+  for (const event of events) {
     stdout(formatEvent(event));
   }
   return 0;
+}
+
+function formatFailureSummary(events: JobEventRecord[]): string | undefined {
+  const failed = [...events].reverse().find((event) => event.type === "stage-failed");
+  if (failed === undefined) return undefined;
+
+  const parts: string[] = [`failure: ${failed.stage ?? "-"}`];
+  if (failed.reason !== undefined) parts.push(`reason=${formatTelemetryValue(failed.reason)}`);
+  if (failed.evidence !== undefined)
+    parts.push(`evidence=${formatTelemetryValue(failed.evidence)}`);
+  return parts.join(" ");
 }
 
 function formatEvent(event: JobEventRecord): string {
@@ -290,7 +318,9 @@ function formatApiJobSummary(job: ApiJobSummary): string {
     job.jobId,
     job.status,
     `repo=${job.repo}`,
+    `branch=${formatNullable(job.branch)}`,
     `source=${job.source}`,
+    `title=${formatTelemetryValue(job.title)}`,
     `attemptsLeft=${job.attemptsLeft}`,
     `createdAt=${job.createdAt}`,
     `updatedAt=${job.updatedAt}`,
