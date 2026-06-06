@@ -32,29 +32,50 @@
 - ✅ **아키텍처 평가 완료 (2026-06-06)**: ① 레포 환경 컨텍스트 격리 ② ai-skills 결합도 → ADR-005/006, W2 입력 7/8 도출. stacked PR 정책은 ADR-007로 ai-skills(`implement-jira`)+pando 문서 양쪽 반영 완료
 - 보류: `~/.worktrees/web/feat-AP-1234`는 PLAN.md 검증 산출물 보존을 위해 **유지 권장** (Step 3/4 재료로 쓰거나, 정리 시 PLAN.md만 백업)
 
-## W2(데몬 TS 구현)에 들어가야 할 설계 입력 — W1에서 발견
+## W2 설계 입력 처리 현황 — W1 발견사항 기반
 
-1. **base branch 동적 결정**: `RepoProfile.baseBranch` 고정값 가정이 티켓별로 깨짐 (fixVersion → release/* 매핑 필요). `WorkItem`에 baseBranch 오버라이드 추가는 계약 변경이므로 ADR과 함께
-2. **Bash 화이트리스트 재설계**: `Bash(git *)`만으론 파이프/복합 명령 거부로 turn 낭비. 단계별 allowedTools 프리셋 필요
-3. **flock 외부 의존 제거**: macOS에 flock 기본 없음 → TS 이식 시 `proper-lockfile` 류로
-4. **allowedTools 필수값**: `Task` + `mcp__claude_ai_Atlassian` (ADR-004)
-5. PLAN 게이트 고도화: PLAN.md의 `[Blocker]`/Open Questions 파싱 → blocking이면 ESCALATED (상태머신에 이벤트 이미 있음: `BLOCKING_QUESTIONS`)
-6. **게이트 스코핑**: 전체 `test` 금지 — 변경 워크스페이스/파일로 한정(turbo affected 등). pts는 base 이슈로 baseline부터 적색(codex 무관)이라, 전체 게이트는 무관한 기존 실패를 IMPL 실패로 오판함. 또한 `config/repos.yaml`의 `gates`(test/lint/types)가 아직 전부 `pnpm` → web은 yarn이라 정정 필요(setup만 고쳐짐)
-7. **PM 자동감지 1급화** (ADR-005): `setup`/`gates`를 PM-agnostic 동작(install/test/lint/typecheck)으로 표현하고 lockfile로 PM 감지(yarn→pnpm→npm). `RepoProfile`에 `packageManager?` fallback 필드. repos.yaml web `gates` pnpm 정정 포함
-8. **ai-skills anti-corruption** (ADR-006): 스킬명을 stages/profile 설정으로 추출, `artifacts.ts`가 `_spec.md`/`PLAN.md` 스키마 소유 + AP-1234 PLAN.md를 픽스처로 **골든 계약테스트**, 의존 규약(worktree-dispatch §1/§5/§8, implement-jira PLAN 스키마, verifier JSON) 버전핀 목록 유지
-9. **PLAN 게이트는 커밋 분해 단위 검사** (ADR-007): "PR 분해" 아님. Stacked 제안 섹션(1000줄+)은 옵션 파싱
+| 입력 | 상태 | 현재 반영 |
+|---|---|---|
+| base branch 동적 결정 | ⬜ 미해결 | `RepoProfile.baseBranch` 고정값만 있음. 티켓 fixVersion → `release/*` 매핑과 `WorkItem.baseBranch` override는 별도 ADR/계약 변경 필요 |
+| Bash 화이트리스트 재설계 | 🟨 일부 완료 | `WorkerRunOptions.allowedTools`와 Claude Code 기본값 도입. stage/profile별 preset 설정화는 다음 작업 |
+| flock 외부 의존 제거 | ✅ 완료 | `src/worktree/manager.ts`가 `.git/.dispatch.lock` atomic file lock 사용. 외부 `flock` 의존 없음 |
+| allowedTools 필수값 | ✅ 완료 | Claude Code 기본 allowedTools에 `Task`, `mcp__claude_ai_Atlassian` 포함 |
+| PLAN `[Blocker]` 파싱 | 🟨 일부 완료 | `src/core/artifacts.ts`가 Open Questions `[Blocker]`를 구조화. pipeline gate 연결과 `BLOCKING_QUESTIONS` 전이는 다음 작업 |
+| 게이트 스코핑 | ⬜ 미해결 | `config/repos.yaml`의 PM 하드코딩은 제거했지만, 변경 workspace/file scope 기반 gate 실행은 아직 미구현 |
+| PM 자동감지 1급화 | ✅ 완료 | `src/core/config.ts`가 lockfile 감지(yarn→pnpm→npm), `package_manager` fallback, PM-agnostic action 지원 |
+| ai-skills anti-corruption | 🟨 일부 완료 | `artifacts.ts`가 PLAN 계약 소유, sanitized legacy fixture로 drift 감지. skill-name 설정화/stage config loader와 규약 버전핀 목록은 다음 작업 |
+| PLAN 커밋 분해 단위 검사 | ✅ 완료 | valid PLAN은 `Implementation Roadmap`의 `Commit N` 단위를 요구. legacy `Stacked PR Roadmap`은 파싱 가능하지만 현재 계약상 invalid |
+
+## 로드맵 현재 위치
+
+| 단계 | 상태 | 메모 |
+|---|---|---|
+| W1: 헤드리스 검증 | ✅ 완료 | worktree 생성, Claude PLAN, Codex IMPL, 수동 게이트 리스크 검증 완료 |
+| W2-A: 데몬 기반 계약/어댑터 | ✅ 완료 | config loader, artifact schema, worktree manager, Claude/Codex engine adapter 구현. `pnpm verify` 통과 |
+| W2-B: 파이프라인 결합 | ⬅️ **다음 작업** | stage config loader, artifact/exit-code gate, pipeline runner skeleton, fake engine e2e |
+| W2-C: 상태 저장/운영 루프 | ⬜ 예정 | SQLite job/event 저장, retry budget persistence, daemon/agentctl 최소 루프 |
+| W3: brief 경로 | ⬜ 예정 | brief intake + personal-site 프로파일 E2E |
+| W4: n×n 병렬 | ⬜ 예정 | global/per-repo/per-provider 세마포어, 포트/캐시 격리, 병렬 스케줄링 |
+| W5: 통제·운영 | ⬜ 예정 | diff/checksum gate 강화, 리뷰어 모델 분리, 비용 추적, 웹 대시보드/원격 투입 |
 
 ## 코드 현황
 
 - `src/core/types.ts` — 계약 (WorkItem/RepoProfile/WorkerEngine/Gate). 변경 시 ADR
 - `src/core/state-machine.ts` — 완료, 테스트 17개 100% 커버리지
-- **다음 세션 시작점 — W2 진입.** 권장 순서(TDD, 계약 먼저):
-  1. **config 로더** — yaml→`RepoProfile` 검증 + **PM lockfile 자동감지**(ADR-005). 순수 계층, fake fs unit
-  2. **`src/core/artifacts.ts`** — `_spec.md`/`PLAN.md` 스키마 정의·검증 + **골든 계약테스트**(`~/.worktrees/web/feat-AP-1234/PLAN.md`를 픽스처로, ADR-006). ai-skills drift 안전망이라 일찍
-  3. **worktree manager** — `01-worktree.sh` TS 이식, 진짜 git(mktemp bare repo) integration, flock→proper-lockfile(W2 입력 3)
-  4. **claude-code engine adapter** — `02` 이식, `--mcp-config` 없이 connector 상속(ADR-004) + allowedTools 프리셋(W2 입력 4)
-  5. **codex engine adapter** — `03` 이식(샌드박스/JSON 파싱 W1 검증됨), 게이트는 변경 워크스페이스 스코프(W2 입력 6)
-  - ①②가 계약 기반이라 먼저. `state-machine.ts`는 완료(17 test 100%)라 ④⑤ 엔진이 붙으면 파이프라인 골격 완성. scheduler 세마포어는 n×n(W4) 전까지 단일 in-flight로 미뤄도 됨
+- `src/core/config.ts` — W2 1단계 완료. `config/repos.yaml` snake_case → `RepoProfile` 검증/정규화, lockfile 기반 PM 감지(yarn→pnpm→npm), `package_manager` fallback, PM-agnostic action(`install/test/lint/typecheck`) 지원
+- `src/core/artifacts.ts` — W2 2단계 완료. `_spec.md`/`PLAN.md` 필수 스키마 검증, Open Questions `[Blocker]` 파싱, ADR-007의 commit 단위 `Implementation Roadmap` 검사. DEMO-1234 legacy `Stacked PR Roadmap`은 sanitized fixture로 drift 감지(파싱은 되지만 현재 계약 invalid)
+- `src/worktree/manager.ts` — W2 3단계 완료. `01-worktree.sh` TS 이식, origin base 직접 분기, `~/.worktrees/{repo}/{branch-slug}` 규약, `.git/.dispatch.lock` atomic file lock, env copy/setup hook. 진짜 git integration 테스트 포함
+- `src/engines/claude-code.ts` — W2 4단계 완료. `claude -p`, JSON output, allowedTools 기본값(`Task`, `mcp__claude_ai_Atlassian` 포함), ADR-004에 따라 `--mcp-config` 거부
+- `src/engines/codex.ts` — W2 5단계 완료. `codex exec --json --sandbox workspace-write --model`, JSON-lines session/cost/output 파싱
+- 검증: `pnpm verify` 통과(2026-06-06, `feat/w2-config-loader`, 6 files / 49 tests)
+- 공개 repo hygiene: `tests/` 표면(`describe`/`it`, fixture 문구)은 영어로 정리. 실제 회사 티켓 키는 커밋하지 않고 `DEMO-1234` 같은 가상 키만 사용. `docs/`는 작업자용이라 한글 유지 허용
+
+**다음 세션 시작점 — W2-B 파이프라인 결합.** 권장 순서(TDD):
+1. **stage config loader** — `config/stages.yaml`의 engine/model/skill/allowedTools preset을 타입 검증하고 ADR-006의 skill-name 설정화를 마무리
+2. **PLAN/SPEC artifact gates** — `artifacts.ts`를 `pipeline/gates/artifact-schema.ts`에 연결. blocking questions면 상태머신 `BLOCKING_QUESTIONS` 이벤트로 ESCALATED
+3. **exit-code gates with PM scope** — `RepoProfile`의 PM-agnostic gates를 `packageCommand()`로 실행하되 변경 workspace/file scope를 도입(W2 입력 6)
+4. **pipeline runner skeleton** — fake engine으로 `SPEC→PLAN→TEST→IMPL→REVIEW→PR` happy path와 null-agent gate fail e2e를 먼저 구성
+5. scheduler 세마포어는 n×n(W4) 전까지 단일 in-flight로 미뤄도 됨
 
 ## 참조 문서 지도
 
