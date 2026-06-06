@@ -340,6 +340,40 @@ describe("runPipeline", () => {
     );
   });
 
+  it("persists deterministic evidence from passing gates", async () => {
+    const result = await runPipeline({
+      engines: {
+        "claude-code": engine("claude-code", []),
+        codex: engine("codex", []),
+      },
+      gates: {
+        PR: [
+          gate("types-exit-code", () => ({
+            evidence: '{"command":"pnpm exec tsc --noEmit","exitCode":0}',
+            pass: true,
+          })),
+        ],
+      },
+      initialState: { attemptsLeft: 1, status: "PR" },
+      item: workItem(),
+      profile: repoProfile(),
+      stageConfig: stageConfig(),
+      worktree: "/worktree",
+    });
+
+    expect(result.final.status).toBe("DONE");
+    expect(result.events).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          evidence: '{"command":"pnpm exec tsc --noEmit","exitCode":0}',
+          gateName: "types-exit-code",
+          stage: "PR",
+          type: "gate-pass",
+        }),
+      ]),
+    );
+  });
+
   it("retries deterministic gate failures until the budget is exhausted", async () => {
     const result = await runPipeline({
       engines: {

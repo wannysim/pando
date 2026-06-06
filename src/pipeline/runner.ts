@@ -68,7 +68,13 @@ export type PipelineRunEvent =
       evidence?: string;
       payload: Record<string, unknown>;
     }
-  | { type: "gate-pass"; stage: StageName; gateName: string; payload?: Record<string, unknown> }
+  | {
+      type: "gate-pass";
+      stage: StageName;
+      gateName: string;
+      evidence?: string;
+      payload?: Record<string, unknown>;
+    }
   | {
       type: "gate-fail" | "gate-blocking";
       stage: StageName;
@@ -234,7 +240,14 @@ async function runGates(
         : { failure, outcome: "fail" };
     }
 
-    await emit({ gateName: gate.name, stage, type: "gate-pass" });
+    await emit(
+      removeUndefined({
+        evidence: result.evidence,
+        gateName: gate.name,
+        stage,
+        type: "gate-pass",
+      }) as PipelineRunEvent,
+    );
   }
 
   return { outcome: "pass" };

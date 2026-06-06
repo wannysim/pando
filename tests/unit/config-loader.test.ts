@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { loadRepoProfilesFromYaml, packageCommand, type FileProbe } from "../../src/core/config";
 
@@ -179,6 +180,32 @@ repos:
       context: { policyRefs: [], providers: ["confluence", "figma"] },
       contextProviders: ["confluence", "figma"],
       intake: { sources: ["brief"] },
+      workItemSource: "brief",
+    });
+  });
+
+  it("loads the checked-in pando self-profile as a brief-only target", async () => {
+    const profiles = await loadRepoProfilesFromYaml(readFileSync("config/repos.yaml", "utf8"), {
+      homeDir: "/Users/me",
+      files: probe(["/Users/me/Github/web/yarn.lock", "/Users/me/Github/pando/pnpm-lock.yaml"]),
+    });
+
+    expect(profiles.pando).toMatchObject({
+      baseBranch: "develop",
+      concurrency: 2,
+      context: { policyRefs: [], providers: [] },
+      contextProviders: [],
+      conventions: "repo-local",
+      gates: { lint: "lint", test: "test", types: "typecheck" },
+      guards: {
+        forbidTestEditInImpl: true,
+        protectedBranches: ["main", "develop", "release/*"],
+      },
+      intake: { sources: ["brief"] },
+      packageManager: "pnpm",
+      path: "/Users/me/Github/pando",
+      scope: "external",
+      setup: "install",
       workItemSource: "brief",
     });
   });
