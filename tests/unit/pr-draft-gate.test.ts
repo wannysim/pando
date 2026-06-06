@@ -57,6 +57,16 @@ describe("createPrDraftGate", () => {
     });
   });
 
+  it("fails when the PR artifact is JSON null rather than an object", async () => {
+    const gate = createPrDraftGate(reader({ "/worktree/pr.json": "null" }));
+
+    await expect(gate.check(baseContext())).resolves.toEqual({
+      evidence: "null",
+      pass: false,
+      reason: "pr.json is missing a boolean isDraft field",
+    });
+  });
+
   it("fails when the PR artifact lacks a boolean isDraft field", async () => {
     const gate = createPrDraftGate(reader({ "/worktree/pr.json": JSON.stringify({ number: 42 }) }));
 
