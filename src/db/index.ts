@@ -28,6 +28,10 @@ export interface RetryJobInput {
   attemptsLeft: number;
 }
 
+export interface ClaimNextRunnableInput {
+  excludeJobIds?: readonly string[];
+}
+
 export interface AppendJobEventInput {
   jobId: string;
   type: string;
@@ -65,7 +69,7 @@ export interface JobEventRecord {
 
 export interface JobStore {
   enqueueJob(input: EnqueueJobInput): JobRecord;
-  claimNextRunnable(): JobRecord | undefined;
+  claimNextRunnable(input?: ClaimNextRunnableInput): JobRecord | undefined;
   getJob(jobId: string): JobRecord | undefined;
   updateJobStatus(input: UpdateJobStatusInput): JobRecord;
   retryJob(input: RetryJobInput): JobRecord;
@@ -120,15 +124,18 @@ class SqliteJobStore implements JobStore {
     return this.requiredJob(input.item.id);
   }
 
-  claimNextRunnable(): JobRecord | undefined {
+  claimNextRunnable(input?: ClaimNextRunnableInput): JobRecord | undefined {
+    const excluded = input?.excludeJobIds ?? [];
+    const excludedClause = excluded.length > 0 ? `AND id NOT IN (${placeholders(excluded)})` : "";
     const active = this.selectOne(
       `
         SELECT * FROM jobs
         WHERE status IN (${ACTIVE_STATUSES.map(() => "?").join(", ")})
+        ${excludedClause}
         ORDER BY updated_at ASC, created_at ASC, id ASC
         LIMIT 1
       `,
-      [...ACTIVE_STATUSES],
+      [...ACTIVE_STATUSES, ...excluded],
     );
     if (active !== undefined) return deserializeJob(active);
 
@@ -136,10 +143,11 @@ class SqliteJobStore implements JobStore {
       `
         SELECT * FROM jobs
         WHERE status = 'QUEUED'
+        ${excludedClause}
         ORDER BY created_at ASC, id ASC
         LIMIT 1
       `,
-      [],
+      [...excluded],
     );
     if (queued === undefined) return undefined;
 
@@ -281,6 +289,10 @@ class SqliteJobStore implements JobStore {
 
 type SqlValue = string | number | null;
 type Row = Record<string, unknown>;
+
+function placeholders(values: readonly unknown[]): string {
+  return values.map(() => "?").join(", ");
+}
 
 function deserializeJob(row: Row): JobRecord {
   const dependsOn = parseJson<string[]>(text(row, "depends_on_json"));

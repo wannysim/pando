@@ -24,8 +24,21 @@ describe("createWorktreeProvisioner", () => {
       profile: repoProfile(),
     });
 
+    const isolation = result.isolation;
+    expect(isolation).toBeDefined();
     expect(result).toEqual({
       branch: "feat/DEMO-4001",
+      isolation: {
+        cacheDir: "/worktrees/.cache/web/feat-DEMO-4001",
+        env: {
+          PANDO_ASSIGNED_PORT: expect.any(String),
+          PANDO_CACHE_DIR: "/worktrees/.cache/web/feat-DEMO-4001",
+          PANDO_JOB_ID: "DEMO-4001",
+          PORT: expect.any(String),
+          XDG_CACHE_HOME: "/worktrees/.cache/web/feat-DEMO-4001",
+        },
+        port: expect.any(Number),
+      },
       path: "/worktrees/web/feat-DEMO-4001",
       reused: false,
     });
@@ -35,10 +48,14 @@ describe("createWorktreeProvisioner", () => {
         branch: "feat/DEMO-4001",
         envFiles: [".env.local"],
         repoPath: "/repo",
+        setupEnv: isolation?.env,
         setupCommand: "pnpm install",
         worktreeRoot: "/worktrees",
       },
     ]);
+    expect(isolation?.port).toBeGreaterThanOrEqual(3000);
+    expect(isolation?.port).toBeLessThanOrEqual(3099);
+    expect(isolation?.env.PORT).toBe(String(isolation?.port));
   });
 
   it("fails fast when the repo profile has no detected package manager", async () => {

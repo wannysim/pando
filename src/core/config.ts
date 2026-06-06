@@ -12,6 +12,14 @@ export interface LoadRepoProfilesOptions {
   files: FileProbe;
 }
 
+export interface OrchestratorConfig {
+  globalConcurrency: number;
+  providerConcurrency: Partial<Record<ContextProvider, number>>;
+  worktreeRoot: string;
+  skillsRoot: string;
+  db: string;
+}
+
 const PACKAGE_MANAGERS = ["yarn", "pnpm", "npm"] as const;
 const PACKAGE_ACTIONS = ["install", "test", "lint", "typecheck"] as const;
 const SCOPES = ["acme", "external"] as const;
@@ -76,6 +84,17 @@ export async function loadRepoProfilesFromYaml(
   return profiles;
 }
 
+export function loadOrchestratorConfigFromYaml(yaml: string): OrchestratorConfig {
+  const root = asRecord(parse(yaml), "orchestrator");
+  return {
+    db: requiredRootString(root.db, "db"),
+    globalConcurrency: requiredRootPositiveInteger(root.global_concurrency, "global_concurrency"),
+    providerConcurrency: parseProviderConcurrency(root.providers),
+    skillsRoot: requiredRootString(root.skills_root, "skills_root"),
+    worktreeRoot: requiredRootString(root.worktree_root, "worktree_root"),
+  };
+}
+
 function parseIntake(repo: Record<string, unknown>, name: string): RepoProfile["intake"] {
   if (repo.intake !== undefined) {
     const intake = asRecord(repo.intake, `${name}.intake`);
@@ -102,6 +121,37 @@ function parseContext(repo: Record<string, unknown>, name: string): RepoProfile[
     policyRefs: [],
     providers: optionalContextProviderArray(repo.context_providers, name, "context_providers"),
   };
+}
+
+function parseProviderConcurrency(value: unknown): OrchestratorConfig["providerConcurrency"] {
+  if (value === undefined) return {};
+  const providers = asRecord(value, "providers");
+  const concurrency: OrchestratorConfig["providerConcurrency"] = {};
+
+  for (const [provider, config] of Object.entries(providers)) {
+    const canonical = contextProvider(provider, "providers", provider);
+    const providerConfig = asRecord(config, `providers.${provider}`);
+    concurrency[canonical] = requiredRootPositiveInteger(
+      providerConfig.max_concurrent,
+      `providers.${provider}.max_concurrent`,
+    );
+  }
+
+  return concurrency;
+}
+
+function requiredRootString(value: unknown, field: string): string {
+  if (typeof value !== "string" || value.length === 0) {
+    throw new Error(`${field}: expected non-empty string`);
+  }
+  return value;
+}
+
+function requiredRootPositiveInteger(value: unknown, field: string): number {
+  if (typeof value !== "number" || !Number.isInteger(value) || value <= 0) {
+    throw new Error(`${field}: expected positive integer`);
+  }
+  return value;
 }
 
 function primaryIntakeSource(

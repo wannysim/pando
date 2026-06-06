@@ -24,6 +24,21 @@ describe("SqliteJobStore", () => {
     store.close();
   });
 
+  it("skips excluded in-flight jobs when claiming the next runnable job", () => {
+    const store = createSqliteJobStore({
+      path: ":memory:",
+      now: fixedClock(["2026-06-06T00:00:00.000Z", "2026-06-06T00:00:01.000Z"]),
+    });
+
+    store.enqueueJob({ item: workItem("DEMO-1001"), retryBudget: 3 });
+    store.enqueueJob({ item: workItem("DEMO-1002"), retryBudget: 3 });
+
+    expect(store.claimNextRunnable()?.item.id).toBe("DEMO-1001");
+    expect(store.claimNextRunnable({ excludeJobIds: ["DEMO-1001"] })?.item.id).toBe("DEMO-1002");
+
+    store.close();
+  });
+
   it("returns undefined when no queued or active jobs exist", () => {
     const store = createSqliteJobStore({
       path: ":memory:",

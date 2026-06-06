@@ -25,6 +25,7 @@ export interface PipelineRunnerOptions {
   engines: Record<WorkerEngineName, WorkerEngine>;
   gates?: Partial<Record<StageName, Gate[]>>;
   buildPrompt?: (stage: StageName) => string;
+  env?: Record<string, string>;
   initialState?: MachineState;
   onEvent?: (event: PipelineRunEvent) => MaybePromise<void>;
   onStateChange?: (change: PipelineStateChange) => MaybePromise<void>;
@@ -112,7 +113,7 @@ async function runStage(
     const result = await opts.engines[config.engine].run({
       allowedTools: resolveStageAllowedTools(opts.stageConfig, workerStage, opts.item.source),
       cwd: opts.worktree,
-      env: config.env,
+      env: mergeEnv(config.env, opts.env),
       model: config.model,
       prompt: opts.buildPrompt?.(stage) ?? `Run ${stage}`,
       timeoutMs: opts.stageConfig.defaults.timeoutMinutes * 60_000,
@@ -176,6 +177,14 @@ function failedGateEvent(stage: StageName, gateName: string, result: GateResult)
 
 function isStageStatus(status: JobStatus): status is StageName {
   return STAGE_ORDER.includes(status as StageName);
+}
+
+function mergeEnv(
+  stageEnv: Record<string, string> | undefined,
+  jobEnv: Record<string, string> | undefined,
+): Record<string, string> | undefined {
+  if (stageEnv === undefined && jobEnv === undefined) return undefined;
+  return { ...stageEnv, ...jobEnv };
 }
 
 async function applyTransition(

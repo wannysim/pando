@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { JobEventRecord, JobRecord, JobStore, UpdateJobStatusInput } from "../../src/db/index";
 import { branchForItem, runDaemonOnce } from "../../src/daemon/loop";
+import { createRunScheduler } from "../../src/scheduler/scheduler";
 import type {
   JobStatus,
   RepoProfile,
@@ -154,6 +155,104 @@ describe("runDaemonOnce", () => {
     expect(store.updates.at(-1)).toMatchObject({ status: "DONE" });
   });
 
+  it("starts multiple jobs up to the scheduler cap without reclaiming in-flight jobs", async () => {
+    const first = workItem("DEMO-2101");
+    const second = workItem("DEMO-2102");
+    const third = workItem("DEMO-2103");
+    const store = new QueueJobStore([
+      jobRecord(first, "QUEUED", 2),
+      jobRecord(second, "QUEUED", 2),
+      jobRecord(third, "QUEUED", 2),
+    ]);
+    const started: string[] = [];
+    let running = 0;
+    let maxRunning = 0;
+
+    const result = await runDaemonOnce({
+      engines: {
+        "claude-code": engine("claude-code"),
+        codex: engine("codex"),
+      },
+      profiles: { web: repoProfile({ concurrency: 2 }) },
+      runner: async (runnerOpts) => {
+        started.push(runnerOpts.item.id);
+        running += 1;
+        maxRunning = Math.max(maxRunning, running);
+        await new Promise((resolve) => setTimeout(resolve, 10));
+        running -= 1;
+        return { events: [], final: { attemptsLeft: 2, status: "DONE" } };
+      },
+      scheduler: createRunScheduler({
+        globalConcurrency: 2,
+        providerConcurrency: {},
+      }),
+      stageConfig: stageConfig(),
+      store,
+      worktrees: {
+        async ensure(input) {
+          return {
+            branch: input.branch,
+            isolation: input.isolation,
+            path: `/worktrees/web/${input.item.id}`,
+          };
+        },
+      },
+    });
+
+    expect(result).toEqual({
+      jobs: [
+        { finalStatus: "DONE", jobId: "DEMO-2101", status: "ran" },
+        { finalStatus: "DONE", jobId: "DEMO-2102", status: "ran" },
+      ],
+      status: "ran",
+    });
+    expect(started).toEqual(["DEMO-2101", "DEMO-2102"]);
+    expect(maxRunning).toBe(2);
+    expect(store.getJob("DEMO-2103")?.status).toBe("QUEUED");
+  });
+
+  it("passes per-job worktree isolation into the pipeline runner", async () => {
+    const item = workItem("DEMO-2201");
+    const isolation = {
+      cacheDir: "/worktrees/.cache/web/feat-DEMO-2201",
+      env: {
+        PANDO_ASSIGNED_PORT: "3001",
+        PANDO_CACHE_DIR: "/worktrees/.cache/web/feat-DEMO-2201",
+        PANDO_JOB_ID: "DEMO-2201",
+        PORT: "3001",
+        XDG_CACHE_HOME: "/worktrees/.cache/web/feat-DEMO-2201",
+      },
+      port: 3001,
+    };
+    const store = new MemoryJobStore(jobRecord(item, "SPEC", 2));
+    const runnerEnv: Record<string, string>[] = [];
+
+    await runDaemonOnce({
+      engines: {
+        "claude-code": engine("claude-code"),
+        codex: engine("codex"),
+      },
+      profiles: { web: repoProfile({ concurrency: 1 }) },
+      runner: async (runnerOpts) => {
+        runnerEnv.push(runnerOpts.env ?? {});
+        return { events: [], final: { attemptsLeft: 2, status: "DONE" } };
+      },
+      stageConfig: stageConfig(),
+      store,
+      worktrees: {
+        async ensure() {
+          return {
+            branch: "feat/DEMO-2201",
+            isolation,
+            path: "/worktrees/web/feat-DEMO-2201",
+          };
+        },
+      },
+    });
+
+    expect(runnerEnv).toEqual([isolation.env]);
+  });
+
   it("derives stable default branches and respects explicit branches", () => {
     expect(branchForItem(workItem("DEMO 2004/part A"))).toBe("feat/DEMO-2004-part-A");
     expect(branchForItem({ ...workItem("DEMO-2004"), branch: "fix/custom" })).toBe("fix/custom");
@@ -188,6 +287,90 @@ class MemoryJobStore implements JobStore {
       worktreePath: input.worktreePath ?? this.job.worktreePath,
     };
     return this.job;
+  }
+
+  retryJob(): JobRecord {
+    throw new Error("not used");
+  }
+
+  appendEvent(input: Parameters<JobStore["appendEvent"]>[0]): JobEventRecord {
+    const event: JobEventRecord = {
+      createdAt: "2026-06-06T00:00:00.000Z",
+      evidence: input.evidence,
+      gateName: input.gateName,
+      jobId: input.jobId,
+      payload: input.payload ?? {},
+      reason: input.reason,
+      sequence: this.events.length + 1,
+      stage: input.stage,
+      status: input.status,
+      type: input.type,
+    };
+    this.events.push(event);
+    return event;
+  }
+
+  listEvents(): JobEventRecord[] {
+    return this.events;
+  }
+
+  upsertRepoProfile(): void {}
+
+  getRepoProfile(): RepoProfile | undefined {
+    return undefined;
+  }
+
+  close(): void {}
+}
+
+class QueueJobStore implements JobStore {
+  readonly events: JobEventRecord[] = [];
+  readonly updates: UpdateJobStatusInput[] = [];
+  private readonly jobs = new Map<string, JobRecord>();
+
+  constructor(jobs: readonly JobRecord[]) {
+    for (const job of jobs) this.jobs.set(job.item.id, job);
+  }
+
+  enqueueJob(): JobRecord {
+    throw new Error("not used");
+  }
+
+  claimNextRunnable(input?: { excludeJobIds?: readonly string[] }): JobRecord | undefined {
+    const excluded = new Set(input?.excludeJobIds ?? []);
+    const active = [...this.jobs.values()].find(
+      (job) => isActive(job.status) && !excluded.has(job.item.id),
+    );
+    if (active !== undefined) return active;
+
+    const queued = [...this.jobs.values()].find(
+      (job) => job.status === "QUEUED" && !excluded.has(job.item.id),
+    );
+    if (queued === undefined) return undefined;
+    return this.updateJobStatus({
+      attemptsLeft: queued.attemptsLeft,
+      jobId: queued.item.id,
+      status: "SPEC",
+      worktreePath: queued.worktreePath,
+    });
+  }
+
+  getJob(jobId: string): JobRecord | undefined {
+    return this.jobs.get(jobId);
+  }
+
+  updateJobStatus(input: UpdateJobStatusInput): JobRecord {
+    const job = this.jobs.get(input.jobId);
+    if (job === undefined) throw new Error("job not found");
+    this.updates.push(input);
+    const next = {
+      ...job,
+      attemptsLeft: input.attemptsLeft,
+      status: input.status,
+      worktreePath: input.worktreePath ?? job.worktreePath,
+    };
+    this.jobs.set(input.jobId, next);
+    return next;
   }
 
   retryJob(): JobRecord {
@@ -266,10 +449,10 @@ function jobRecord(item: WorkItem, status: JobStatus, attemptsLeft: number): Job
   };
 }
 
-function repoProfile(): RepoProfile {
+function repoProfile(opts?: { concurrency?: number }): RepoProfile {
   return {
     baseBranch: "develop",
-    concurrency: 1,
+    concurrency: opts?.concurrency ?? 1,
     context: { policyRefs: [], providers: [] },
     contextProviders: [],
     conventions: "repo-local",
@@ -283,4 +466,8 @@ function repoProfile(): RepoProfile {
     intake: { sources: ["jira"] },
     workItemSource: "jira",
   };
+}
+
+function isActive(status: JobStatus): boolean {
+  return ["SPEC", "PLAN", "TEST", "IMPL", "REVIEW", "PR"].includes(status);
 }
