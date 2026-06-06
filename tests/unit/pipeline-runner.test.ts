@@ -9,6 +9,7 @@ import type {
   WorkerResult,
 } from "../../src/core/types";
 import { runPipeline } from "../../src/pipeline/runner";
+import { createPrDraftGate } from "../../src/pipeline/gates/pr-draft";
 import type { StageConfig } from "../../src/core/stage-config";
 
 describe("runPipeline", () => {
@@ -381,6 +382,67 @@ describe("runPipeline", () => {
         }),
       ]),
     );
+  });
+
+  it("rejects a non-draft PR at the PR stage via the pr-draft gate", async () => {
+    const result = await runPipeline({
+      engines: {
+        "claude-code": engine("claude-code", []),
+        codex: engine("codex", []),
+      },
+      gates: {
+        PR: [
+          createPrDraftGate({
+            async readText() {
+              return JSON.stringify({ isDraft: false, number: 42, url: "https://x/pull/42" });
+            },
+          }),
+        ],
+      },
+      initialState: { attemptsLeft: 1, status: "PR" },
+      item: workItem(),
+      profile: repoProfile(),
+      stageConfig: stageConfig(),
+      worktree: "/worktree",
+    });
+
+    expect(result.final.status).toBe("FAILED");
+    expect(result.events).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          evidence: JSON.stringify({ isDraft: false, number: 42, url: "https://x/pull/42" }),
+          gateName: "pr-draft",
+          reason: "PR was created as a non-draft",
+          stage: "PR",
+          type: "gate-fail",
+        }),
+      ]),
+    );
+  });
+
+  it("advances a draft PR through the PR stage via the pr-draft gate", async () => {
+    const result = await runPipeline({
+      engines: {
+        "claude-code": engine("claude-code", []),
+        codex: engine("codex", []),
+      },
+      gates: {
+        PR: [
+          createPrDraftGate({
+            async readText() {
+              return JSON.stringify({ isDraft: true, number: 42, url: "https://x/pull/42" });
+            },
+          }),
+        ],
+      },
+      initialState: { attemptsLeft: 1, status: "PR" },
+      item: workItem(),
+      profile: repoProfile(),
+      stageConfig: stageConfig(),
+      worktree: "/worktree",
+    });
+
+    expect(result.final.status).toBe("DONE");
   });
 
   it("retries deterministic gate failures until the budget is exhausted", async () => {
