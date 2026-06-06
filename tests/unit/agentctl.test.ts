@@ -195,7 +195,7 @@ describe("runAgentctl", () => {
 
     expect(exitCode).toBe(0);
     expect(output).toEqual([
-      "DEMO-3002 IMPL repo=web attemptsLeft=1",
+      "DEMO-3002 IMPL repo=web branch=- title=Example worktreePath=- attemptsLeft=1 startedAt=- cancelRequestedAt=-",
       "#1 TEST stage-pass test gate passed",
       "#2 - heartbeat",
     ]);
@@ -240,10 +240,30 @@ describe("runAgentctl", () => {
 
     expect(exitCode).toBe(0);
     expect(output).toEqual([
-      "DEMO-3010 FAILED repo=web attemptsLeft=1",
+      "DEMO-3010 FAILED repo=web branch=- title=Example worktreePath=- attemptsLeft=1 startedAt=- cancelRequestedAt=-",
+      'failure: IMPL reason="test checksum changed" evidence="{\\"changed\\":[\\"src/example.test.ts\\"]}"',
       "#1 IMPL stage-completed durationMs=250 engine=codex model=impl-model",
       "#2 IMPL worker-cost costUsd=0.125 engine=codex model=impl-model",
       '#3 IMPL stage-failed reason="test checksum changed" evidence="{\\"changed\\":[\\"src/example.test.ts\\"]}" durationMs=40 failureKind=gate-fail gateName=checksum',
+    ]);
+  });
+
+  it("shows no failure summary when a failed job has no stage-failed event", async () => {
+    const store = new AgentctlMemoryStore();
+    store.enqueueJob({ item: workItem("DEMO-3011"), retryBudget: 1 });
+    store.updateJobStatus({ attemptsLeft: 0, jobId: "DEMO-3011", status: "ESCALATED" });
+    store.appendEvent({ jobId: "DEMO-3011", type: "heartbeat" });
+    const output: string[] = [];
+
+    const exitCode = await runAgentctl(["show", "DEMO-3011"], {
+      store,
+      stdout: (line) => output.push(line),
+    });
+
+    expect(exitCode).toBe(0);
+    expect(output).toEqual([
+      "DEMO-3011 ESCALATED repo=web branch=- title=Example worktreePath=- attemptsLeft=0 startedAt=- cancelRequestedAt=-",
+      "#1 - heartbeat",
     ]);
   });
 
@@ -255,6 +275,7 @@ describe("runAgentctl", () => {
         jobs: [
           apiJob("DEMO-3101", {
             attemptsLeft: 2,
+            branch: "feat/DEMO-3101",
             cancelRequestedAt: null,
             createdAt: "2026-06-06T00:00:00.000Z",
             finishedAt: null,
@@ -267,6 +288,7 @@ describe("runAgentctl", () => {
           }),
           apiJob("DEMO-3102", {
             attemptsLeft: 1,
+            branch: null,
             cancelRequestedAt: "2026-06-06T00:03:00.000Z",
             createdAt: "2026-06-06T00:01:00.000Z",
             finishedAt: null,
@@ -285,8 +307,8 @@ describe("runAgentctl", () => {
 
     expect(exitCode).toBe(0);
     expect(output).toEqual([
-      "DEMO-3101 IMPL repo=web source=jira attemptsLeft=2 createdAt=2026-06-06T00:00:00.000Z updatedAt=2026-06-06T00:02:00.000Z startedAt=2026-06-06T00:00:10.000Z finishedAt=- worktreePath=/worktrees/web/feat-DEMO-3101 cancelRequestedAt=-",
-      "DEMO-3102 QUEUED repo=docs source=brief attemptsLeft=1 createdAt=2026-06-06T00:01:00.000Z updatedAt=2026-06-06T00:03:00.000Z startedAt=- finishedAt=- worktreePath=- cancelRequestedAt=2026-06-06T00:03:00.000Z",
+      "DEMO-3101 IMPL repo=web branch=feat/DEMO-3101 source=jira title=Example attemptsLeft=2 createdAt=2026-06-06T00:00:00.000Z updatedAt=2026-06-06T00:02:00.000Z startedAt=2026-06-06T00:00:10.000Z finishedAt=- worktreePath=/worktrees/web/feat-DEMO-3101 cancelRequestedAt=-",
+      "DEMO-3102 QUEUED repo=docs branch=- source=brief title=Example attemptsLeft=1 createdAt=2026-06-06T00:01:00.000Z updatedAt=2026-06-06T00:03:00.000Z startedAt=- finishedAt=- worktreePath=- cancelRequestedAt=2026-06-06T00:03:00.000Z",
     ]);
   });
 
@@ -923,6 +945,7 @@ function apiJob(
 ): ApiJobSummary {
   return {
     attemptsLeft: overrides.attemptsLeft ?? 1,
+    branch: overrides.branch ?? null,
     cancelRequestedAt: overrides.cancelRequestedAt ?? null,
     createdAt: overrides.createdAt ?? "2026-06-06T00:00:00.000Z",
     finishedAt: overrides.finishedAt ?? null,
