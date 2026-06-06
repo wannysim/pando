@@ -14,6 +14,7 @@
   },
   "type": "module",
   "scripts": {
+    "start": "tsx src/server.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "coverage": "vitest run --coverage",
@@ -24,11 +25,13 @@
     "types": "tsc --noEmit",
     "verify:core": "pnpm coverage && pnpm lint && pnpm types",
     "verify": "pnpm verify:core && pnpm --filter @pando/dashboard verify",
+    "smoke:two-job": "node scripts/two-job-smoke.mjs",
     "prepare": "husky"
   },
   "dependencies": {
     "better-sqlite3": "^12.10.0",
     "hono": "^4.12.23",
+    "tsx": "^4.22.4",
     "yaml": "^2.9.0"
   },
   "devDependencies": {

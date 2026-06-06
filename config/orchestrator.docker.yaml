@@ -1,0 +1,15 @@
+# Docker runtime defaults. Compose mounts this file at /config/orchestrator.docker.yaml.
+global_concurrency: 2
+worktree_root: /worktrees
+skills_root: /skills
+
+intake:
+  jira_poll_interval_sec: 60
+  jira_jql: 'assignee = currentUser() AND status = "To Do" AND labels = agent-ready'
+  briefs_dir: /config/briefs
+
+providers:
+  confluence: { max_concurrent: 1 }
+  figma: { max_concurrent: 1 }
+
+db: /data/pando.sqlite

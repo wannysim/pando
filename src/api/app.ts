@@ -1,3 +1,5 @@
+import { readFile } from "node:fs/promises";
+import { join, relative } from "node:path";
 import { Hono } from "hono";
 import type { Context } from "hono";
 import type { ContentfulStatusCode } from "hono/utils/http-status";
@@ -43,6 +45,12 @@ export interface PandoApiStore {
 export interface PandoApiOptions {
   store: PandoApiStore;
   defaultRetryBudget?: number;
+  staticDashboard?: StaticDashboardOptions;
+}
+
+export interface StaticDashboardOptions {
+  root: string;
+  basePath?: string;
 }
 
 interface ApiRouteError {
@@ -172,7 +180,98 @@ export function createPandoApiApp(opts: PandoApiOptions): Hono {
     return jsonOk<ApiBriefSubmitResponse>(context, { job: toApiJobSummary(job) }, 201);
   });
 
+  if (opts.staticDashboard !== undefined) {
+    mountStaticDashboard(app, opts.staticDashboard);
+  }
+
   return app;
+}
+
+function mountStaticDashboard(app: Hono, opts: StaticDashboardOptions): void {
+  const basePath = normalizeBasePath(opts.basePath ?? "/dashboard");
+
+  app.get(basePath, (context) => serveDashboardIndex(context, opts.root));
+  app.get(`${basePath}/assets/*`, (context) => {
+    const requestPath = new URL(context.req.url).pathname;
+    const relativePath = decodePathPart(requestPath.slice(`${basePath}/`.length));
+    return serveDashboardFile(context, opts.root, relativePath);
+  });
+  app.get(`${basePath}/*`, (context) => serveDashboardIndex(context, opts.root));
+}
+
+async function serveDashboardIndex(context: Context, root: string): Promise<Response> {
+  return serveDashboardFile(context, root, "index.html");
+}
+
+async function serveDashboardFile(
+  context: Context,
+  root: string,
+  relativePath: string,
+): Promise<Response> {
+  const filePath = safeJoin(root, relativePath);
+  if (filePath === undefined) {
+    return jsonError(context, routeError("invalid_static_path", "invalid static asset path", 400));
+  }
+
+  try {
+    const body = await readFile(filePath);
+    return new Response(body, {
+      headers: { "content-type": contentType(filePath) },
+      status: 200,
+    });
+  } catch (error) {
+    if (isNotFound(error)) {
+      return jsonError(
+        context,
+        routeError("static_asset_not_found", "static asset not found", 404),
+      );
+    }
+    throw error;
+  }
+}
+
+function safeJoin(root: string, relativePath: string): string | undefined {
+  const filePath = join(root, relativePath);
+  const pathFromRoot = relative(root, filePath);
+  if (
+    pathFromRoot.length === 0 ||
+    pathFromRoot === ".." ||
+    pathFromRoot.startsWith("../") ||
+    pathFromRoot.startsWith("..\\")
+  ) {
+    return undefined;
+  }
+  return filePath;
+}
+
+function decodePathPart(value: string): string {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+}
+
+function normalizeBasePath(value: string): string {
+  const withLeadingSlash = value.startsWith("/") ? value : `/${value}`;
+  return withLeadingSlash.endsWith("/") && withLeadingSlash !== "/"
+    ? withLeadingSlash.slice(0, -1)
+    : withLeadingSlash;
+}
+
+function contentType(filePath: string): string {
+  if (filePath.endsWith(".html")) return "text/html; charset=utf-8";
+  if (filePath.endsWith(".js")) return "text/javascript; charset=utf-8";
+  if (filePath.endsWith(".css")) return "text/css; charset=utf-8";
+  if (filePath.endsWith(".json")) return "application/json; charset=utf-8";
+  if (filePath.endsWith(".svg")) return "image/svg+xml";
+  if (filePath.endsWith(".png")) return "image/png";
+  if (filePath.endsWith(".ico")) return "image/x-icon";
+  return "application/octet-stream";
+}
+
+function isNotFound(error: unknown): boolean {
+  return typeof error === "object" && error !== null && "code" in error && error.code === "ENOENT";
 }
 
 function parseStatusFilter(value: string | undefined): JobStatus | undefined {

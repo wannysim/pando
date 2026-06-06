@@ -1,0 +1,43 @@
+{
+  "schemaVersion": 1,
+  "jobs": {
+    "requiredCount": 2,
+    "acceptedSources": ["brief", "jira"]
+  },
+  "limits": {
+    "globalConcurrency": {
+      "min": 2,
+      "max": 3
+    }
+  },
+  "live": {
+    "requiredEnv": [
+      "PANDO_LIVE_SMOKE=1",
+      "PANDO_GLOBAL_CONCURRENCY=2 or 3",
+      "Claude/Codex authentication or API key mode"
+    ],
+    "requiredMounts": ["/data", "/repos", "/worktrees", "/config", "/skills"]
+  },
+  "checks": [
+    {
+      "id": "two-jobs-recorded",
+      "evidence": "two distinct job ids appear in the smoke evidence"
+    },
+    {
+      "id": "worktree-collision",
+      "evidence": "the two jobs use distinct worktree paths"
+    },
+    {
+      "id": "provider-cap",
+      "evidence": "provider usage never exceeds configured max_concurrent values"
+    },
+    {
+      "id": "gate-evidence",
+      "evidence": "each job records deterministic gate evidence"
+    }
+  ],
+  "fallback": {
+    "allowed": true,
+    "recordReason": true
+  }
+}
