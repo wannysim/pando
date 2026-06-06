@@ -1,4 +1,4 @@
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { mkdtemp } from "node:fs/promises";
 import { request as httpRequest } from "node:http";
 import { tmpdir } from "node:os";
@@ -33,8 +33,10 @@ describe("Pando HTTP server", () => {
         PANDO_PORT: "3210",
         PANDO_WORKTREE_ROOT: "/worktrees",
         PANDO_STATIC_DASHBOARD_ROOT: "/app/dashboard/dist",
+        PANDO_BRIEF_INBOX: "/data/briefs",
       }),
     ).toEqual({
+      briefInboxRoot: "/data/briefs",
       dashboardRoot: "/app/dashboard/dist",
       daemon: {
         configDir: "/config",
@@ -48,6 +50,7 @@ describe("Pando HTTP server", () => {
       port: 3210,
     });
     expect(serverOptionsFromEnv({})).toEqual({
+      briefInboxRoot: join(tmpdir(), "pando-briefs"),
       dashboardRoot: undefined,
       daemon: {
         configDir: "config",
@@ -72,6 +75,7 @@ describe("Pando HTTP server", () => {
     writeFileSync(join(root, "index.html"), "<div>pando dashboard</div>");
     writeFileSync(join(root, "assets", "app.css"), "body { color: black; }");
     const server = createPandoServer({
+      briefInboxRoot: dbDir,
       daemon: defaultDaemonOptions(),
       dashboardRoot: root,
       dbPath: join(dbDir, "pando.sqlite"),
@@ -107,9 +111,48 @@ describe("Pando HTTP server", () => {
     expect(await asset.text()).toContain("color");
   });
 
+  it("materializes inline briefs to the configured inbox", async () => {
+    const dbDir = await mkdtemp(join(tmpdir(), "pando-server-db-"));
+    const inboxRoot = await mkdtemp(join(tmpdir(), "pando-server-inbox-"));
+    const server = createPandoServer({
+      briefInboxRoot: inboxRoot,
+      daemon: defaultDaemonOptions(),
+      dbPath: join(dbDir, "pando.sqlite"),
+      host: "127.0.0.1",
+      port: 3210,
+    });
+    servers.push(server);
+    await listen(server);
+
+    const response = await fetch(`${serverUrl(server)}/briefs`, {
+      body: JSON.stringify({
+        brief: {
+          title: "Inline server brief",
+          body: "Make the footer year dynamic.",
+          acceptanceCriteria: ["The footer shows the current year."],
+          assets: ["src/footer.tsx"],
+        },
+        id: "inline-server",
+        repo: "pando",
+      }),
+      headers: { "content-type": "application/json" },
+      method: "POST",
+    });
+
+    expect(response.status).toBe(201);
+    expect(await response.json()).toMatchObject({
+      data: { job: { jobId: "inline-server", source: "brief", status: "QUEUED" } },
+      ok: true,
+    });
+    const written = readFileSync(join(inboxRoot, "inline-server", "brief.md"), "utf8");
+    expect(written).toContain("# Inline server brief");
+    expect(written).toContain("- src/footer.tsx");
+  });
+
   it("handles HEAD requests and repeated Node headers", async () => {
     const dbDir = await mkdtemp(join(tmpdir(), "pando-server-db-"));
     const server = createPandoServer({
+      briefInboxRoot: dbDir,
       daemon: defaultDaemonOptions(),
       dbPath: join(dbDir, "pando.sqlite"),
       host: "127.0.0.1",
