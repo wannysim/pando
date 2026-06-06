@@ -382,8 +382,41 @@ code {
   font-size: 13px;
 }
 
-.event-evidence {
+.event-metrics {
+  display: flex;
+  gap: 8px;
+  margin: 6px 0 0;
+  flex-wrap: wrap;
+}
+
+.event-metric {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 4px;
+  background: #eef1f2;
+  color: #43505c;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 0 6px;
+}
+
+.event-evidence-block {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
   margin: 4px 0 0;
+}
+
+.event-evidence {
+  flex: 1;
+  margin: 0;
+  word-break: break-all;
+}
+
+.copy-button {
+  flex-shrink: 0;
+  font-size: 12px;
+  padding: 2px 8px;
 }
 
 .brief-form {

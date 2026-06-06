@@ -124,8 +124,8 @@ describe("DashboardApp", () => {
     // current stage = last recentEvent with non-null stage => "IMPL"
     expect(within(strip).getByText("IMPL")).toBeVisible();
 
-    // branch = last path segment of "/worktrees/pando/feat-w5-minimal-dashboard"
-    expect(within(strip).getByText("feat-w5-minimal-dashboard")).toBeVisible();
+    // branch comes from the API job.branch field
+    expect(within(strip).getByText("feat/operations-pass")).toBeVisible();
   });
 
   // AC-4b: gateName shown when present
@@ -178,6 +178,84 @@ describe("DashboardApp", () => {
     const eventList = await screen.findByRole("list");
     expect(within(eventList).getByText('{"changed":["src/example.test.ts"]}')).toBeVisible();
   });
+
+  it("shows the API branch in the context strip, not the worktree slug", async () => {
+    const client = createMockClient();
+    const user = userEvent.setup();
+    render(<DashboardApp client={client} />);
+
+    await user.click(await screen.findByRole("button", { name: /open DEMO-5001/i }));
+
+    const strip = await screen.findByTestId("context-strip");
+    // fixture branch="feat/operations-pass"; worktreePath slug is "feat-w5-minimal-dashboard"
+    expect(within(strip).getByText("feat/operations-pass")).toBeVisible();
+    expect(within(strip).queryByText("feat-w5-minimal-dashboard")).toBeNull();
+  });
+
+  it("falls back to '-' for branch when the API branch is missing", async () => {
+    const client = createMockClient();
+    client.getJob.mockResolvedValue(jobDetailWithNullBranch());
+    const user = userEvent.setup();
+    render(<DashboardApp client={client} />);
+
+    await user.click(await screen.findByRole("button", { name: /open DEMO-5001/i }));
+
+    const strip = await screen.findByTestId("context-strip");
+    const branchCell = within(strip).getByText("Branch").closest("div") as HTMLElement;
+    expect(within(branchCell).getByText("-")).toBeVisible();
+    // never fall back to the worktree slug
+    expect(within(strip).queryByText("feat-w5-minimal-dashboard")).toBeNull();
+  });
+
+  it("renders durationMs and costUsd in a human-readable form", async () => {
+    const client = createMockClient();
+    const user = userEvent.setup();
+    render(<DashboardApp client={client} />);
+
+    await user.click(await screen.findByRole("button", { name: /open DEMO-5001/i }));
+
+    const eventList = await screen.findByRole("list");
+    // payload.durationMs = 1234 => "1.2s"
+    expect(within(eventList).getByText("1.2s")).toBeVisible();
+    // payload.costUsd = 0.0123 => "$0.0123"
+    expect(within(eventList).getByText("$0.0123")).toBeVisible();
+  });
+
+  it("truncates long evidence but copies the full payload", async () => {
+    const client = createMockClient();
+    client.getJob.mockResolvedValue(jobDetailWithLongEvidence());
+    const writeText = vi.fn(async () => undefined);
+    const user = userEvent.setup();
+    render(<DashboardApp client={client} />);
+
+    await user.click(await screen.findByRole("button", { name: /open DEMO-5001/i }));
+
+    const eventList = await screen.findByRole("list");
+    const evidence = within(eventList).getByTestId("event-evidence");
+    expect((evidence.textContent ?? "").length).toBeLessThan(longEvidence().length);
+    expect(evidence.textContent ?? "").toContain("…");
+
+    vi.spyOn(navigator.clipboard, "writeText").mockImplementation(writeText);
+    await user.click(within(eventList).getByRole("button", { name: /copy evidence/i }));
+    expect(writeText).toHaveBeenCalledWith(longEvidence());
+  });
+
+  it("does not truncate short evidence and still offers copy", async () => {
+    const client = createMockClient();
+    const writeText = vi.fn(async () => undefined);
+    const user = userEvent.setup();
+    render(<DashboardApp client={client} />);
+
+    await user.click(await screen.findByRole("button", { name: /open DEMO-5001/i }));
+
+    const eventList = await screen.findByRole("list");
+    const evidence = within(eventList).getByTestId("event-evidence");
+    expect(evidence.textContent).toBe('{"changed":["src/example.test.ts"]}');
+
+    vi.spyOn(navigator.clipboard, "writeText").mockImplementation(writeText);
+    await user.click(within(eventList).getByRole("button", { name: /copy evidence/i }));
+    expect(writeText).toHaveBeenCalledWith('{"changed":["src/example.test.ts"]}');
+  });
 });
 
 function createMockClient(): Mocked<PandoApiClient> {
@@ -226,6 +304,8 @@ function jobDetail(): ApiJobDetailResponse {
         gateName: "checksum",
         jobId: "DEMO-5001",
         payload: {
+          costUsd: 0.0123,
+          durationMs: 1234,
           evidence: '{"changed":["src/example.test.ts"]}',
           failureKind: "gate-fail",
           reason: "checksum mismatch",
@@ -249,6 +329,37 @@ function jobDetailWithNullGateName(): ApiJobDetailResponse {
         ...base.recentEvents[0]!,
         gateName: null,
         sequence: 2,
+      },
+    ],
+  };
+}
+
+function jobDetailWithNullBranch(): ApiJobDetailResponse {
+  const base = jobDetail();
+  return {
+    ...base,
+    job: { ...base.job, branch: null },
+  };
+}
+
+const LONG_EVIDENCE = `{"changed":[${Array.from(
+  { length: 40 },
+  (_, index) => `"src/file-${index}.test.ts"`,
+).join(",")}]}`;
+
+function longEvidence(): string {
+  return LONG_EVIDENCE;
+}
+
+function jobDetailWithLongEvidence(): ApiJobDetailResponse {
+  const base = jobDetail();
+  return {
+    ...base,
+    recentEvents: [
+      {
+        ...base.recentEvents[0]!,
+        evidence: LONG_EVIDENCE,
+        sequence: 3,
       },
     ],
   };
@@ -278,7 +389,7 @@ function cleanupResponse(): ApiJobCleanupResponse {
 function jobSummary(jobId: string, status: JobStatus): ApiJobSummary {
   return {
     attemptsLeft: 2,
-    branch: null,
+    branch: "feat/operations-pass",
     cancelRequestedAt: null,
     createdAt: "2026-06-06T00:00:00.000Z",
     finishedAt: null,

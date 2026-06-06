@@ -591,6 +591,151 @@ describe("runAgentctl", () => {
     expect(stderr.join("\n")).not.toContain("stack");
   });
 
+  it("watches a job until it reaches a terminal status", async () => {
+    const apiClient = new AgentctlApiClient({
+      jobSequence: [
+        apiJob("DEMO-3200", { status: "IMPL" }),
+        apiJob("DEMO-3200", { status: "REVIEW" }),
+        apiJob("DEMO-3200", { status: "DONE", finishedAt: "2026-06-06T00:05:00.000Z" }),
+      ],
+    });
+    const sleeps: number[] = [];
+    const output: string[] = [];
+
+    const exitCode = await runAgentctl(["watch", "DEMO-3200", "--interval", "500"], {
+      apiBaseUrl: "http://pando.local",
+      apiClient,
+      sleep: async (ms) => {
+        sleeps.push(ms);
+      },
+      store: new AgentctlMemoryStore(),
+      stdout: (line) => output.push(line),
+    });
+
+    expect(exitCode).toBe(0);
+    expect(apiClient.getJobRequests).toEqual(["DEMO-3200", "DEMO-3200", "DEMO-3200"]);
+    expect(sleeps).toEqual([500, 500]);
+    expect(output).toEqual([
+      "DEMO-3200 IMPL repo=web branch=- source=jira attemptsLeft=1 updatedAt=2026-06-06T00:00:00.000Z finishedAt=-",
+      "DEMO-3200 REVIEW repo=web branch=- source=jira attemptsLeft=1 updatedAt=2026-06-06T00:00:00.000Z finishedAt=-",
+      "DEMO-3200 DONE repo=web branch=- source=jira attemptsLeft=1 updatedAt=2026-06-06T00:00:00.000Z finishedAt=2026-06-06T00:05:00.000Z",
+    ]);
+  });
+
+  it("requires an API base URL for watch", async () => {
+    const stderr: string[] = [];
+
+    const exitCode = await runAgentctl(["watch", "DEMO-3201"], {
+      store: new AgentctlMemoryStore(),
+      stderr: (line) => stderr.push(line),
+    });
+
+    expect(exitCode).toBe(1);
+    expect(stderr).toEqual(["PANDO_API_URL is required for API-backed agentctl commands"]);
+  });
+
+  it("watches the job list for a bounded number of polls", async () => {
+    const apiClient = new AgentctlApiClient({
+      jobs: [apiJob("DEMO-3202", { status: "IMPL" })],
+    });
+    const sleeps: number[] = [];
+    const output: string[] = [];
+
+    const exitCode = await runAgentctl(
+      ["list", "--watch", "--interval", "250", "--max-polls", "2"],
+      {
+        apiBaseUrl: "http://pando.local",
+        apiClient,
+        sleep: async (ms) => {
+          sleeps.push(ms);
+        },
+        store: new AgentctlMemoryStore(),
+        stdout: (line) => output.push(line),
+      },
+    );
+
+    expect(exitCode).toBe(0);
+    expect(apiClient.listRequests.length).toBe(2);
+    expect(sleeps).toEqual([250]);
+    expect(output.filter((line) => line.startsWith("DEMO-3202")).length).toBe(2);
+  });
+
+  it("runs the readiness smoke and surfaces the evidence path without secrets", async () => {
+    const calls: Array<{ args: readonly string[] }> = [];
+    const output: string[] = [];
+
+    const exitCode = await runAgentctl(["smoke", "readiness", "--target", "host"], {
+      smokeRunner: async (input) => {
+        calls.push({ args: input.args });
+        return { evidencePath: "/tmp/pando-readiness-smoke/host.json", exitCode: 0 };
+      },
+      store: new AgentctlMemoryStore(),
+      stdout: (line) => output.push(line),
+    });
+
+    expect(exitCode).toBe(0);
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.args).toEqual([
+      "scripts/two-job-smoke.mjs",
+      "--mode",
+      "readiness",
+      "--target",
+      "host",
+      "--evidence",
+      "/tmp/pando-readiness-smoke/host.json",
+    ]);
+    expect(output).toEqual([
+      "readiness smoke target=host exitCode=0 evidence=/tmp/pando-readiness-smoke/host.json",
+    ]);
+    expect(output.join("\n")).not.toContain("ANTHROPIC_API_KEY");
+  });
+
+  it("defaults the readiness smoke target to host", async () => {
+    const calls: Array<{ args: readonly string[] }> = [];
+
+    const exitCode = await runAgentctl(["smoke", "readiness"], {
+      smokeRunner: async (input) => {
+        calls.push({ args: input.args });
+        return { evidencePath: "/tmp/pando-readiness-smoke/host.json", exitCode: 0 };
+      },
+      store: new AgentctlMemoryStore(),
+    });
+
+    expect(exitCode).toBe(0);
+    expect(calls[0]?.args).toContain("host");
+  });
+
+  it("rejects unknown readiness smoke targets", async () => {
+    const stderr: string[] = [];
+
+    const exitCode = await runAgentctl(["smoke", "readiness", "--target", "cloud"], {
+      smokeRunner: async () => ({ evidencePath: "/tmp/x.json", exitCode: 0 }),
+      store: new AgentctlMemoryStore(),
+      stderr: (line) => stderr.push(line),
+    });
+
+    expect(exitCode).toBe(1);
+    expect(stderr).toEqual(["--target: expected one of host, docker"]);
+  });
+
+  it("returns the readiness smoke exit code when blockers are present", async () => {
+    const output: string[] = [];
+
+    const exitCode = await runAgentctl(["smoke", "readiness", "--target", "docker"], {
+      smokeRunner: async () => ({
+        evidencePath: "/tmp/pando-readiness-smoke/docker.json",
+        exitCode: 2,
+      }),
+      store: new AgentctlMemoryStore(),
+      stdout: (line) => output.push(line),
+    });
+
+    expect(exitCode).toBe(2);
+    expect(output).toEqual([
+      "readiness smoke target=docker exitCode=2 evidence=/tmp/pando-readiness-smoke/docker.json",
+    ]);
+  });
+
   it("prints usage for unknown commands and rejects missing option values", async () => {
     const stderr: string[] = [];
 
@@ -614,14 +759,23 @@ describe("runAgentctl", () => {
 
 class AgentctlApiClient implements PandoApiClient {
   readonly cancelRequests: Array<{ jobId: string; reason?: string }> = [];
+  readonly getJobRequests: string[] = [];
   readonly listRequests: Array<{ status?: JobStatus } | undefined> = [];
   readonly retryRequests: Array<{ attemptsLeft?: number; from: string; jobId: string }> = [];
 
   private readonly error?: Error;
   private readonly healthResponse: ApiHealth;
   private readonly jobs: ApiJobSummary[];
+  private readonly jobSequence: ApiJobSummary[];
 
-  constructor(input: { error?: Error; health?: ApiHealth; jobs?: ApiJobSummary[] } = {}) {
+  constructor(
+    input: {
+      error?: Error;
+      health?: ApiHealth;
+      jobs?: ApiJobSummary[];
+      jobSequence?: ApiJobSummary[];
+    } = {},
+  ) {
     this.error = input.error;
     this.healthResponse =
       input.health ??
@@ -634,6 +788,7 @@ class AgentctlApiClient implements PandoApiClient {
         store: { jobCount: input.jobs?.length ?? 0, status: "ok" },
       } satisfies ApiHealth);
     this.jobs = input.jobs ?? [];
+    this.jobSequence = input.jobSequence ?? [];
   }
 
   async health() {
@@ -649,8 +804,12 @@ class AgentctlApiClient implements PandoApiClient {
     };
   }
 
-  async getJob(): Promise<never> {
-    throw new Error("not used");
+  async getJob(jobId: string) {
+    this.throwIfConfigured();
+    this.getJobRequests.push(jobId);
+    const index = Math.min(this.getJobRequests.length - 1, this.jobSequence.length - 1);
+    const job = this.jobSequence[index] ?? this.jobFor(jobId);
+    return { job: { ...job, workItem: workItem(jobId) }, recentEvents: [] };
   }
 
   async listEvents(): Promise<never> {

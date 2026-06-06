@@ -20,6 +20,19 @@ export interface WorktreeCleanupInput {
   worktreePath: string;
 }
 
+export interface SmokeRunInput {
+  args: readonly string[];
+}
+
+export interface SmokeRunResult {
+  evidencePath: string;
+  exitCode: number;
+}
+
+export interface SmokeRunner {
+  (input: SmokeRunInput): Promise<SmokeRunResult>;
+}
+
 export interface AgentctlOptions {
   store: JobStore;
   apiBaseUrl?: string;
@@ -27,10 +40,16 @@ export interface AgentctlOptions {
   apiFetch?: PandoApiFetch;
   briefReader?: BriefFileReader;
   worktreeCleaner?: WorktreeCleaner;
+  smokeRunner?: SmokeRunner;
+  sleep?: (ms: number) => Promise<void>;
   stdout?: (line: string) => void;
   stderr?: (line: string) => void;
   defaultRetryBudget?: number;
 }
+
+const TERMINAL_STATUSES: readonly JobStatus[] = ["DONE", "FAILED", "ESCALATED", "CANCELED"];
+const DEFAULT_WATCH_INTERVAL_MS = 2000;
+const SMOKE_TARGETS: readonly string[] = ["host", "docker"];
 
 export async function runAgentctl(args: readonly string[], opts: AgentctlOptions): Promise<number> {
   const stdout = opts.stdout ?? (() => {});
@@ -65,11 +84,21 @@ export async function runAgentctl(args: readonly string[], opts: AgentctlOptions
 
     if (command === "list") {
       const status = statusOption(parsed, "status");
-      const response = await configuredApiClient(opts).listJobs(
-        status === undefined ? undefined : { status },
-      );
+      const listInput = status === undefined ? undefined : { status };
+      if (parsed.flags.has("watch")) {
+        return await watchList(listInput, parsed, opts, stdout);
+      }
+      const response = await configuredApiClient(opts).listJobs(listInput);
       for (const job of response.jobs) stdout(formatApiJobSummary(job));
       return 0;
+    }
+
+    if (command === "watch" && subcommand !== undefined) {
+      return await watchJob(subcommand, parsed, opts, stdout);
+    }
+
+    if (command === "smoke" && subcommand === "readiness") {
+      return await runReadinessSmoke(parsed, opts, stdout);
     }
 
     if (command === "daemon" && subcommand === "status") {
@@ -169,11 +198,15 @@ if (isDirectRun()) {
 interface ParsedArgs {
   positionals: string[];
   options: Map<string, string>;
+  flags: Set<string>;
 }
+
+const BOOLEAN_FLAGS: readonly string[] = ["watch"];
 
 function parseArgs(args: readonly string[]): ParsedArgs {
   const positionals: string[] = [];
   const options = new Map<string, string>();
+  const flags = new Set<string>();
 
   for (let index = 0; index < args.length; index += 1) {
     const token = args[index];
@@ -185,6 +218,11 @@ function parseArgs(args: readonly string[]): ParsedArgs {
     }
 
     const key = token.slice(2);
+    if (BOOLEAN_FLAGS.includes(key)) {
+      flags.add(key);
+      continue;
+    }
+
     const value = args[index + 1];
     if (key.length === 0 || value === undefined || value.startsWith("--")) {
       throw new Error(`${token}: expected value`);
@@ -193,7 +231,7 @@ function parseArgs(args: readonly string[]): ParsedArgs {
     index += 1;
   }
 
-  return { options, positionals };
+  return { flags, options, positionals };
 }
 
 function jiraWorkItem(id: string, parsed: ParsedArgs): WorkItem {
@@ -253,6 +291,102 @@ async function cleanupJob(
     });
     throw error;
   }
+}
+
+async function watchJob(
+  jobId: string,
+  parsed: ParsedArgs,
+  opts: AgentctlOptions,
+  stdout: (line: string) => void,
+): Promise<number> {
+  const client = configuredApiClient(opts);
+  const intervalMs = watchIntervalMs(parsed);
+  const sleep = opts.sleep ?? realSleep;
+  const maxPolls = optionInt(parsed, "max-polls");
+
+  for (let poll = 0; maxPolls === undefined || poll < maxPolls; poll += 1) {
+    const { job } = await client.getJob(jobId);
+    stdout(formatWatchSummary(job));
+    if (TERMINAL_STATUSES.includes(job.status)) return 0;
+    await sleep(intervalMs);
+  }
+  return 0;
+}
+
+async function watchList(
+  listInput: { status: JobStatus } | undefined,
+  parsed: ParsedArgs,
+  opts: AgentctlOptions,
+  stdout: (line: string) => void,
+): Promise<number> {
+  const client = configuredApiClient(opts);
+  const intervalMs = watchIntervalMs(parsed);
+  const sleep = opts.sleep ?? realSleep;
+  const maxPolls = optionInt(parsed, "max-polls");
+
+  for (let poll = 0; maxPolls === undefined || poll < maxPolls; poll += 1) {
+    const response = await client.listJobs(listInput);
+    for (const job of response.jobs) stdout(formatApiJobSummary(job));
+    if (maxPolls !== undefined && poll === maxPolls - 1) break;
+    await sleep(intervalMs);
+  }
+  return 0;
+}
+
+async function runReadinessSmoke(
+  parsed: ParsedArgs,
+  opts: AgentctlOptions,
+  stdout: (line: string) => void,
+): Promise<number> {
+  const target = targetOption(parsed);
+  const evidencePath = optional(parsed, "evidence") ?? `/tmp/pando-readiness-smoke/${target}.json`;
+  const runner = opts.smokeRunner ?? nodeSmokeRunner();
+  const result = await runner({
+    args: [
+      "scripts/two-job-smoke.mjs",
+      "--mode",
+      "readiness",
+      "--target",
+      target,
+      "--evidence",
+      evidencePath,
+    ],
+  });
+  stdout(
+    `readiness smoke target=${target} exitCode=${result.exitCode} evidence=${result.evidencePath}`,
+  );
+  return result.exitCode;
+}
+
+function watchIntervalMs(parsed: ParsedArgs): number {
+  return optionInt(parsed, "interval") ?? DEFAULT_WATCH_INTERVAL_MS;
+}
+
+function formatWatchSummary(job: ApiJobSummary): string {
+  return [
+    job.jobId,
+    job.status,
+    `repo=${job.repo}`,
+    `branch=${formatNullable(job.branch)}`,
+    `source=${job.source}`,
+    `attemptsLeft=${job.attemptsLeft}`,
+    `updatedAt=${job.updatedAt}`,
+    `finishedAt=${formatNullable(job.finishedAt)}`,
+  ].join(" ");
+}
+
+function targetOption(parsed: ParsedArgs): string {
+  const value = optional(parsed, "target") ?? "host";
+  if (!SMOKE_TARGETS.includes(value)) {
+    throw new Error(`--target: expected one of ${SMOKE_TARGETS.join(", ")}`);
+  }
+  return value;
+}
+
+async function realSleep(ms: number): Promise<void> {
+  await new Promise<void>((resolve) => {
+    setTimeout(resolve, ms);
+  });
 }
 
 function showJob(
@@ -435,12 +569,14 @@ function usage(): string {
     "usage:",
     "agentctl submit jira <ticket> --repo <repo> [--title <title>] [--branch <branch>]",
     "agentctl submit brief --repo <repo> --id <id> [--title <title>] [--brief-path <path>]",
-    "agentctl list [--status <status>]",
+    "agentctl list [--status <status>] [--watch] [--interval <ms>] [--max-polls <n>]",
     "agentctl daemon status",
     "agentctl show <job-id>",
+    "agentctl watch <job-id> [--interval <ms>] [--max-polls <n>]",
     "agentctl retry <job-id> --from <stage> [--attempts <n>]",
     "agentctl cancel <job-id> [--reason <reason>]",
     "agentctl cleanup <job-id>",
+    "agentctl smoke readiness [--target host|docker] [--evidence <path>]",
   ].join("\n");
 }
 
@@ -450,6 +586,28 @@ function missingWorktreeCleaner(): WorktreeCleaner {
       throw new Error("worktree cleaner is not configured");
     },
   };
+}
+
+function nodeSmokeRunner(): SmokeRunner {
+  return async (input) => {
+    const { spawn } = await import("node:child_process");
+    const evidencePath = evidenceArg(input.args);
+    const exitCode = await new Promise<number>((resolve) => {
+      const child = spawn("pnpm", ["tsx", ...input.args], { stdio: "inherit" });
+      child.on("error", () => {
+        resolve(1);
+      });
+      child.on("close", (code) => {
+        resolve(typeof code === "number" ? code : 1);
+      });
+    });
+    return { evidencePath, exitCode };
+  };
+}
+
+function evidenceArg(args: readonly string[]): string {
+  const index = args.indexOf("--evidence");
+  return index >= 0 ? (args[index + 1] ?? "") : "";
 }
 
 function nodeFileReader(): BriefFileReader {
