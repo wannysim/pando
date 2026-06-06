@@ -286,6 +286,7 @@ function JobDetailPanel({
   }
 
   const job = detail.job;
+  const now = new Date();
 
   return (
     <section className="detail-panel" aria-label="Job detail">
@@ -297,6 +298,25 @@ function JobDetailPanel({
         </div>
         <StatusBadge status={job.status} />
       </div>
+
+      <dl className="meta-grid context-strip" data-testid="context-strip">
+        <div>
+          <dt>Stage</dt>
+          <dd>{currentStage(detail.recentEvents)}</dd>
+        </div>
+        <div>
+          <dt>Branch</dt>
+          <dd>{branchFromWorktree(job.worktreePath)}</dd>
+        </div>
+        <div>
+          <dt>Started</dt>
+          <dd>{job.startedAt ? formatTime(job.startedAt) : "-"}</dd>
+        </div>
+        <div>
+          <dt>Elapsed</dt>
+          <dd>{formatElapsed(job.startedAt, job.finishedAt ? new Date(job.finishedAt) : now)}</dd>
+        </div>
+      </dl>
 
       <div className="action-row">
         <label className="compact-field">
@@ -363,7 +383,7 @@ function JobDetailPanel({
         <h3>Timeline</h3>
         <ol className="event-list">
           {detail.recentEvents.map((event) => (
-            <EventRow event={event} key={event.sequence} />
+            <EventRow event={event} key={event.sequence} now={now} />
           ))}
         </ol>
       </section>
@@ -371,16 +391,21 @@ function JobDetailPanel({
   );
 }
 
-function EventRow({ event }: { event: ApiJobEvent }) {
+function EventRow({ event, now }: { event: ApiJobEvent; now: Date }) {
   return (
     <li>
       <div className="event-head">
         <span>#{event.sequence}</span>
         <strong>{event.type}</strong>
         <span>{event.stage ?? "-"}</span>
+        <span className={`event-status${event.status ? ` ${event.status.toLowerCase()}` : ""}`}>
+          {event.status ?? "-"}
+        </span>
+        <span>{event.gateName ?? "-"}</span>
+        <time title={event.createdAt}>{formatAge(event.createdAt, now)}</time>
       </div>
-      {event.reason === null ? null : <p>{event.reason}</p>}
-      {event.evidence === null ? null : <code>{event.evidence}</code>}
+      {event.reason === null ? null : <p className="event-reason">{event.reason}</p>}
+      {event.evidence === null ? null : <code className="event-evidence">{event.evidence}</code>}
     </li>
   );
 }
@@ -467,6 +492,38 @@ function StatusBadge({ status }: { status: JobStatus }) {
 function optionalField(value: string): string | undefined {
   const trimmed = value.trim();
   return trimmed.length === 0 ? undefined : trimmed;
+}
+
+function currentStage(events: ApiJobEvent[]): string {
+  for (let i = events.length - 1; i >= 0; i--) {
+    const event = events[i];
+    if (event !== undefined && event.stage !== null) return event.stage;
+  }
+  return "-";
+}
+
+function branchFromWorktree(path: string | null): string {
+  if (path === null) return "-";
+  const parts = path.split("/");
+  return parts[parts.length - 1] ?? "-";
+}
+
+function formatElapsed(startedAt: string | null, endAt: Date): string {
+  if (startedAt === null) return "-";
+  const totalSecs = Math.max(
+    0,
+    Math.floor((endAt.getTime() - new Date(startedAt).getTime()) / 1000),
+  );
+  const m = Math.floor(totalSecs / 60);
+  const s = totalSecs % 60;
+  return m > 0 ? `${m} m ${s} s` : `${s} s`;
+}
+
+function formatAge(createdAt: string, now: Date): string {
+  const totalSecs = Math.max(0, Math.floor((now.getTime() - new Date(createdAt).getTime()) / 1000));
+  const m = Math.floor(totalSecs / 60);
+  const s = totalSecs % 60;
+  return m > 0 ? `${m} m ${s} s ago` : `${s} s ago`;
 }
 
 function formatTime(value: string): string {

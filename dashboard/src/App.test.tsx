@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi, type Mocked } from "vitest";
 import { DashboardApp } from "./App";
@@ -108,6 +108,76 @@ describe("DashboardApp", () => {
       }),
     );
   });
+
+  // AC-4a: context strip renders above action row with current stage and branch
+  it("context strip renders above action row with current stage and branch (AC-4a)", async () => {
+    const client = createMockClient();
+    const user = userEvent.setup();
+    render(<DashboardApp client={client} />);
+
+    await user.click(await screen.findByRole("button", { name: /open DEMO-5001/i }));
+
+    // data-testid="context-strip" must exist (AC-1)
+    const strip = await screen.findByTestId("context-strip");
+    expect(strip).toBeVisible();
+
+    // current stage = last recentEvent with non-null stage => "IMPL"
+    expect(within(strip).getByText("IMPL")).toBeVisible();
+
+    // branch = last path segment of "/worktrees/pando/feat-w5-minimal-dashboard"
+    expect(within(strip).getByText("feat-w5-minimal-dashboard")).toBeVisible();
+  });
+
+  // AC-4b: gateName shown when present
+  it("EventRow shows gateName when non-null (AC-4b)", async () => {
+    const client = createMockClient(); // fixture event has gateName: "checksum"
+    const user = userEvent.setup();
+    render(<DashboardApp client={client} />);
+
+    await user.click(await screen.findByRole("button", { name: /open DEMO-5001/i }));
+
+    const eventList = await screen.findByRole("list");
+    expect(within(eventList).getByText("checksum")).toBeVisible();
+  });
+
+  // AC-4b: gateName shows "-" when null (exact text-node match, not substring of "stage-failed")
+  it("EventRow shows '-' for null gateName (AC-4b)", async () => {
+    const client = createMockClient();
+    client.getJob.mockResolvedValue(jobDetailWithNullGateName());
+    const user = userEvent.setup();
+    render(<DashboardApp client={client} />);
+
+    await user.click(await screen.findByRole("button", { name: /open DEMO-5001/i }));
+
+    const eventList = await screen.findByRole("list");
+    // A standalone "-" element must appear in the event list for null gateName
+    expect(within(eventList).getAllByText("-").length).toBeGreaterThan(0);
+  });
+
+  // AC-4c: status field rendered in event row
+  it("EventRow shows status when non-null (AC-4c)", async () => {
+    const client = createMockClient(); // fixture event has status: "FAILED"
+    const user = userEvent.setup();
+    render(<DashboardApp client={client} />);
+
+    await user.click(await screen.findByRole("button", { name: /open DEMO-5001/i }));
+
+    // "FAILED" must appear inside the event list (not just the job status badge)
+    const eventList = await screen.findByRole("list");
+    expect(within(eventList).getByText("FAILED")).toBeVisible();
+  });
+
+  // AC-4d: evidence text shown when non-null (regression: must keep working in dense layout)
+  it("EventRow shows evidence text when non-null (AC-4d)", async () => {
+    const client = createMockClient();
+    const user = userEvent.setup();
+    render(<DashboardApp client={client} />);
+
+    await user.click(await screen.findByRole("button", { name: /open DEMO-5001/i }));
+
+    const eventList = await screen.findByRole("list");
+    expect(within(eventList).getByText('{"changed":["src/example.test.ts"]}')).toBeVisible();
+  });
 });
 
 function createMockClient(): Mocked<PandoApiClient> {
@@ -165,6 +235,20 @@ function jobDetail(): ApiJobDetailResponse {
         stage: "IMPL",
         status: "FAILED",
         type: "stage-failed",
+      },
+    ],
+  };
+}
+
+function jobDetailWithNullGateName(): ApiJobDetailResponse {
+  const base = jobDetail();
+  return {
+    ...base,
+    recentEvents: [
+      {
+        ...base.recentEvents[0]!,
+        gateName: null,
+        sequence: 2,
       },
     ],
   };
