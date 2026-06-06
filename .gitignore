@@ -5,6 +5,7 @@ dist/
 *.local
 .DS_Store
 pando.sqlite*
+smoke/evidence/
 dashboard/test-results/
 dashboard/playwright-report/
 .claude/

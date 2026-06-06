@@ -46,15 +46,23 @@ host bin that holds `claude`/`codex` there and they resolve without a rebuild.
 > `workerCli.pass: false` even though the files are mounted. So option A only works
 > when the host and container share OS **and** arch (i.e. a Linux host).
 
-**B. Install the Linux CLI in the image (recommended for a macOS host).** Add an
-install layer to the Dockerfile runtime stage:
+**B. Install the Linux CLI in the image (recommended for a macOS host).** This is
+now an opt-in, version-pinned layer in the Dockerfile — no manual edit needed.
+Build with the install flag on:
 
-```dockerfile
-RUN npm install -g @anthropic-ai/claude-code @openai/codex
+```bash
+PANDO_INSTALL_WORKER_CLIS=true docker compose -f deploy/docker-compose.yml build pando
+# or directly:
+docker build -f deploy/Dockerfile --build-arg INSTALL_WORKER_CLIS=true .
 ```
 
-Then mount only the auth volumes (below). This yields a self-contained,
-cross-platform image at the cost of version pinning and a larger image.
+Versions are pinned via build args so the shipped image matches the tested host
+CLIs (defaults: `CLAUDE_CLI_VERSION=2.1.167`, `CODEX_CLI_VERSION=0.137.0`; override
+with `PANDO_CLAUDE_CLI_VERSION` / `PANDO_CODEX_CLI_VERSION`). Default is `false`, so
+the base image stays lean and secret-free. Then mount only the auth volumes
+(below). This yields a self-contained, cross-platform image at the cost of a
+larger image. Verified 2026-06-07: this layer plus the auth volumes drives the
+docker readiness probe to `blockers: []` (`workerCli.pass: true`).
 
 ### Auth strategy and the managed-connector question
 
@@ -92,8 +100,18 @@ the following read-only (compose carries both as commented opt-in lines):
   SSH. Scope the key to the one repo pando writes to.
 - **HTTPS token via git credential store:** mount a host-managed
   `~/.git-credentials` and `~/.gitconfig` read-only. Works with `gh` / token auth.
+  A `GH_TOKEN` / `GITHUB_TOKEN` env value also counts as an HTTPS credential source.
 
-Never bake a key or token into the image and never commit any secret value.
+Never bake a key or token into the image and never commit any secret value. The
+readiness probe records git-credential **presence** as booleans (and the deploy-key
+path for diagnostics) — never the key or token value (see below).
+
+The mount points the probe and compose use:
+
+- Deploy key: `/root/.ssh/id_ed25519` (override `PANDO_DEPLOY_KEY`), plus
+  `/root/.ssh/known_hosts` (override `PANDO_SSH_KNOWN_HOSTS`).
+- Credential store: `/root/.git-credentials` (override `PANDO_GIT_CREDENTIALS`),
+  plus `/root/.gitconfig` (override `PANDO_GITCONFIG`).
 
 ## Reading the readiness evidence
 
@@ -104,9 +122,16 @@ pinpoints which class of blocker is open:
 - `checks.workerCli.commands.claude/codex.available` — CLI blocker (mount #1 missing).
 - `checks.auth.signals.claude/codex` — auth blocker (mount #2 / API key missing).
   Booleans only; no secret values are recorded.
+- `checks.gitCreds.signals` — git push / PR credential presence: `deployKeyPresent`,
+  `knownHostsPresent`, `credentialStorePresent`, `gitconfigPresent`, `tokenEnvPresent`,
+  plus `sshReady` / `httpsReady` and an overall `gitCreds.pass`. Booleans only
+  (`deployKeyPath` is a path, never the key contents).
 - `checks.mounts.paths.*.ready` — mount/path blocker (repos, worktrees, config,
   skills, SQLite parent).
 - `blockers[]` — the consolidated, human-readable list. Empty means ready.
 
-Git-credential readiness is not a probe field yet; treat a missing deploy
-key / credential store as a known prerequisite for the PR stage (documented above).
+`gitCreds` is **recorded but not a hard blocker**: the worker probe never pushes,
+so a missing deploy key / credential store does not fail readiness. It surfaces the
+PR-stage prerequisite so you can confirm push/PR creation will work before a full
+pipeline run. `gitCreds.pass: false` with everything else green means workers can
+run but the PR stage still needs a credential mount.

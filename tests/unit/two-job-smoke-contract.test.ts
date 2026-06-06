@@ -22,6 +22,7 @@ describe("two-job smoke contract", () => {
       };
       readiness: {
         authSignals: string[];
+        gitCredentialSignals: string[];
         requiredChecks: string[];
         workerCommands: string[];
       };
@@ -52,7 +53,21 @@ describe("two-job smoke contract", () => {
     expect(contract.fallback).toEqual({ allowed: true, recordReason: true });
     expect(contract.readiness).toEqual({
       authSignals: ["ANTHROPIC_API_KEY", "CLAUDE_CONFIG_DIR", "OPENAI_API_KEY", "CODEX_HOME"],
-      requiredChecks: ["global-concurrency", "worker-cli", "worker-auth", "mount-contract"],
+      gitCredentialSignals: [
+        "PANDO_DEPLOY_KEY",
+        "PANDO_SSH_KNOWN_HOSTS",
+        "PANDO_GIT_CREDENTIALS",
+        "PANDO_GITCONFIG",
+        "GH_TOKEN",
+        "GITHUB_TOKEN",
+      ],
+      requiredChecks: [
+        "global-concurrency",
+        "worker-cli",
+        "worker-auth",
+        "git-credentials",
+        "mount-contract",
+      ],
       workerCommands: ["claude", "codex"],
     });
   });
@@ -114,6 +129,9 @@ describe("two-job smoke contract", () => {
       writeFileSync(commandPath, "#!/bin/sh\nprintf '%s fake\\n' \"$0\"\n");
       chmodSync(commandPath, 0o755);
     }
+    const deployKeyPath = join(dir, "deploy_key");
+    writeFileSync(deployKeyPath, "PRIVATE-KEY-SECRET-DO-NOT-LEAK");
+    chmodSync(deployKeyPath, 0o600);
 
     execFileSync(
       process.execPath,
@@ -134,6 +152,7 @@ describe("two-job smoke contract", () => {
           OPENAI_API_KEY: "redacted",
           PANDO_CONFIG_DIR: configDir,
           PANDO_DB: join(dataDir, "pando.sqlite"),
+          PANDO_DEPLOY_KEY: deployKeyPath,
           PANDO_GLOBAL_CONCURRENCY: "2",
           PANDO_REPOS_ROOT: reposDir,
           PANDO_SKILLS_ROOT: skillsDir,
@@ -151,6 +170,17 @@ describe("two-job smoke contract", () => {
           signals: {
             claude: { apiKeyPresent: boolean; configDirPresent: boolean };
             codex: { apiKeyPresent: boolean; configDirPresent: boolean };
+          };
+        };
+        gitCreds: {
+          pass: boolean;
+          signals: {
+            credentialStorePresent: boolean;
+            deployKeyPath: null | string;
+            deployKeyPresent: boolean;
+            gitconfigPresent: boolean;
+            knownHostsPresent: boolean;
+            tokenEnvPresent: boolean;
           };
         };
         globalConcurrency: { value: number; withinLiveCap: boolean };
@@ -176,7 +206,71 @@ describe("two-job smoke contract", () => {
       configDirPresent: false,
     });
     expect(evidence.checks.mounts.pass).toBe(true);
+    expect(evidence.checks.gitCreds.pass).toBe(true);
+    expect(evidence.checks.gitCreds.signals.deployKeyPresent).toBe(true);
+    expect(evidence.checks.gitCreds.signals.deployKeyPath).toBe(deployKeyPath);
+    expect(evidence.checks.gitCreds.signals.credentialStorePresent).toBe(false);
+    expect(evidence.checks.gitCreds.signals.tokenEnvPresent).toBe(false);
     expect(JSON.stringify(evidence)).not.toContain("redacted");
+    expect(JSON.stringify(evidence)).not.toContain("PRIVATE-KEY-SECRET");
+  });
+
+  it("records a git-credentials readiness signal without making it a hard live blocker", () => {
+    const dir = mkdtempSync(join(tmpdir(), "pando-gitcreds-"));
+    const evidencePath = join(dir, "readiness.json");
+    const fakeBin = join(dir, "bin");
+    const configDir = join(dir, "config");
+    const dataDir = join(dir, "data");
+    const homeDir = join(dir, "home");
+    const reposDir = join(dir, "repos");
+    const skillsDir = join(dir, "skills");
+    const worktreesDir = join(dir, "worktrees");
+
+    for (const made of [fakeBin, configDir, dataDir, homeDir, reposDir, skillsDir, worktreesDir]) {
+      mkdirSync(made);
+    }
+    for (const command of ["claude", "codex"]) {
+      const commandPath = join(fakeBin, command);
+      writeFileSync(commandPath, "#!/bin/sh\nexit 0\n");
+      chmodSync(commandPath, 0o755);
+    }
+
+    execFileSync(
+      process.execPath,
+      [
+        "scripts/two-job-smoke.mjs",
+        "--mode",
+        "readiness",
+        "--target",
+        "docker",
+        "--evidence",
+        evidencePath,
+      ],
+      {
+        env: {
+          ANTHROPIC_API_KEY: "redacted",
+          HOME: homeDir,
+          OPENAI_API_KEY: "redacted",
+          PANDO_CONFIG_DIR: configDir,
+          PANDO_DB: join(dataDir, "pando.sqlite"),
+          PANDO_GLOBAL_CONCURRENCY: "2",
+          PANDO_REPOS_ROOT: reposDir,
+          PANDO_SKILLS_ROOT: skillsDir,
+          PANDO_WORKTREE_ROOT: worktreesDir,
+          PATH: `${fakeBin}:${process.env.PATH ?? ""}`,
+        },
+      },
+    );
+
+    const evidence = JSON.parse(readFileSync(evidencePath, "utf8")) as {
+      blockers: string[];
+      checks: { gitCreds: { pass: boolean } };
+      target: string;
+    };
+
+    expect(evidence.target).toBe("docker");
+    expect(evidence.checks.gitCreds.pass).toBe(false);
+    expect(evidence.blockers).toEqual([]);
   });
 
   it("records readiness blockers when live smoke falls back", () => {

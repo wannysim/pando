@@ -3,6 +3,15 @@ services:
     build:
       context: ..
       dockerfile: deploy/Dockerfile
+      # Opt-in, version-pinned worker CLI install (Dockerfile option B). Default
+      # false keeps the base image lean and secret-free. Set
+      # PANDO_INSTALL_WORKER_CLIS=true to bake claude/codex into the image
+      # (required on a macOS host; the host Mach-O binaries cannot exec in the
+      # linux container). Auth still comes from the mounted volumes below.
+      args:
+        INSTALL_WORKER_CLIS: "${PANDO_INSTALL_WORKER_CLIS:-false}"
+        CLAUDE_CLI_VERSION: "${PANDO_CLAUDE_CLI_VERSION:-2.1.167}"
+        CODEX_CLI_VERSION: "${PANDO_CODEX_CLI_VERSION:-0.137.0}"
     ports:
       - "${PANDO_PORT:-3210}:3210"
     environment:

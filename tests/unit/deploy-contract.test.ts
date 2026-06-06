@@ -14,6 +14,31 @@ describe("Docker deployment contract", () => {
     expect(dockerfile).toContain('CMD ["pnpm", "start"]');
   });
 
+  it("offers an opt-in, version-pinned worker CLI install layer via build args", () => {
+    const dockerfile = readFileSync("deploy/Dockerfile", "utf8");
+
+    // Opt-in flag: default keeps the base image lean and secret-free.
+    expect(dockerfile).toContain("ARG INSTALL_WORKER_CLIS=false");
+    // Pinned versions (build args), matching the verified host CLI versions.
+    expect(dockerfile).toContain("ARG CLAUDE_CLI_VERSION=2.1.167");
+    expect(dockerfile).toContain("ARG CODEX_CLI_VERSION=0.137.0");
+    // Conditional install that wires the pins into the npm install command.
+    expect(dockerfile).toContain('@anthropic-ai/claude-code@"${CLAUDE_CLI_VERSION}"');
+    expect(dockerfile).toContain('@openai/codex@"${CODEX_CLI_VERSION}"');
+    expect(dockerfile).toMatch(/if\s+\[\s+"\$\{?INSTALL_WORKER_CLIS\}?"\s+=\s+"true"\s+\]/);
+  });
+
+  it("exposes the worker CLI install build args to compose without enabling them", () => {
+    const compose = parse(readFileSync("deploy/docker-compose.yml", "utf8")) as {
+      services: { pando: { build: { args?: Record<string, string> } } };
+    };
+    const buildArgs = compose.services.pando.build.args ?? {};
+
+    expect(buildArgs.INSTALL_WORKER_CLIS).toBe("${PANDO_INSTALL_WORKER_CLIS:-false}");
+    expect(buildArgs.CLAUDE_CLI_VERSION).toBe("${PANDO_CLAUDE_CLI_VERSION:-2.1.167}");
+    expect(buildArgs.CODEX_CLI_VERSION).toBe("${PANDO_CODEX_CLI_VERSION:-0.137.0}");
+  });
+
   it("fixes SQLite, repos, worktrees, config, skills, env, and port mounts", () => {
     const compose = parse(readFileSync("deploy/docker-compose.yml", "utf8")) as {
       services: Record<string, unknown>;
@@ -24,7 +49,7 @@ describe("Docker deployment contract", () => {
     const volumes = asStringArray(service.volumes, "services.pando.volumes");
     const ports = asStringArray(service.ports, "services.pando.ports");
 
-    expect(service.build).toEqual({
+    expect(service.build).toMatchObject({
       context: "..",
       dockerfile: "deploy/Dockerfile",
     });
