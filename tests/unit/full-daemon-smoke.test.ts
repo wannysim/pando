@@ -260,6 +260,7 @@ stages:
   test: { engine: codex, model: gpt-5-codex }
   impl: { engine: codex, model: gpt-5-codex }
   review: { engine: claude-code, model: opus }
+  pr: { engine: claude-code, model: sonnet }
 defaults:
   retry_budget: 1
   timeout_minutes: 1
@@ -340,6 +341,7 @@ stages:
   test: { engine: codex, model: gpt-5-codex }
   impl: { engine: codex, model: gpt-5-codex }
   review: { engine: claude-code, model: opus }
+  pr: { engine: claude-code, model: sonnet }
 defaults:
   retry_budget: 1
   timeout_minutes: 1

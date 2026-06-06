@@ -1,0 +1,279 @@
+import { exec } from "node:child_process";
+import { existsSync } from "node:fs";
+import { readFile } from "node:fs/promises";
+import { homedir } from "node:os";
+import { join, resolve } from "node:path";
+import { promisify } from "node:util";
+import { loadOrchestratorConfigFromYaml, loadRepoProfilesFromYaml } from "../core/config";
+import type { RepoProfile, StageName, WorkItem } from "../core/types";
+import { loadStageConfigFromYaml } from "../core/stage-config";
+import { createSqliteJobStore } from "../db/index";
+import { ClaudeCodeEngine } from "../engines/claude-code";
+import { CodexEngine } from "../engines/codex";
+import { createBriefIntakeGate } from "../intake/brief";
+import { createSpecArtifactGate, createPlanArtifactGate } from "../pipeline/gates/artifact-schema";
+import { createPackageActionGate, type GateCommandRunner } from "../pipeline/gates/exit-code";
+import { createRunScheduler } from "../scheduler/scheduler";
+import { runDaemonOnce } from "./loop";
+import { createWorktreeProvisioner, type EnsureWorktreePort } from "./worktree-provisioner";
+import type { WorkerEngineName } from "../core/stage-config";
+import type { WorkerEngine } from "../core/types";
+
+export interface DaemonLoopController {
+  start(): void;
+  stop(): void;
+  tick(): Promise<void>;
+}
+
+export interface DaemonLoopControllerOptions {
+  intervalMs: number;
+  runOnce(): Promise<void>;
+  onError?: (error: unknown) => void;
+  onStop?: () => void;
+}
+
+export interface LocalDaemonRuntimeOptions {
+  configDir: string;
+  dbPath: string;
+  globalConcurrency: number;
+  repoRoot?: string;
+  worktreeRoot?: string;
+  tickMs: number;
+  onError?: (error: unknown) => void;
+  engines?: Record<WorkerEngineName, WorkerEngine>;
+  ensureWorktree?: EnsureWorktreePort;
+  gateRunner?: GateCommandRunner;
+}
+
+const execAsync = promisify(exec);
+
+export function createDaemonLoopController(
+  opts: DaemonLoopControllerOptions,
+): DaemonLoopController {
+  let interval: NodeJS.Timeout | undefined;
+  let running = false;
+  let used = false;
+  let stopped = false;
+
+  const tick = async () => {
+    if (stopped) return;
+    if (running) return;
+    used = true;
+    running = true;
+    try {
+      await opts.runOnce();
+    } catch (error) {
+      opts.onError?.(error);
+    } finally {
+      running = false;
+    }
+  };
+
+  return {
+    start() {
+      if (stopped) return;
+      if (interval !== undefined) return;
+      used = true;
+      interval = setInterval(() => {
+        void tick();
+      }, opts.intervalMs);
+      void tick();
+    },
+    stop() {
+      if (interval !== undefined) {
+        clearInterval(interval);
+        interval = undefined;
+      }
+      if (stopped || !used) return;
+      stopped = true;
+      opts.onStop?.();
+    },
+    tick,
+  };
+}
+
+export async function createLocalDaemonRuntime(
+  opts: LocalDaemonRuntimeOptions,
+): Promise<DaemonLoopController> {
+  const repoRoot = resolve(opts.repoRoot ?? process.cwd());
+  const configDir = resolve(opts.configDir);
+  const [reposYaml, stagesYaml, orchestratorYaml] = await Promise.all([
+    readFile(join(configDir, "repos.yaml"), "utf8"),
+    readFile(join(configDir, "stages.yaml"), "utf8"),
+    readFile(join(configDir, "orchestrator.yaml"), "utf8"),
+  ]);
+  const profiles = await loadRepoProfilesFromYaml(reposYaml, {
+    files: { exists: asyncExists },
+    homeDir: homedir(),
+  });
+  const stageConfig = loadStageConfigFromYaml(stagesYaml);
+  const orchestrator = loadOrchestratorConfigFromYaml(orchestratorYaml);
+  const store = createSqliteJobStore({ path: opts.dbPath });
+  const gateRunner = opts.gateRunner ?? shellGateRunner;
+  const scheduler = createRunScheduler({
+    globalConcurrency: opts.globalConcurrency,
+    providerConcurrency: orchestrator.providerConcurrency,
+  });
+
+  return createDaemonLoopController({
+    intervalMs: opts.tickMs,
+    onError: opts.onError,
+    onStop() {
+      store.close();
+    },
+    async runOnce() {
+      await runDaemonOnce({
+        buildPrompt: buildLocalPipelinePrompt,
+        engines: opts.engines ?? {
+          "claude-code": new ClaudeCodeEngine(),
+          codex: new CodexEngine(),
+        },
+        gates: {
+          IMPL: [createPackageActionGate("lint", gateRunner)],
+          PLAN: [createPlanArtifactGate({ readText: optionalReadText })],
+          PR: [
+            createPackageActionGate("test", gateRunner),
+            createPackageActionGate("lint", gateRunner),
+            createPackageActionGate("types", gateRunner),
+          ],
+          SPEC: [
+            createBriefIntakeGate({ readText: optionalReadText }),
+            createSpecArtifactGate({ readText: optionalReadText }),
+          ],
+        },
+        profiles: localProfiles(profiles, repoRoot),
+        scheduler,
+        stageConfig,
+        store,
+        worktrees: createWorktreeProvisioner({
+          ensureWorktree: opts.ensureWorktree,
+          worktreeRoot: opts.worktreeRoot ?? join(homedir(), ".worktrees"),
+        }),
+      });
+    },
+  });
+}
+
+function localProfiles(
+  profiles: Record<string, RepoProfile>,
+  repoRoot: string,
+): Record<string, RepoProfile> {
+  const pando = profiles.pando;
+  /* v8 ignore next -- non-pando local profiles are allowed but not used by current self-runner tests. */
+  if (pando === undefined) return profiles;
+  return { ...profiles, pando: { ...pando, path: repoRoot } };
+}
+
+export function buildLocalPipelinePrompt(
+  stage: StageName,
+  context: { item: WorkItem; profile: RepoProfile; worktree: string },
+): string {
+  const item = context.item;
+  const briefPath = item.payload.kind === "brief" ? item.payload.briefPath : undefined;
+  const header = [
+    `Stage: ${stage}`,
+    `Job: ${item.id}`,
+    `Title: ${item.title}`,
+    `Repo: ${item.repo}`,
+    `Repo path: ${context.profile.path}`,
+    `Base branch: ${context.profile.baseBranch}`,
+    `Worktree: ${context.worktree}`,
+    briefPath === undefined ? undefined : `Brief path: ${briefPath}`,
+  ]
+    .filter((line): line is string => line !== undefined)
+    .join("\n");
+
+  if (stage === "SPEC") {
+    return `${header}
+
+Read the brief and write _spec.md.
+Keep _spec.md focused on concrete requirements and acceptance criteria.
+Do not print secrets.`;
+  }
+
+  if (stage === "PLAN") {
+    return `${header}
+
+Read _spec.md and write PLAN.md.
+Use one PR with task-sized commits unless the change is genuinely large.
+Record blockers as [Blocker] open questions only when work cannot continue.`;
+  }
+
+  if (stage === "TEST") {
+    return `${header}
+
+Read PLAN.md and add focused regression tests for the requested behavior.
+Keep the change scoped to this job.`;
+  }
+
+  if (stage === "IMPL") {
+    return `${header}
+
+Implement the smallest change that satisfies PLAN.md and the tests.
+Do not modify tests unless PLAN.md explicitly says the tests are wrong.
+Keep unrelated files untouched.`;
+  }
+
+  if (stage === "REVIEW") {
+    return `${header}
+
+Review the current diff for correctness, scope, deterministic gates, and secrets.
+Fix concrete issues only. Do not rely on LLM output text for pass/fail decisions.`;
+  }
+
+  return `${header}
+
+Prepare the result for human review:
+1. Run pnpm verify.
+2. Commit with an English message.
+3. Push the branch.
+4. Create a Draft PR against the repo base branch with gh pr create.
+Do not print secrets. Do not merge the PR.`;
+}
+
+export async function shellGateRunner(command: string, opts: { cwd: string }) {
+  try {
+    const { stderr, stdout } = await execAsync(command, {
+      cwd: opts.cwd,
+      maxBuffer: 10 * 1024 * 1024,
+      timeout: 10 * 60_000,
+    });
+    return { exitCode: 0, stderr: asText(stderr), stdout: asText(stdout) };
+  } catch (error) {
+    const failure = error as Partial<{
+      code: number | string;
+      stderr: string | Buffer;
+      stdout: string | Buffer;
+    }>;
+    return {
+      /* v8 ignore next -- child_process failures normally expose numeric shell exit codes. */
+      exitCode: typeof failure.code === "number" ? failure.code : 1,
+      stderr: asText(failure.stderr),
+      stdout: asText(failure.stdout),
+    };
+  }
+}
+
+export async function optionalReadText(path: string): Promise<string | undefined> {
+  try {
+    return await readFile(path, "utf8");
+  } catch (error) {
+    if (isNotFound(error)) return undefined;
+    throw error;
+  }
+}
+
+function asyncExists(path: string): boolean {
+  return existsSync(path);
+}
+
+function asText(value: string | Buffer | undefined): string {
+  /* v8 ignore next -- command adapters normalize observed stdout/stderr to strings in tests. */
+  if (value === undefined) return "";
+  /* v8 ignore next -- Buffer output is a child_process compatibility branch. */
+  return typeof value === "string" ? value : value.toString("utf8");
+}
+
+function isNotFound(error: unknown): boolean {
+  return typeof error === "object" && error !== null && "code" in error && error.code === "ENOENT";
+}

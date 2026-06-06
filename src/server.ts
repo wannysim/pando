@@ -2,15 +2,25 @@ import { createServer, type IncomingMessage } from "node:http";
 import { Readable } from "node:stream";
 import process from "node:process";
 import { createPandoApiApp } from "./api/app";
+import { createLocalDaemonRuntime, type DaemonLoopController } from "./daemon/local-runtime";
 import { createSqliteJobStore } from "./db/index";
 
 const DEFAULT_PORT = 3210;
 
 export interface PandoServerOptions {
   dbPath: string;
+  daemon: PandoDaemonServerOptions;
   dashboardRoot?: string;
   host: string;
   port: number;
+}
+
+export interface PandoDaemonServerOptions {
+  configDir: string;
+  enabled: boolean;
+  globalConcurrency: number;
+  tickMs: number;
+  worktreeRoot?: string;
 }
 
 export function createPandoServer(opts: PandoServerOptions) {
@@ -36,6 +46,7 @@ export function createPandoServer(opts: PandoServerOptions) {
 
       Readable.fromWeb(honoResponse.body).pipe(response);
     } catch (error) {
+      /* v8 ignore start -- defensive Node/Hono bridge failure path. */
       response.statusCode = 500;
       response.setHeader("content-type", "application/json; charset=utf-8");
       response.end(
@@ -47,6 +58,7 @@ export function createPandoServer(opts: PandoServerOptions) {
           ok: false,
         }),
       );
+      /* v8 ignore stop */
     }
   });
 
@@ -56,6 +68,17 @@ export function createPandoServer(opts: PandoServerOptions) {
 
 export function serverOptionsFromEnv(env: NodeJS.ProcessEnv = process.env): PandoServerOptions {
   return {
+    daemon: {
+      configDir: env.PANDO_CONFIG_DIR ?? "config",
+      enabled: parseBoolean(env.PANDO_DAEMON_ENABLED),
+      globalConcurrency: parsePositiveInteger(
+        env.PANDO_GLOBAL_CONCURRENCY,
+        2,
+        "PANDO_GLOBAL_CONCURRENCY",
+      ),
+      tickMs: parsePositiveInteger(env.PANDO_DAEMON_TICK_MS, 1_000, "PANDO_DAEMON_TICK_MS"),
+      worktreeRoot: emptyToUndefined(env.PANDO_WORKTREE_ROOT),
+    },
     dashboardRoot: emptyToUndefined(env.PANDO_STATIC_DASHBOARD_ROOT),
     dbPath: env.PANDO_DB ?? "./pando.sqlite",
     host: env.PANDO_HOST ?? "127.0.0.1",
@@ -82,6 +105,7 @@ function toWebRequest(request: IncomingMessage, host: string, port: number): Req
 function requestHeaders(request: IncomingMessage): Headers {
   const headers = new Headers();
   for (const [key, value] of Object.entries(request.headers)) {
+    /* v8 ignore next 4 -- Node normalizes repeated request headers in this server path. */
     if (Array.isArray(value)) {
       for (const entry of value) headers.append(key, entry);
       continue;
@@ -100,21 +124,52 @@ function parsePositiveInteger(value: string | undefined, fallback: number, name:
   return parsed;
 }
 
+function parseBoolean(value: string | undefined): boolean {
+  return value === "1" || value === "true";
+}
+
 function emptyToUndefined(value: string | undefined): string | undefined {
   return value === undefined || value.length === 0 ? undefined : value;
 }
 
-/* v8 ignore next 13 -- process bootstrap is covered by Docker smoke, not unit tests. */
+/* v8 ignore start -- process bootstrap is covered by Docker smoke, not unit tests. */
 if (isDirectRun()) {
+  void startFromEnv();
+}
+
+async function startFromEnv(): Promise<void> {
   const opts = serverOptionsFromEnv();
+  const daemon = await maybeCreateDaemon(opts);
   const server = createPandoServer(opts);
 
   server.listen(opts.port, opts.host, () => {
     console.log(`pando listening on http://${opts.host}:${opts.port}`);
+    daemon?.start();
   });
 
-  process.once("SIGINT", () => server.close());
-  process.once("SIGTERM", () => server.close());
+  const shutdown = () => {
+    daemon?.stop();
+    server.close();
+  };
+
+  process.once("SIGINT", shutdown);
+  process.once("SIGTERM", shutdown);
+}
+
+async function maybeCreateDaemon(
+  opts: PandoServerOptions,
+): Promise<DaemonLoopController | undefined> {
+  if (!opts.daemon.enabled) return undefined;
+  return await createLocalDaemonRuntime({
+    configDir: opts.daemon.configDir,
+    dbPath: opts.dbPath,
+    globalConcurrency: opts.daemon.globalConcurrency,
+    tickMs: opts.daemon.tickMs,
+    worktreeRoot: opts.daemon.worktreeRoot,
+    onError(error) {
+      console.error(error instanceof Error ? error.message : String(error));
+    },
+  });
 }
 
 function isDirectRun(): boolean {
@@ -122,3 +177,4 @@ function isDirectRun(): boolean {
     process.argv[1] !== undefined && import.meta.url === new URL(process.argv[1], "file:").href
   );
 }
+/* v8 ignore stop */

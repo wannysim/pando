@@ -25,18 +25,37 @@ describe("Pando HTTP server", () => {
     expect(
       serverOptionsFromEnv({
         PANDO_DB: "/data/pando.sqlite",
+        PANDO_CONFIG_DIR: "/config",
+        PANDO_DAEMON_ENABLED: "1",
+        PANDO_DAEMON_TICK_MS: "250",
+        PANDO_GLOBAL_CONCURRENCY: "2",
         PANDO_HOST: "0.0.0.0",
         PANDO_PORT: "3210",
+        PANDO_WORKTREE_ROOT: "/worktrees",
         PANDO_STATIC_DASHBOARD_ROOT: "/app/dashboard/dist",
       }),
     ).toEqual({
       dashboardRoot: "/app/dashboard/dist",
+      daemon: {
+        configDir: "/config",
+        enabled: true,
+        globalConcurrency: 2,
+        tickMs: 250,
+        worktreeRoot: "/worktrees",
+      },
       dbPath: "/data/pando.sqlite",
       host: "0.0.0.0",
       port: 3210,
     });
     expect(serverOptionsFromEnv({})).toEqual({
       dashboardRoot: undefined,
+      daemon: {
+        configDir: "config",
+        enabled: false,
+        globalConcurrency: 2,
+        tickMs: 1_000,
+        worktreeRoot: undefined,
+      },
       dbPath: "./pando.sqlite",
       host: "127.0.0.1",
       port: 3210,
@@ -53,6 +72,7 @@ describe("Pando HTTP server", () => {
     writeFileSync(join(root, "index.html"), "<div>pando dashboard</div>");
     writeFileSync(join(root, "assets", "app.css"), "body { color: black; }");
     const server = createPandoServer({
+      daemon: defaultDaemonOptions(),
       dashboardRoot: root,
       dbPath: join(dbDir, "pando.sqlite"),
       host: "127.0.0.1",
@@ -90,6 +110,7 @@ describe("Pando HTTP server", () => {
   it("handles HEAD requests and repeated Node headers", async () => {
     const dbDir = await mkdtemp(join(tmpdir(), "pando-server-db-"));
     const server = createPandoServer({
+      daemon: defaultDaemonOptions(),
       dbPath: join(dbDir, "pando.sqlite"),
       host: "127.0.0.1",
       port: 3210,
@@ -110,6 +131,16 @@ describe("Pando HTTP server", () => {
 
 async function listen(server: ReturnType<typeof createPandoServer>): Promise<void> {
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+}
+
+function defaultDaemonOptions() {
+  return {
+    configDir: "config",
+    enabled: false,
+    globalConcurrency: 2,
+    tickMs: 1_000,
+    worktreeRoot: undefined,
+  };
 }
 
 function serverUrl(server: ReturnType<typeof createPandoServer>): string {
