@@ -83,9 +83,7 @@ describe("runHostFullDaemonSmoke", () => {
     expect(provisioned).toHaveLength(2);
     expect(provisioned.map((opts) => opts.baseBranch)).toEqual(["develop", "develop"]);
     expect(provisioned.map((opts) => opts.setupCommand)).toEqual(["pnpm install", "pnpm install"]);
-    expect(workerCalls.map((call) => call.command)).toEqual(
-      expect.arrayContaining(["claude", "codex"]),
-    );
+    expect(new Set(workerCalls.map((call) => call.command))).toEqual(new Set(["claude"]));
     expect(gateCalls.map((call) => call.command)).toEqual(
       expect.arrayContaining(["pnpm test", "pnpm lint", "pnpm exec tsc --noEmit"]),
     );
@@ -141,7 +139,7 @@ describe("runHostFullDaemonSmoke", () => {
     });
 
     expect(evidence.mode).toBe("live");
-    expect(commands).toEqual(expect.arrayContaining(["claude", "codex"]));
+    expect(new Set(commands)).toEqual(new Set(["claude"]));
     expect(evidence.checks.gateEvidence.pass).toBe(true);
   });
 
