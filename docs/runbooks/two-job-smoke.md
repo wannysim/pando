@@ -2,6 +2,8 @@
 
 W5 PR 7 keeps live validation intentionally small: exactly two jobs, with global concurrency set to 2 or 3. If CLI auth, provider auth, repo mounts, or cost controls are not ready, record deterministic fake smoke evidence instead.
 
+The current live scope is a **worker probe**: one Claude Code worker job and one Codex worker job run in isolated directories and record deterministic exit-code evidence. It does not yet run a full daemon pipeline job through `SPEC -> PLAN -> TEST -> IMPL -> REVIEW -> PR`; production server wiring for `runDaemonOnce`, real engines, prompts, worktree provisioning, and gates is the next step for full daemon live smoke.
+
 ## Preconditions
 
 - `PANDO_GLOBAL_CONCURRENCY` is `2` or `3`.
@@ -11,6 +13,81 @@ W5 PR 7 keeps live validation intentionally small: exactly two jobs, with global
 - Runtime config is mounted at `/config`.
 - Skills are mounted read-only at `/skills`.
 - Claude and Codex authentication are available through API keys or auth volumes.
+
+## Host worker readiness
+
+Use this before a host-mode live worker smoke:
+
+```bash
+PANDO_GLOBAL_CONCURRENCY=2 \
+  pnpm smoke:two-job -- --mode readiness --target host \
+  --evidence /tmp/pando-host-readiness.json
+```
+
+The readiness evidence records:
+
+- `globalConcurrency.value` and `withinLiveCap`
+- `workerCli.commands.claude/codex.available`
+- auth signals as booleans only (`ANTHROPIC_API_KEY`, `CLAUDE_CONFIG_DIR`, `OPENAI_API_KEY`, `CODEX_HOME`, or default config dirs)
+- host path readiness for SQLite parent, repos, worktrees, config, and skills
+
+Do not commit evidence files; keep them under `/tmp` or another non-repo path.
+
+## Host live worker smoke
+
+Run exactly two worker jobs with global cap 2 or 3:
+
+```bash
+mkdir -p /tmp/pando-live-worker-smoke
+
+PANDO_GLOBAL_CONCURRENCY=2 \
+PANDO_WORKTREE_ROOT=/tmp/pando-live-worker-smoke \
+PANDO_SMOKE_RUN_ID="$(date +%Y%m%d-%H%M%S)" \
+  pnpm smoke:two-job -- --mode live --target host \
+  --evidence /tmp/pando-live-worker-smoke/live-worker-smoke.json
+```
+
+Success criteria:
+
+- `mode` is `live`.
+- `jobs` contains exactly `SMOKE-LIVE-CLAUDE` and `SMOKE-LIVE-CODEX`.
+- both workers have `exitCode: 0` and `timedOut: false`.
+- `checks.globalConcurrency.withinLiveCap` is `true`.
+- `checks.worktreeCollision.pass` is `true`.
+- `checks.providerCap.pass` is `true`.
+- `checks.gateEvidence.pass` is `true`.
+
+The smoke script records deterministic worker evidence (`exitCode`, `timedOut`, optional signal, stdout/stderr byte counts). It must not use LLM output text for pass/fail.
+
+2026-06-06 host result: passed with global cap `2`. Claude Code and Codex both exited `0`, worktree paths were distinct, provider usage stayed within cap, and gate evidence was deterministic exit-code JSON.
+
+## Docker worker readiness
+
+After building the image, run a one-off container with the mount contract:
+
+```bash
+docker compose -f deploy/docker-compose.yml build pando
+mkdir -p /tmp/pando-docker-readiness/data /tmp/pando-docker-readiness/evidence
+
+docker run --rm \
+  -e PANDO_GLOBAL_CONCURRENCY=2 \
+  -e PANDO_DB=/data/pando.sqlite \
+  -e PANDO_REPOS_ROOT=/repos \
+  -e PANDO_WORKTREE_ROOT=/worktrees \
+  -e PANDO_CONFIG_DIR=/config \
+  -e PANDO_SKILLS_ROOT=/skills \
+  -v /tmp/pando-docker-readiness/data:/data \
+  -v "$HOME/Github":/repos \
+  -v "$HOME/.worktrees":/worktrees \
+  -v "$PWD/config":/config:ro \
+  -v "$HOME/.ai-skills":/skills:ro \
+  -v /tmp/pando-docker-readiness/evidence:/evidence \
+  deploy-pando:latest \
+  node scripts/two-job-smoke.mjs --mode readiness --target docker \
+  --evidence /evidence/docker-readiness.json
+```
+
+2026-06-06 Docker result: mount contract and global cap passed, but Docker live worker smoke is blocked because the image does not include `claude` or `codex`, and no Claude/Codex auth signal is mounted.
 
 ## Docker HTTP smoke
 

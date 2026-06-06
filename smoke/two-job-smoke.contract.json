@@ -16,7 +16,17 @@
       "PANDO_GLOBAL_CONCURRENCY=2 or 3",
       "Claude/Codex authentication or API key mode"
     ],
-    "requiredMounts": ["/data", "/repos", "/worktrees", "/config", "/skills"]
+    "requiredMounts": ["/data", "/repos", "/worktrees", "/config", "/skills"],
+    "workerProbe": {
+      "requiredJobIds": ["SMOKE-LIVE-CLAUDE", "SMOKE-LIVE-CODEX"],
+      "gateName": "worker-exit-code",
+      "deterministicEvidence": ["exitCode", "timedOut", "signal"]
+    }
+  },
+  "readiness": {
+    "requiredChecks": ["global-concurrency", "worker-cli", "worker-auth", "mount-contract"],
+    "workerCommands": ["claude", "codex"],
+    "authSignals": ["ANTHROPIC_API_KEY", "CLAUDE_CONFIG_DIR", "OPENAI_API_KEY", "CODEX_HOME"]
   },
   "checks": [
     {

@@ -87,15 +87,22 @@
 - `deploy/`, `config/orchestrator.docker.yaml` — W5 PR 7에서 single-container Dockerfile/compose skeleton을 추가했다. mount contract는 SQLite `/data/pando.sqlite`, repos `/repos`, worktrees `/worktrees`, config `/config`, skills `/skills`, HTTP `3210`, dashboard root `/app/dashboard/dist`
 - `smoke/two-job-smoke.contract.json`, `scripts/two-job-smoke.mjs`, `docs/runbooks/two-job-smoke.md` — W5 PR 7에서 2-job smoke의 global cap 2~3, worktree collision check, provider cap check, gate evidence check, deterministic fake fallback reason 기록을 테스트 가능한 계약으로 고정했다
 - 검증: `pnpm verify` 통과(2026-06-06, PR #25 기준 27 files / 182 tests, coverage all statements 92.69% / branches 85.60% / functions 96.33% / lines 93.81%). 로컬 Docker Desktop에서 `docker compose -f deploy/docker-compose.yml up --build -d` 성공, container health `healthy`, `/health` JSON 200, `/dashboard` HTML 200, dashboard JS asset 200, `/briefs` enqueue + `/jobs` list 200 확인 후 `docker compose ... down -v`로 정리.
+- **Live worker smoke readiness (2026-06-06, branch `chore/live-worker-smoke-readiness`)**:
+  - 시작 전 `pnpm verify` 통과. 변경 후 최종 `pnpm verify`도 통과(27 files / 185 tests, coverage all statements 92.69% / branches 85.60% / functions 96.33% / lines 93.81%). Docker HTTP/API/static smoke도 재확인: compose build/up, health `healthy`, `/health` 200, `/dashboard` HTML 200, dashboard JS asset 200, `/briefs` enqueue + `/jobs` list 200, `down -v` 정리.
+  - `scripts/two-job-smoke.mjs`에 `--mode readiness`와 host/docker target evidence를 추가했다. evidence는 CLI availability, auth signal booleans, mount/path readiness, global cap 2~3 여부를 구조화 JSON으로 기록한다. secret 값은 기록하지 않는다.
+  - Host readiness 통과: `claude 2.1.167 (Claude Code)`, `codex-cli 0.137.0`, `~/.claude`, `~/.codex`, `~/.ai-skills`, `~/.worktrees`, repo/config paths 모두 ready. 명시 API key env는 unset이지만 기본 auth dir 신호가 있음.
+  - Host live worker 2-job smoke 통과: `PANDO_GLOBAL_CONCURRENCY=2`, `PANDO_WORKTREE_ROOT=/tmp/pando-live-worker-smoke`, evidence `/tmp/pando-live-worker-smoke/live-worker-smoke.json`. `SMOKE-LIVE-CLAUDE`와 `SMOKE-LIVE-CODEX` 둘 다 exit `0`, `timedOut=false`, worktree path distinct, provider cap pass, gate evidence pass. 초기 구현에서 Codex가 `execFile` stdin 대기로 timeout됐고, `spawn(..., stdio: ["ignore", "pipe", "pipe"])`로 고쳐 재실행 통과.
+  - Docker image build는 현재 코드 기준으로도 통과. Docker worker readiness는 아직 blocked: mount contract와 global cap은 pass지만 image 안에 `claude`/`codex`가 없고 Claude/Codex auth signal도 mount되지 않았다. Docker live worker smoke 전 최소 작업은 CLI 설치 방식 + auth volume/API-key mode + git credentials 확정.
+  - 범위 주의: 이번 live smoke는 **worker probe**다. production `src/server.ts`는 아직 `runDaemonOnce`/real WorkerEngine/worktree provisioner/stage prompts/gates를 wiring하지 않으므로, full daemon pipeline 2-job smoke는 다음 작업이다.
 - 공개 repo hygiene: `tests/` 표면(`describe`/`it`, fixture 문구)은 영어로 정리. 실제 회사 티켓 키는 커밋하지 않고 `DEMO-1234` 같은 가상 키만 사용. `docs/`는 작업자용이라 한글 유지 허용
 
-**다음 세션 시작점 — live worker smoke 또는 W6 후보 착수.**
+**다음 세션 시작점 — full daemon live pipeline smoke 또는 Docker worker readiness.**
 
-W5의 최소 운영 준비는 닫혔다. 다음 세션에서 가장 먼저 결정할 것은 **실제 Claude/Codex worker를 컨테이너 안에서 돌릴지, 로컬 호스트 daemon으로 먼저 live smoke할지**다. Docker HTTP/API/static smoke는 완료됐지만, live 2-job worker smoke는 아직 인증/CLI 설치/비용 조건을 갖춘 뒤 별도로 수행해야 한다.
+W5의 최소 운영 준비는 닫혔다. Host에서 실제 Claude/Codex worker 2-job probe는 통과했다. 다음 세션에서 가장 먼저 결정할 것은 **full daemon pipeline smoke를 호스트에서 먼저 wiring할지, Docker worker CLI/auth를 먼저 확정할지**다.
 
 ## 남아있는 작업
 
-1. **Live worker smoke** — global 2~3으로 제한하고 Claude/Codex auth, worker CLI availability, repo/worktree/config/skills mount를 갖춘 뒤 실제 2-job smoke를 수행한다. 성공 기준은 worktree 충돌 없음, provider cap 준수, deterministic gate evidence 기록이다.
+1. **Full daemon live pipeline smoke** — host worker probe는 통과했지만, server/daemon production wiring이 아직 없다. `runDaemonOnce`를 실제 `ClaudeCodeEngine`/`CodexEngine`, worktree provisioner, stage prompts, deterministic gates와 연결해 2개 job만 global 2~3으로 실행하는 별도 smoke가 필요하다.
 2. **Docker worker readiness** — 현재 single-container image는 Node daemon/API/static dashboard skeleton을 검증했다. 컨테이너 내부 Claude/Codex CLI 설치 방식, API key/auth volume, git credentials, Atlassian connector/API token fallback은 별도 smoke가 필요하다.
 3. **Gate adapter 연결** — checksum/diff/workspace scoping의 순수 계약은 완료됐지만, 실제 git diff/checksum 수집 adapter와 exit-code command scoping 연결은 후속 작업에서 필요 시 붙인다.
 4. **Release branch routing** — Jira `fixVersion` 기반 `release/*` base branch 매핑과 `WorkItem.baseBranch` override는 미해결이다.
@@ -129,6 +136,7 @@ W5 우선순위(TDD):
 - `docs/research-v1.md` — 도구/패턴 리서치 (모델명·가격은 2차 소스, 재확인 필요)
 - `docs/design-v2-multi-repo.md` — n×n 설계, `~/.ai-skills` 자산 매핑 (§4·§7 PLAN은 ADR-007 반영됨)
 - `docs/w5-operational-readiness.md` — W5 테스트 시나리오 매트릭스, dashboard/API MVP, Docker shape, W5/W6 경계
+- `docs/practical-adoption-roadmap.md` — pando를 실사용 가능한 도구로 올리기 위한 full daemon smoke, dashboard UX, terminal UX, README/getting started, Docker worker readiness 스택 계획과 "pando에게 시키는 법"
 - `docs/adr/` — 001~009. **009**는 W5 dashboard/API/deploy 기본값(Vite React SPA + Hono + single container)을 고정한다. 바꾸려면 새 ADR 먼저
 - `docs/repo-structure.md` — 구조·인터페이스
 - `docs/engineering-standards.md` — 개발 방법론 (superpowers + agent-skills 채택분)

@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { chmodSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -12,7 +12,19 @@ describe("two-job smoke contract", () => {
       fallback: { allowed: boolean; recordReason: boolean };
       jobs: { requiredCount: number };
       limits: { globalConcurrency: { max: number; min: number } };
-      live: { requiredEnv: string[] };
+      live: {
+        requiredEnv: string[];
+        workerProbe: {
+          deterministicEvidence: string[];
+          gateName: string;
+          requiredJobIds: string[];
+        };
+      };
+      readiness: {
+        authSignals: string[];
+        requiredChecks: string[];
+        workerCommands: string[];
+      };
     };
 
     expect(contract.jobs.requiredCount).toBe(2);
@@ -24,6 +36,11 @@ describe("two-job smoke contract", () => {
         "Claude/Codex authentication or API key mode",
       ]),
     );
+    expect(contract.live.workerProbe).toEqual({
+      deterministicEvidence: ["exitCode", "timedOut", "signal"],
+      gateName: "worker-exit-code",
+      requiredJobIds: ["SMOKE-LIVE-CLAUDE", "SMOKE-LIVE-CODEX"],
+    });
     expect(contract.checks.map((check) => check.id)).toEqual(
       expect.arrayContaining([
         "two-jobs-recorded",
@@ -33,6 +50,11 @@ describe("two-job smoke contract", () => {
       ]),
     );
     expect(contract.fallback).toEqual({ allowed: true, recordReason: true });
+    expect(contract.readiness).toEqual({
+      authSignals: ["ANTHROPIC_API_KEY", "CLAUDE_CONFIG_DIR", "OPENAI_API_KEY", "CODEX_HOME"],
+      requiredChecks: ["global-concurrency", "worker-cli", "worker-auth", "mount-contract"],
+      workerCommands: ["claude", "codex"],
+    });
   });
 
   it("runs the deterministic fake smoke and records two non-colliding jobs", () => {
@@ -67,5 +89,224 @@ describe("two-job smoke contract", () => {
       providerCap: { pass: true },
       worktreeCollision: { pass: true },
     });
+  });
+
+  it("records host worker readiness as structured evidence without secret values", () => {
+    const dir = mkdtempSync(join(tmpdir(), "pando-readiness-"));
+    const evidencePath = join(dir, "readiness.json");
+    const fakeBin = join(dir, "bin");
+    const configDir = join(dir, "config");
+    const dataDir = join(dir, "data");
+    const reposDir = join(dir, "repos");
+    const worktreesDir = join(dir, "worktrees");
+    const homeDir = join(dir, "home");
+    const skillsDir = join(dir, "skills");
+
+    mkdirSync(fakeBin);
+    mkdirSync(configDir);
+    mkdirSync(dataDir);
+    mkdirSync(homeDir);
+    mkdirSync(reposDir);
+    mkdirSync(worktreesDir);
+    mkdirSync(skillsDir);
+    for (const command of ["claude", "codex"]) {
+      const commandPath = join(fakeBin, command);
+      writeFileSync(commandPath, "#!/bin/sh\nprintf '%s fake\\n' \"$0\"\n");
+      chmodSync(commandPath, 0o755);
+    }
+
+    execFileSync(
+      process.execPath,
+      [
+        "scripts/two-job-smoke.mjs",
+        "--mode",
+        "readiness",
+        "--target",
+        "host",
+        "--evidence",
+        evidencePath,
+      ],
+      {
+        env: {
+          ...process.env,
+          ANTHROPIC_API_KEY: "redacted",
+          HOME: homeDir,
+          OPENAI_API_KEY: "redacted",
+          PANDO_CONFIG_DIR: configDir,
+          PANDO_DB: join(dataDir, "pando.sqlite"),
+          PANDO_GLOBAL_CONCURRENCY: "2",
+          PANDO_REPOS_ROOT: reposDir,
+          PANDO_SKILLS_ROOT: skillsDir,
+          PANDO_WORKTREE_ROOT: worktreesDir,
+          PATH: `${fakeBin}:${process.env.PATH ?? ""}`,
+        },
+      },
+    );
+
+    const evidence = JSON.parse(readFileSync(evidencePath, "utf8")) as {
+      blockers: string[];
+      checks: {
+        auth: {
+          pass: boolean;
+          signals: {
+            claude: { apiKeyPresent: boolean; configDirPresent: boolean };
+            codex: { apiKeyPresent: boolean; configDirPresent: boolean };
+          };
+        };
+        globalConcurrency: { value: number; withinLiveCap: boolean };
+        mounts: { pass: boolean };
+        workerCli: { pass: boolean };
+      };
+      mode: string;
+      target: string;
+    };
+
+    expect(evidence.mode).toBe("readiness");
+    expect(evidence.target).toBe("host");
+    expect(evidence.blockers).toEqual([]);
+    expect(evidence.checks.globalConcurrency).toEqual({ value: 2, withinLiveCap: true });
+    expect(evidence.checks.workerCli.pass).toBe(true);
+    expect(evidence.checks.auth.pass).toBe(true);
+    expect(evidence.checks.auth.signals.claude).toEqual({
+      apiKeyPresent: true,
+      configDirPresent: false,
+    });
+    expect(evidence.checks.auth.signals.codex).toEqual({
+      apiKeyPresent: true,
+      configDirPresent: false,
+    });
+    expect(evidence.checks.mounts.pass).toBe(true);
+    expect(JSON.stringify(evidence)).not.toContain("redacted");
+  });
+
+  it("records readiness blockers when live smoke falls back", () => {
+    const dir = mkdtempSync(join(tmpdir(), "pando-live-fallback-"));
+    const evidencePath = join(dir, "live-fallback.json");
+    const homeDir = join(dir, "home");
+    mkdirSync(homeDir);
+
+    execFileSync(
+      process.execPath,
+      [
+        "scripts/two-job-smoke.mjs",
+        "--mode",
+        "live",
+        "--target",
+        "host",
+        "--evidence",
+        evidencePath,
+      ],
+      {
+        env: {
+          HOME: homeDir,
+          PATH: process.env.PATH,
+          PANDO_GLOBAL_CONCURRENCY: "6",
+        },
+      },
+    );
+
+    const evidence = JSON.parse(readFileSync(evidencePath, "utf8")) as {
+      fallback: { reason: string };
+      mode: string;
+      readiness: { blockers: string[] };
+    };
+
+    expect(evidence.mode).toBe("fake");
+    expect(evidence.fallback.reason).toBe("live smoke prerequisites missing");
+    expect(evidence.readiness.blockers).toContain("PANDO_GLOBAL_CONCURRENCY must be 2 or 3");
+    expect(evidence.readiness.blockers).toEqual(
+      expect.arrayContaining([
+        "Claude authentication is not configured",
+        "Codex authentication is not configured",
+      ]),
+    );
+  });
+
+  it("runs two live worker probes when readiness passes", () => {
+    const dir = mkdtempSync(join(tmpdir(), "pando-live-probe-"));
+    const evidencePath = join(dir, "live.json");
+    const fakeBin = join(dir, "bin");
+    const configDir = join(dir, "config");
+    const dataDir = join(dir, "data");
+    const homeDir = join(dir, "home");
+    const reposDir = join(dir, "repos");
+    const skillsDir = join(dir, "skills");
+    const worktreesDir = join(dir, "worktrees");
+
+    mkdirSync(fakeBin);
+    mkdirSync(configDir);
+    mkdirSync(dataDir);
+    mkdirSync(homeDir);
+    mkdirSync(reposDir);
+    mkdirSync(skillsDir);
+    mkdirSync(worktreesDir);
+    for (const command of ["claude", "codex"]) {
+      const commandPath = join(fakeBin, command);
+      writeFileSync(commandPath, "#!/bin/sh\nprintf '%s ok\\n' \"$0\"\n");
+      chmodSync(commandPath, 0o755);
+    }
+
+    execFileSync(
+      process.execPath,
+      [
+        "scripts/two-job-smoke.mjs",
+        "--mode",
+        "live",
+        "--target",
+        "host",
+        "--evidence",
+        evidencePath,
+      ],
+      {
+        env: {
+          ...process.env,
+          ANTHROPIC_API_KEY: "redacted",
+          HOME: homeDir,
+          OPENAI_API_KEY: "redacted",
+          PANDO_CONFIG_DIR: configDir,
+          PANDO_DB: join(dataDir, "pando.sqlite"),
+          PANDO_GLOBAL_CONCURRENCY: "2",
+          PANDO_REPOS_ROOT: reposDir,
+          PANDO_SKILLS_ROOT: skillsDir,
+          PANDO_SMOKE_RUN_ID: "unit",
+          PANDO_WORKTREE_ROOT: worktreesDir,
+          PATH: `${fakeBin}:${process.env.PATH ?? ""}`,
+        },
+      },
+    );
+
+    const evidence = JSON.parse(readFileSync(evidencePath, "utf8")) as {
+      checks: {
+        gateEvidence: { pass: boolean };
+        globalConcurrency: { value: number; withinLiveCap: boolean };
+        providerCap: { pass: boolean };
+        worktreeCollision: { pass: boolean };
+      };
+      jobs: Array<{
+        gateEvidence: Array<{ evidence: string; gateName: string; stage: string }>;
+        id: string;
+        worker: { engine: string; exitCode: number };
+        worktreePath: string;
+      }>;
+      mode: string;
+      readiness: { blockers: string[] };
+    };
+
+    expect(evidence.mode).toBe("live");
+    expect(evidence.readiness.blockers).toEqual([]);
+    expect(evidence.jobs.map((job) => job.id)).toEqual(["SMOKE-LIVE-CLAUDE", "SMOKE-LIVE-CODEX"]);
+    expect(new Set(evidence.jobs.map((job) => job.worktreePath)).size).toBe(2);
+    expect(evidence.jobs.map((job) => job.worker.exitCode)).toEqual([0, 0]);
+    expect(evidence.jobs.map((job) => job.gateEvidence[0]?.evidence)).toEqual([
+      '{"exitCode":0,"timedOut":false}',
+      '{"exitCode":0,"timedOut":false}',
+    ]);
+    expect(evidence.checks).toEqual({
+      gateEvidence: { pass: true },
+      globalConcurrency: { value: 2, withinLiveCap: true },
+      providerCap: { pass: true },
+      worktreeCollision: { pass: true },
+    });
+    expect(JSON.stringify(evidence)).not.toContain("redacted");
   });
 });
