@@ -46,7 +46,7 @@
 
 ### 2.1 도구와 기준
 
-- **vitest** + v8 coverage. `pnpm verify` = `vitest run --coverage && oxlint . && tsc --noEmit`
+- **vitest** + v8 coverage. `pnpm verify` = `pnpm coverage && pnpm lint && pnpm types` (`vitest run --coverage`, `oxlint .`, `tsc --noEmit`)
 - 커버리지 게이트(CI 실패 기준): `src/core` `src/pipeline/gates` `src/scheduler` **95%+** / 전체 **85%+** / `src/cli`·엔트리 제외 가능
 - 테스트 피라미드 80/15/5 (agent-skills): unit 다수, integration 소수, e2e 스모크 한 줌
 - **DAMP over DRY**: 테스트는 중복돼도 읽혀야 한다. 과한 헬퍼 추상화 금지
@@ -100,7 +100,7 @@ push/PR마다: `pnpm verify` + 커버리지 임계치. Shift Left(agent-skills c
 ## 5. 구조 설계 문서에 반영할 변경분 (이번 결정 통합)
 
 1. **briefs/ 커밋** — gitignore 안 함 (확정)
-2. **dashboard = 웹** — 데몬이 HTTP API(Hono 추천: 가볍고 Node/Bun/Workers 호환)를 서빙, `dashboard/`는 React SPA. Tailscale로 폰에서 접속해 brief 투입·진행 확인·retry까지. `agentctl`은 같은 API의 CLI 클라이언트로 재정의 (API가 단일 진실원 — TUI/웹/CLI가 전부 같은 API)
+2. **dashboard = 웹** — 데몬이 HTTP API(Hono 추천: 가볍고 Node/Bun/Workers 호환)를 서빙, `dashboard/`는 React SPA. Tailscale로 폰에서 접속해 brief 투입·진행 확인·retry까지. `agentctl`은 같은 API의 CLI 클라이언트로 재정의 (API가 단일 진실원 — 웹/CLI가 같은 API)
 3. **tests/ 추가**:
    ```
    tests/

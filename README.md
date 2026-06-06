@@ -20,7 +20,7 @@ It processes many repos × many tickets in flight, distinguishing company repos 
 
 ## Status
 
-Design stage. See the design docs under [docs/](./docs) (written in Korean):
+Early implementation. W1-W3 are complete; W4 n x n parallel scheduling is next. See the design docs under [docs/](./docs) (written in Korean):
 
 - [research-v1.md](./docs/research-v1.md) — tooling & pattern research
 - [design-v2-multi-repo.md](./docs/design-v2-multi-repo.md) — n×n design built on reusable agent-skill assets
