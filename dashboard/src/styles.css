@@ -25,7 +25,8 @@ body {
 
 button,
 input,
-select {
+select,
+textarea {
   font: inherit;
 }
 
@@ -53,7 +54,8 @@ button:disabled {
 }
 
 input,
-select {
+select,
+textarea {
   width: 100%;
   min-height: 36px;
   border: 1px solid #c8d0d8;
@@ -61,6 +63,11 @@ select {
   background: #ffffff;
   color: #1d2730;
   padding: 0 10px;
+}
+
+textarea {
+  padding: 8px 10px;
+  resize: vertical;
 }
 
 table {
