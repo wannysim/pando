@@ -96,6 +96,35 @@ describe("loadRepoProfilesFromYaml", () => {
     expect(profiles["personal-site"]?.workItemSource).toBe("brief");
   });
 
+  it("parses an optional release_branch_template onto releaseBranchTemplate", async () => {
+    const withTemplate = YAML.replace(
+      "base_branch: develop\n    intake:\n      sources: [jira]",
+      "base_branch: develop\n    release_branch_template: release/{fixVersion}\n    intake:\n      sources: [jira]",
+    );
+
+    const profiles = await loadRepoProfilesFromYaml(withTemplate, {
+      homeDir: "/Users/me",
+      files: probe(["/Users/me/Github/web/yarn.lock"]),
+    });
+
+    expect(profiles.web?.releaseBranchTemplate).toBe("release/{fixVersion}");
+    expect(profiles["personal-site"]?.releaseBranchTemplate).toBeUndefined();
+  });
+
+  it("rejects a non-string release_branch_template with the repo name and field", async () => {
+    const badTemplate = YAML.replace(
+      "base_branch: develop\n    intake:\n      sources: [jira]",
+      "base_branch: develop\n    release_branch_template: 42\n    intake:\n      sources: [jira]",
+    );
+
+    await expect(
+      loadRepoProfilesFromYaml(badTemplate, {
+        homeDir: "/Users/me",
+        files: probe(["/Users/me/Github/web/yarn.lock"]),
+      }),
+    ).rejects.toThrow(/web.*release_branch_template/i);
+  });
+
   it("fails fast with the repo name when both lockfile and fallback are missing", async () => {
     await expect(
       loadRepoProfilesFromYaml(YAML, {

@@ -71,6 +71,11 @@ export async function loadRepoProfilesFromYaml(
       workItemSource: primaryIntakeSource(intake.sources, name),
       contextProviders: context.providers,
       conventions: requiredString(repo.conventions, name, "conventions"),
+      releaseBranchTemplate: optionalString(
+        repo.release_branch_template,
+        name,
+        "release_branch_template",
+      ),
       packageManager,
       setup: requiredEnum(repo.setup, PACKAGE_ACTIONS, name, "setup"),
       gates: parseGates(repo.gates, name),
@@ -232,6 +237,11 @@ function requiredString(value: unknown, repo: string, field: string): string {
     throw new Error(`${repo}.${field}: expected non-empty string`);
   }
   return value;
+}
+
+function optionalString(value: unknown, repo: string, field: string): string | undefined {
+  if (value === undefined) return undefined;
+  return requiredString(value, repo, field);
 }
 
 function requiredBoolean(value: unknown, repo: string, field: string): boolean {
