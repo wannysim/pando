@@ -9,11 +9,11 @@ repos:
     work_item_source: jira
     context_providers: [atlassian-mcp, figma-mcp]
     conventions: acme-conventions
-    setup: "yarn install"   # web은 yarn@1 모노레포 (W1 검증에서 확인)
+    setup: install   # web은 yarn@1 모노레포 (W1 검증에서 확인)
     gates:
-      test: "pnpm test"
-      lint: "pnpm lint"
-      types: "pnpm tsc --noEmit"
+      test: test
+      lint: lint
+      types: typecheck
     concurrency: 3
     port_range: [3100, 3199]
     env_files: [".env.local"]
@@ -28,10 +28,11 @@ repos:
     work_item_source: brief
     context_providers: []
     conventions: repo-local
-    setup: "pnpm install"
+    package_manager: pnpm
+    setup: install
     gates:
-      test: "pnpm test"
-      types: "pnpm tsc --noEmit"
+      test: test
+      types: typecheck
     concurrency: 2
     port_range: [3200, 3299]
     guards:

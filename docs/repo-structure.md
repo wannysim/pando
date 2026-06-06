@@ -68,7 +68,7 @@
 │   │
 │   ├── engines/
 │   │   ├── engine.ts         # WorkerEngine 인터페이스 (v1 §2)
-│   │   ├── claude-code.ts    # claude -p + --mcp-config 주입
+│   │   ├── claude-code.ts    # claude -p, claude.ai connector 상속(--mcp-config 금지)
 │   │   └── codex.ts          # codex exec --json
 │   │
 │   ├── worktree/
@@ -229,7 +229,7 @@ services:
 구현 순서는 v2 로드맵 그대로, 단 `scripts/` 4개를 레포 첫 커밋에 포함:
 
 1. `01-worktree.sh` — web 레포에서 origin/develop 분기 worktree 생성+setup (데몬 방식 검증)
-2. `02-plan-headless.sh` — **최대 리스크 검증**: `claude -p "/implement-jira AP-X --batch" --mcp-config ...`가 비대화형에서 PLAN.md를 만들어내는가. Atlassian MCP 인증이 헤드리스에서 살아있는가
+2. `02-plan-headless.sh` — **최대 리스크 검증**: `claude -p "/implement-jira AP-X --batch"`가 claude.ai managed connector를 상속해 비대화형에서 PLAN.md를 만들어내는가. Atlassian MCP 인증이 헤드리스에서 살아있는가
 3. `03-impl-codex.sh` — PLAN.md 주고 `codex exec --json --sandbox workspace-write`로 구현 1회
 4. `04-gates.sh` — pnpm test/lint/tsc + 테스트 체크섬 비교
 
