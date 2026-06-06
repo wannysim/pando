@@ -14,6 +14,7 @@ export interface EnsureWorktreeOptions {
   worktreeRoot: string;
   envFiles?: string[];
   setupCommand?: string;
+  setupEnv?: Record<string, string>;
   lockTimeoutMs?: number;
   lockRetryMs?: number;
 }
@@ -68,7 +69,10 @@ export async function ensureWorktree(opts: EnsureWorktreeOptions): Promise<Ensur
       await copyEnvFiles(opts.repoPath, path, opts.envFiles ?? []);
 
       if (opts.setupCommand !== undefined) {
-        await execAsync(opts.setupCommand, { cwd: path });
+        await execAsync(opts.setupCommand, {
+          cwd: path,
+          env: { ...process.env, ...opts.setupEnv },
+        });
       }
 
       return { path, branch: opts.branch, reused: false };

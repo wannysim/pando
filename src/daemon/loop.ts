@@ -2,12 +2,18 @@ import type { JobRecord, JobStore } from "../db/index";
 import type { MachineState } from "../core/state-machine";
 import type { JobStatus, RepoProfile, WorkItem } from "../core/types";
 import {
+  createRunScheduler,
+  type RunScheduler,
+  type RunSchedulerLease,
+} from "../scheduler/scheduler";
+import {
   runPipeline,
   type PipelineRunEvent,
   type PipelineRunResult,
   type PipelineRunnerOptions,
   type PipelineStateChange,
 } from "../pipeline/runner";
+import { createWorktreeIsolation, type WorktreeIsolation } from "./worktree-isolation";
 
 export interface WorktreeProvisioner {
   ensure(input: WorktreeProvisionInput): Promise<WorktreeProvisionResult>;
@@ -17,12 +23,14 @@ export interface WorktreeProvisionInput {
   item: WorkItem;
   profile: RepoProfile;
   branch: string;
+  isolation?: WorktreeIsolation;
 }
 
 export interface WorktreeProvisionResult {
   path: string;
   branch: string;
   reused?: boolean;
+  isolation?: WorktreeIsolation;
 }
 
 export interface DaemonOnceOptions extends Pick<
@@ -32,25 +40,102 @@ export interface DaemonOnceOptions extends Pick<
   store: JobStore;
   profiles?: Record<string, RepoProfile>;
   worktrees: WorktreeProvisioner;
+  scheduler?: RunScheduler;
+  isolationCacheRoot?: string;
   runner?: (opts: PipelineRunnerOptions) => Promise<PipelineRunResult>;
+}
+
+export interface DaemonJobResult {
+  status: "ran" | "failed";
+  jobId: string;
+  finalStatus: JobStatus;
 }
 
 export type DaemonOnceResult =
   | { status: "idle" }
-  | { status: "ran" | "failed"; jobId: string; finalStatus: JobStatus };
+  | DaemonJobResult
+  | { status: "ran"; jobs: DaemonJobResult[] };
 
 export async function runDaemonOnce(opts: DaemonOnceOptions): Promise<DaemonOnceResult> {
-  const job = opts.store.claimNextRunnable();
-  if (job === undefined) return { status: "idle" };
+  const scheduler =
+    opts.scheduler ?? createRunScheduler({ globalConcurrency: 1, providerConcurrency: {} });
+  const multiRun = opts.scheduler !== undefined;
+  const deniedJobIds: string[] = [];
+  const running: Promise<DaemonJobResult>[] = [];
 
+  while (scheduler.hasCapacity() && running.length < scheduler.maxConcurrency) {
+    const job = opts.store.claimNextRunnable({
+      excludeJobIds: [...scheduler.activeJobIds, ...deniedJobIds],
+    });
+    if (job === undefined) break;
+
+    let profile: RepoProfile;
+    try {
+      profile = resolveProfile(opts, job.item);
+    } catch (error) {
+      const evidence = error instanceof Error ? error.message : String(error);
+      running.push(Promise.resolve(failClaimedJob(opts, job, evidence)));
+      continue;
+    }
+
+    const lease = scheduler.tryAcquire({ jobId: job.item.id, profile, repo: job.item.repo });
+    if (lease === undefined) {
+      deniedJobIds.push(job.item.id);
+      continue;
+    }
+
+    running.push(runClaimedJob(opts, job, profile, lease));
+  }
+
+  if (running.length === 0) return { status: "idle" };
+
+  const jobs = await Promise.all(running);
+  if (!multiRun && jobs.length === 1) {
+    const [job] = jobs;
+    if (job !== undefined) return job;
+  }
+
+  return { jobs, status: "ran" };
+}
+
+export function branchForItem(item: WorkItem): string {
+  return item.branch ?? `feat/${sanitizeBranchSegment(item.id)}`;
+}
+
+function resolveProfile(opts: DaemonOnceOptions, item: WorkItem): RepoProfile {
+  const profile = opts.profiles?.[item.repo] ?? opts.store.getRepoProfile(item.repo);
+  if (profile === undefined) throw new Error(`repo profile not found: ${item.repo}`);
+  return profile;
+}
+
+async function runClaimedJob(
+  opts: DaemonOnceOptions,
+  job: JobRecord,
+  profile: RepoProfile,
+  lease: RunSchedulerLease,
+): Promise<DaemonJobResult> {
   try {
-    const profile = resolveProfile(opts, job.item);
     const branch = branchForItem(job.item);
-    const worktree = await opts.worktrees.ensure({ branch, item: job.item, profile });
+    const requestedIsolation =
+      opts.isolationCacheRoot === undefined
+        ? undefined
+        : createWorktreeIsolation({
+            branch,
+            cacheRoot: opts.isolationCacheRoot,
+            item: job.item,
+            profile,
+          });
+    const worktree = await opts.worktrees.ensure({
+      branch,
+      isolation: requestedIsolation,
+      item: job.item,
+      profile,
+    });
     const initial = persistWorktreePath(opts.store, job, worktree.path);
     const result = await (opts.runner ?? runPipeline)({
       buildPrompt: opts.buildPrompt,
       engines: opts.engines,
+      env: worktree.isolation?.env,
       gates: opts.gates,
       initialState: machineState(initial),
       item: job.item,
@@ -69,30 +154,30 @@ export async function runDaemonOnce(opts: DaemonOnceOptions): Promise<DaemonOnce
     return { finalStatus: result.final.status, jobId: job.item.id, status: "ran" };
   } catch (error) {
     const evidence = error instanceof Error ? error.message : String(error);
-    opts.store.appendEvent({
-      evidence,
-      jobId: job.item.id,
-      reason: "daemon run failed",
-      type: "daemon-error",
-    });
-    opts.store.updateJobStatus({
-      attemptsLeft: 0,
-      jobId: job.item.id,
-      status: "FAILED",
-      worktreePath: job.worktreePath,
-    });
-    return { finalStatus: "FAILED", jobId: job.item.id, status: "failed" };
+    return failClaimedJob(opts, job, evidence);
+  } finally {
+    lease.release();
   }
 }
 
-export function branchForItem(item: WorkItem): string {
-  return item.branch ?? `feat/${sanitizeBranchSegment(item.id)}`;
-}
-
-function resolveProfile(opts: DaemonOnceOptions, item: WorkItem): RepoProfile {
-  const profile = opts.profiles?.[item.repo] ?? opts.store.getRepoProfile(item.repo);
-  if (profile === undefined) throw new Error(`repo profile not found: ${item.repo}`);
-  return profile;
+function failClaimedJob(
+  opts: DaemonOnceOptions,
+  job: JobRecord,
+  evidence: string,
+): DaemonJobResult {
+  opts.store.appendEvent({
+    evidence,
+    jobId: job.item.id,
+    reason: "daemon run failed",
+    type: "daemon-error",
+  });
+  opts.store.updateJobStatus({
+    attemptsLeft: 0,
+    jobId: job.item.id,
+    status: "FAILED",
+    worktreePath: job.worktreePath,
+  });
+  return { finalStatus: "FAILED", jobId: job.item.id, status: "failed" };
 }
 
 function persistWorktreePath(store: JobStore, job: JobRecord, worktreePath: string): JobRecord {
