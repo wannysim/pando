@@ -22,13 +22,13 @@ stages:
       IMPLEMENT_JIRA_BATCH: "1"
 
   test:
-    engine: codex
-    model: gpt-5-codex
+    engine: claude-code
+    model: sonnet
     skill: test-writer
 
   impl:
-    engine: codex
-    model: gpt-5-codex
+    engine: claude-code
+    model: sonnet
 
   review:
     engine: claude-code
