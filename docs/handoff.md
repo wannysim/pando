@@ -58,7 +58,7 @@
 | W2-C: 상태 저장/운영 루프 | ✅ 완료(기본형) | SQLite jobs/events/repos, runner persistence hook/resume, 초기 단일 in-flight daemon loop, `agentctl submit/show/retry` handler. W4에서 병렬 tick으로 확장됨 |
 | W3: brief 경로 | ✅ 완료 | brief intake/template/loader, personal-site 프로파일 SPEC E2E, `agentctl submit brief` 연결 |
 | W4: n×n 병렬 | ✅ 완료 | global/per-repo/per-provider 세마포어, 포트/캐시/env 격리, 병렬 daemon tick. PR #13 `feat: add parallel scheduler loop` |
-| W5: 통제·운영 | ✅ 완료 예정 | PR #17 safety gates, lifecycle, review telemetry, Hono API, operational CLI, minimal dashboard를 develop에 반영했다. PR 7은 single-container Docker skeleton과 deterministic two-job smoke fallback 계약을 고정한다 |
+| W5: 통제·운영 | ✅ 완료 | PR #17 safety gates부터 PR #25 Docker smoke deployment skeleton까지 develop 반영 완료. 로컬 Docker Desktop에서 image build, compose 기동, `/health`, `/dashboard`, `/briefs`, `/jobs` smoke 확인 완료 |
 
 ## 코드 현황
 
@@ -86,12 +86,22 @@
 - `src/api/app.ts`, `src/server.ts` — W5 PR 7에서 production static dashboard serving을 `/dashboard` 아래로 고정하고, Hono API/SQLite store/static dashboard를 같은 Node server entrypoint로 묶었다. `/health`, `/jobs`, `/briefs` 같은 API route는 JSON route로 유지되어 SPA fallback과 충돌하지 않는다
 - `deploy/`, `config/orchestrator.docker.yaml` — W5 PR 7에서 single-container Dockerfile/compose skeleton을 추가했다. mount contract는 SQLite `/data/pando.sqlite`, repos `/repos`, worktrees `/worktrees`, config `/config`, skills `/skills`, HTTP `3210`, dashboard root `/app/dashboard/dist`
 - `smoke/two-job-smoke.contract.json`, `scripts/two-job-smoke.mjs`, `docs/runbooks/two-job-smoke.md` — W5 PR 7에서 2-job smoke의 global cap 2~3, worktree collision check, provider cap check, gate evidence check, deterministic fake fallback reason 기록을 테스트 가능한 계약으로 고정했다
-- 검증: `pnpm verify` 통과(2026-06-06, PR #17 기준 21 files / 132 tests, coverage all statements 94.19% / branches 87.63% / functions 97.81% / lines 95.74%. `pipeline/gates` statements 97.41%, scheduler statements 98.38%).
+- 검증: `pnpm verify` 통과(2026-06-06, PR #25 기준 27 files / 182 tests, coverage all statements 92.69% / branches 85.60% / functions 96.33% / lines 93.81%). 로컬 Docker Desktop에서 `docker compose -f deploy/docker-compose.yml up --build -d` 성공, container health `healthy`, `/health` JSON 200, `/dashboard` HTML 200, dashboard JS asset 200, `/briefs` enqueue + `/jobs` list 200 확인 후 `docker compose ... down -v`로 정리.
 - 공개 repo hygiene: `tests/` 표면(`describe`/`it`, fixture 문구)은 영어로 정리. 실제 회사 티켓 키는 커밋하지 않고 `DEMO-1234` 같은 가상 키만 사용. `docs/`는 작업자용이라 한글 유지 허용
 
-**다음 세션 시작점 — W6 후보 정리 또는 첫 live smoke.**
+**다음 세션 시작점 — live worker smoke 또는 W6 후보 착수.**
 
-W5 PR #17(safety gate contracts)부터 PR 7(Docker and smoke)까지 develop 반영이 끝나면 W5의 최소 운영 준비는 닫힌다. 다음 세션은 Docker daemon이 실행 가능한 환경에서 `docs/runbooks/two-job-smoke.md` 기준 live Claude/Codex 2-job smoke를 먼저 시도한다. 인증/비용/마운트 조건이 부족하면 `pnpm smoke:two-job -- --mode fake --evidence /tmp/pando-two-job-smoke-fake.json`로 deterministic fallback evidence를 남기고, W6 범위(3~5 job soak, auth hardening, notifications, GitHub/Jira write-back 후보)를 정리한다.
+W5의 최소 운영 준비는 닫혔다. 다음 세션에서 가장 먼저 결정할 것은 **실제 Claude/Codex worker를 컨테이너 안에서 돌릴지, 로컬 호스트 daemon으로 먼저 live smoke할지**다. Docker HTTP/API/static smoke는 완료됐지만, live 2-job worker smoke는 아직 인증/CLI 설치/비용 조건을 갖춘 뒤 별도로 수행해야 한다.
+
+## 남아있는 작업
+
+1. **Live worker smoke** — global 2~3으로 제한하고 Claude/Codex auth, worker CLI availability, repo/worktree/config/skills mount를 갖춘 뒤 실제 2-job smoke를 수행한다. 성공 기준은 worktree 충돌 없음, provider cap 준수, deterministic gate evidence 기록이다.
+2. **Docker worker readiness** — 현재 single-container image는 Node daemon/API/static dashboard skeleton을 검증했다. 컨테이너 내부 Claude/Codex CLI 설치 방식, API key/auth volume, git credentials, Atlassian connector/API token fallback은 별도 smoke가 필요하다.
+3. **Gate adapter 연결** — checksum/diff/workspace scoping의 순수 계약은 완료됐지만, 실제 git diff/checksum 수집 adapter와 exit-code command scoping 연결은 후속 작업에서 필요 시 붙인다.
+4. **Release branch routing** — Jira `fixVersion` 기반 `release/*` base branch 매핑과 `WorkItem.baseBranch` override는 미해결이다.
+5. **W6 운영 확장 후보** — 3~5 job soak/nightly run, notifications, failure analytics, provider backoff, GitHub Issue/Jira write-back, auth hardening, Docker egress policy, split containers는 아직 범위 밖이다.
+
+새 세션에 그대로 전달할 상세 프롬프트는 `docs/next-session-prompt.md`에 있다.
 
 W4 완료 판정:
 - ✅ scheduler/semaphore 계약: global / per-repo / per-provider cap 테스트 완료
@@ -100,8 +110,8 @@ W4 완료 판정:
 - ✅ worktree isolation: job별 port/cache/env를 provision/setup/runner에 전달
 - ✅ acceptance 검증: fake engine + deterministic gate 성격의 unit/integration tests. 실제 Claude/Codex CLI 실행은 W4 본 구현 acceptance에서 제외
 
-W4에서 의도적으로 남긴 것:
-- 실제 Claude/Codex live smoke는 아직 안 함. W5 착수 직전 또는 W5 초반에 global 2~3으로 낮춰 2개 job smoke를 별도 실행한다
+W4/W5에서 의도적으로 남긴 것:
+- 실제 Claude/Codex worker live smoke는 아직 안 함. Docker HTTP/API/static smoke와 deterministic fake two-job smoke는 완료됐고, live worker smoke는 인증/CLI/비용 조건을 갖춘 뒤 global 2~3으로 별도 실행한다
 - Jira `fixVersion` 기반 release branch 매핑과 `WorkItem.baseBranch` override는 별도 ADR/후속 작업
 - monorepo 변경 workspace/file gate scoping의 순수 계약은 W5 PR #17에서 완료. 실제 git diff 수집/command scoping adapter 연결은 후속 작업에서 필요 시 진행
 - GitHub Issue intake/write-back, Stacked PR 자동화, provider별 정교한 backoff는 아직 범위 밖
@@ -112,7 +122,7 @@ W5 우선순위(TDD):
 3. ✅ **Review separation + telemetry** — REVIEW 단계가 IMPL과 다른 모델/엔진 설정을 쓰는 계약, cost/duration/failure reason event schema를 테스트로 고정했다
 4. ✅ **Hono API + Operational CLI** — `/health`, `/jobs`, retry/cancel/cleanup API와 `agentctl list/cancel/cleanup/daemon` 추가
 5. ✅ **Minimal dashboard** — Vite React SPA jobs list/detail/actions/brief submit/health 완료
-6. ✅ **Docker + two-job smoke** — single-container skeleton, mount contract, static dashboard serving, deterministic fake smoke fallback 계약 완료. 실제 live smoke는 인증/비용/마운트 준비 후 global 2~3으로만 수행
+6. ✅ **Docker + two-job smoke** — single-container skeleton, mount contract, static dashboard serving, deterministic fake smoke fallback 계약 완료. 로컬 Docker image build/compose health/API/dashboard smoke 완료. 실제 live worker smoke는 인증/CLI/비용 준비 후 global 2~3으로만 수행
 
 ## 참조 문서 지도
 
@@ -123,3 +133,4 @@ W5 우선순위(TDD):
 - `docs/repo-structure.md` — 구조·인터페이스
 - `docs/engineering-standards.md` — 개발 방법론 (superpowers + agent-skills 채택분)
 - `docs/w1-runbook.md` — W1 절차 + 실행 로그
+- `docs/next-session-prompt.md` — 다음 세션용 상세 프롬프트

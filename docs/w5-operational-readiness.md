@@ -6,16 +6,17 @@
 
 W5의 목표는 "대시보드가 예쁜가"가 아니라 **실제로 여러 job을 맡겨도 현재 상태를 보고, 멈추고, 복구하고, 실패 원인을 설명할 수 있는가**다.
 
-W5 완료 조건:
+W5 완료 조건과 현재 상태:
 
-- queue / in-flight / terminal job을 한눈에 볼 수 있다.
-- failed / escalated job의 실패 원인과 evidence를 추적할 수 있다.
-- cancel / retry / cleanup을 CLI와 API에서 같은 방식으로 실행할 수 있다.
-- IMPL 단계가 TEST 단계 산출물과 금지 경로를 훼손하면 deterministic gate가 막는다.
-- REVIEW 단계가 IMPL과 다른 엔진/모델로 실행된다는 계약이 테스트로 고정돼 있다.
-- 비용과 duration이 stage/event 단위로 기록된다.
-- 최소 웹 대시보드에서 list/detail/action/brief submit만 동작한다.
-- 실제 Claude/Codex smoke는 global 2~3으로 낮춰 2개 job만 돌려 worktree/provider cap/게이트 기록을 확인한다.
+- ✅ queue / in-flight / terminal job을 CLI/API/dashboard에서 볼 수 있다.
+- ✅ failed / escalated job의 실패 원인과 evidence를 events payload로 추적할 수 있다.
+- ✅ cancel / retry / cleanup을 CLI와 API에서 같은 방식으로 실행할 수 있다.
+- ✅ IMPL 단계가 TEST 단계 산출물과 금지 경로를 훼손하면 deterministic gate가 막는 순수 계약을 테스트로 고정했다.
+- ✅ REVIEW 단계가 IMPL과 다른 엔진/모델로 실행된다는 계약이 테스트로 고정돼 있다.
+- ✅ 비용과 duration이 stage/event 단위로 기록된다.
+- ✅ 최소 웹 대시보드에서 list/detail/action/brief submit/health가 동작한다.
+- ✅ single-container Docker image build, compose 기동, health/API/static dashboard smoke를 로컬 Docker Desktop에서 확인했다.
+- ⬜ 실제 Claude/Codex worker smoke는 global 2~3으로 낮춰 2개 job만 돌려 worktree/provider cap/게이트 기록을 확인해야 한다. Docker HTTP smoke와 deterministic fake smoke는 완료됐지만, live worker smoke는 인증/CLI/비용 준비 후 별도로 수행한다.
 
 ## W5에서 하지 않는 것
 
@@ -39,7 +40,7 @@ W5 완료 조건:
 | Dashboard | minimal React SPA list/detail/actions | charts, filters, batch actions |
 | Deployment | single daemon container + static dashboard | split web/API containers only if needed |
 | Intake/reporting | brief submit, existing jira submit path | GitHub Issue write-back, Jira state transitions |
-| Live validation | 2-job smoke with lowered global cap | 3~5 job soak, nightly run |
+| Live validation | Docker HTTP/API/static smoke + deterministic fake 2-job smoke. Live worker 2-job smoke는 인증/CLI/비용 준비 후 수행 | 3~5 job soak, nightly run |
 
 ## 테스트 시나리오 매트릭스
 
@@ -76,7 +77,8 @@ Coverage 숫자는 W4 기준 충분하지만, W5는 "운영 유즈케이스" 기
 | per-repo cap | same repo over cap | later job remains queued | unit |
 | provider cap | confluence cap 1 | second confluence job waits | unit |
 | brief-only provider | no context providers | no MCP provider slot consumed | unit |
-| live smoke | 2 real jobs, global 2~3 | no worktree collision, events recorded | manual smoke |
+| Docker smoke | single container, dashboard build | `/health`, `/dashboard`, static asset, brief enqueue/list OK | manual smoke |
+| live worker smoke | 2 real jobs, global 2~3 | no worktree collision, provider cap respected, gate evidence recorded | manual smoke |
 
 ### 4. API And CLI
 
@@ -212,8 +214,26 @@ pando container
 주의:
 
 - Claude managed connector 상속은 Docker에서 가장 위험한 부분이다. API key mode 또는 auth volume smoke가 필요하다.
+- PR #25 기준 Docker image는 Node daemon/API/static dashboard skeleton까지 검증했다. 컨테이너 내부에서 실제 Claude/Codex worker를 실행하려면 CLI 설치 방식, API key/auth volume, git credentials, Atlassian connector/API token fallback을 별도로 확정해야 한다.
 - 회사 코드가 홈서버/컨테이너 볼륨에 올라가는 정책 리스크는 별도 확인이 필요하다.
 - Docker egress 제한, split web/API container, queue 외부화는 W6 이후다.
+
+### Docker Smoke Result
+
+2026-06-06 로컬 Docker Desktop에서 아래 smoke를 확인했다.
+
+```bash
+docker compose -f deploy/docker-compose.yml up --build -d
+curl -fsS http://127.0.0.1:3210/health
+curl -fsSI http://127.0.0.1:3210/dashboard
+curl -fsS -X POST http://127.0.0.1:3210/briefs \
+  -H 'content-type: application/json' \
+  -d '{"id":"docker-smoke-1","repo":"pando","title":"Docker smoke"}'
+curl -fsS http://127.0.0.1:3210/jobs
+docker compose -f deploy/docker-compose.yml down -v
+```
+
+결과: image build 성공, compose container `healthy`, `/health` 200 JSON, `/dashboard` 200 HTML, dashboard JS asset 200, `/briefs` enqueue와 `/jobs` list 200.
 
 ## Stacked PR Roadmap
 
@@ -235,22 +255,23 @@ W5는 한 PR로 처리하지 않는다.
    - injected clock 기반 stage duration/cost/failure event schema
    - `agentctl show` event rendering 보강
    - Hono API/dashboard/Docker는 범위 밖으로 유지
-4. ⬅️ **PR 4: Hono API foundation**
+4. ✅ **PR 4: Hono API foundation**
    - `/health`, `/jobs`, `/jobs/:id`, retry/cancel endpoints
    - CLI API client 전환의 시작
-5. **PR 5: operational CLI**
+5. ✅ **PR 5: operational CLI**
    - `list`, `cancel`, `cleanup`, `daemon` commands
    - `watch`는 가능하면 여기서, 아니면 dashboard PR로 미룸
-6. **PR 6: minimal dashboard**
+6. ✅ **PR 6: minimal dashboard**
    - Vite React SPA
    - shadcn/ui primitive 기반 운영 UI
    - jobs list/detail/actions/brief submit/health
    - Vitest component/client tests + Playwright smoke 1개
-7. **PR 7: Docker and smoke**
+7. ✅ **PR 7: Docker and smoke**
    - single-container Dockerfile/compose skeleton
-   - 2-job live smoke runbook
+   - 2-job smoke contract/runbook/fake fallback
+   - local Docker image build + health/API/static dashboard smoke
 
-W5가 길어지면 PR 6~7은 W6로 넘긴다. 그 경우 W5 완료 기준은 safety gates + API/CLI 운영성까지로 둔다.
+W5는 PR #25 기준 완료됐다. 남은 live worker smoke와 W6 후보는 별도 PR로 다룬다.
 
 ## W5 착수 순서
 
@@ -258,6 +279,8 @@ W5가 길어지면 PR 6~7은 W6로 넘긴다. 그 경우 W5 완료 기준은 saf
 2. ✅ checksum/diff gate를 순수 계층으로 구현한다.
 3. ✅ cancel/cleanup 상태와 DB 계약을 고정한다.
 4. ✅ REVIEW 분리와 telemetry event schema를 고정한다.
-5. ⬅️ API response schema를 만든다.
-6. CLI를 API client로 점진 이행한다.
-7. dashboard는 API가 안정된 뒤 최소 화면만 만든다.
+5. ✅ API response schema를 만든다.
+6. ✅ CLI를 API client로 점진 이행한다.
+7. ✅ dashboard는 API가 안정된 뒤 최소 화면만 만든다.
+8. ✅ single-container Docker skeleton과 HTTP/API/static smoke를 확인한다.
+9. ⬜ 실제 Claude/Codex live worker smoke를 인증/CLI/비용 준비 후 global 2~3으로 실행한다.

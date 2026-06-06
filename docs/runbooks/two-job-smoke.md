@@ -12,6 +12,23 @@ W5 PR 7 keeps live validation intentionally small: exactly two jobs, with global
 - Skills are mounted read-only at `/skills`.
 - Claude and Codex authentication are available through API keys or auth volumes.
 
+## Docker HTTP smoke
+
+Before live workers, verify the single-container deployment shape:
+
+```bash
+docker compose -f deploy/docker-compose.yml up --build -d
+curl -fsS http://127.0.0.1:3210/health
+curl -fsSI http://127.0.0.1:3210/dashboard
+curl -fsS -X POST http://127.0.0.1:3210/briefs \
+  -H 'content-type: application/json' \
+  -d '{"id":"docker-smoke-1","repo":"pando","title":"Docker smoke"}'
+curl -fsS http://127.0.0.1:3210/jobs
+docker compose -f deploy/docker-compose.yml down -v
+```
+
+2026-06-06 result: image build passed, compose container became `healthy`, `/health` returned JSON 200, `/dashboard` and dashboard static assets returned 200, and brief enqueue/list returned 200.
+
 ## Live checks
 
 1. Submit exactly two jobs.
