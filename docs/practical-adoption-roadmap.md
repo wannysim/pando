@@ -20,6 +20,7 @@
 - dashboard brief submit은 여전히 "brief 파일 경로" 중심이다. 사용자가 웹에 자연어 요청과 spec/doc 참고를 넣으면 pando가 canonical brief를 만들고 queue에 넣는 UX가 아니다.
 - pando self-dogfood는 가능해졌지만, prompt/schema/tooling을 여러 번 손봐야 했다. 자가개발을 안정적으로 반복하려면 worker stage observability와 UX가 더 필요하다.
 - Docker image 안에는 `claude`/`codex` CLI와 auth volume이 없다.
+- npm 배포 경로가 없다. CLI는 `pandoctl`로 점유했지만(ADR-010), 사용자가 `npm i -g pandoctl`로 설치해 `pandoctl start`/`pandoctl list`를 쓰는 경로는 미구현이다. 명령 표면도 `pando`/`pandoctl`/`agentctl`로 갈려 있고, 빌드 단계와 `better-sqlite3` native 의존성 처리가 남아 있다. → PR 10.
 
 따라서 다음 목표는 "새 기능 확장"이 아니라 **자가개발을 사람이 다시 돌리고 싶을 만큼 단순하게 만드는 것**이다. 우선순위는 one-command local run → web inline brief intake → docs/README parity → dashboard/agentctl review follow-up → Docker worker readiness 순서다.
 
@@ -246,6 +247,34 @@ Follow-up:
   - Docker live worker smoke를 실행하지 못하면 이유와 최소 다음 작업이 명확하다.
 - Commit:
   - `chore(docker): document worker readiness path`
+
+### PR 10: pandoctl npm distribution
+
+- Focus: Distribution
+- Depends on: PR 7 one-command local run(#41, `pando start` 머지됨), CLI name 결정(ADR-010 / #46)
+- Files:
+  - `packages/pandoctl/package.json`
+  - `src/cli/pando.ts`, `src/cli/agentctl.ts` (또는 통합 entrypoint)
+  - 빌드 설정 (tsdown/tsup 등) + `package.json`
+  - `docs/runbooks/local-pando-runner.md`, `README*`
+  - CLI/bin tests
+- 맥락:
+  - npm의 `pando`는 외부에 선점됨 → 배포 바이너리는 `pandoctl`이다(ADR-010, placeholder `pandoctl@0.0.1` #43).
+  - 현재 명령 표면이 셋으로 갈려 있다: `pando start`(데몬 부트스트랩, `src/cli/pando.ts`, 로컬 `bin/pando.mjs` shim·private) · `pnpm pandoctl <ops>`(ops 클라이언트 alias → `src/cli/agentctl.ts`, #46) · 내부 식별자 `agentctl`. 배포 시 `pando` bin은 publish되지 않으므로(루트 private) 이걸 정리해야 한다.
+- Work:
+  - **명령 표면 통합** — published 바이너리는 `pandoctl` 하나. `pandoctl start`(현 `pando start`) + `pandoctl submit/list/show/retry/cancel/cleanup`(현 agentctl)을 한 바이너리의 서브커맨드로 합친다. 로컬 `pando`/`pandoctl` 이원화를 해소한다.
+  - **빌드 단계** — 지금은 `tsx`로 TS 직접 실행. 배포 패키지는 컴파일/번들된 JS + shebang bin을 담는다.
+  - **`bin.pandoctl` 재연결** — `packages/pandoctl/package.json`의 bin을 placeholder stub → 빌드된 통합 진입점으로 교체.
+  - **native 의존성 처리** — `better-sqlite3`는 native 모듈이라 글로벌 설치 시 prebuilt/node-gyp가 필요. 번들+prebuild로 갈지, sqlite 어댑터를 순수 JS로 교체할지 결정(ADR-001과 엮임 → 필요 시 새 ADR).
+  - **실제 버전 publish** — `0.1.0`을 placeholder `0.0.1` 위에 publish.
+- Acceptance:
+  - `npm i -g pandoctl` (또는 `npx pandoctl`) 후 `pandoctl start` / `pandoctl list`가 동작한다.
+  - 글로벌 설치가 native dep 빌드 실패 없이 끝난다(또는 실패 시 구조화된 이유와 다음 작업이 명확하다).
+  - placeholder 시절 alias(`pnpm pandoctl`, `pando start`)와의 차이가 README/runbook에 일관되게 설명된다.
+  - `pnpm verify` 통과.
+- Commit:
+  - `feat(cli): unify command surface under pandoctl`
+  - `chore(release): publish pandoctl 0.1.0`
 
 ## Dashboard UX 기준
 
