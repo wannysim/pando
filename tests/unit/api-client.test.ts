@@ -70,6 +70,42 @@ describe("Pando API client", () => {
     });
   });
 
+  it("submits an inline brief through the client", async () => {
+    const writes: Array<{ content: string; path: string }> = [];
+    const app = createPandoApiApp({
+      briefMaterializer: {
+        inboxRoot: "/tmp/pando-inbox",
+        writer: {
+          async writeBrief(path, content) {
+            writes.push({ content, path });
+          },
+        },
+      },
+      store: new ClientMemoryStore([]),
+    });
+    const client = createPandoApiClient({
+      baseUrl: "http://pando.local",
+      fetch: appFetch(app),
+    });
+
+    await expect(
+      client.submitBrief({
+        brief: {
+          title: "Inline footer fix",
+          body: "Make the footer year dynamic.",
+          acceptanceCriteria: ["The footer shows the current year."],
+          assets: ["src/footer.tsx"],
+        },
+        id: "inline-footer",
+        repo: "pando",
+      }),
+    ).resolves.toMatchObject({
+      job: { jobId: "inline-footer", source: "brief", status: "QUEUED" },
+    });
+    expect(writes).toHaveLength(1);
+    expect(writes[0]?.content).toContain("# Inline footer fix");
+  });
+
   it("raises stable API errors with status and code", async () => {
     const app = createPandoApiApp({ store: new ClientMemoryStore([]) });
     const client = createPandoApiClient({

@@ -1,4 +1,4 @@
-import type { Gate, GateResult } from "../../core/types";
+import type { Gate, GateContext, GateResult } from "../../core/types";
 import { isTestFilePath, matchesPath, normalizeGitPath } from "./checksum";
 
 export type DiffStatus = "added" | "modified" | "deleted" | "renamed";
@@ -18,6 +18,17 @@ export interface DiffRulesInput {
 export interface DiffRulesGateOptions {
   changes: readonly DiffChange[];
   protectedPaths?: readonly string[];
+}
+
+export type CollectChangesPort = (
+  worktree: string,
+  baseRef: string,
+) => Promise<readonly DiffChange[]>;
+
+export interface WorktreeDiffRulesGateOptions {
+  collectChanges: CollectChangesPort;
+  protectedPaths?: readonly string[];
+  baseRefFor?: (ctx: GateContext) => string;
 }
 
 export interface WorkspaceDescriptor {
@@ -63,6 +74,25 @@ export function createDiffRulesGate(opts: DiffRulesGateOptions): Gate {
       });
     },
   };
+}
+
+export function createWorktreeDiffRulesGate(opts: WorktreeDiffRulesGateOptions): Gate {
+  const baseRefFor = opts.baseRefFor ?? defaultBaseRef;
+  return {
+    name: "diff-rules",
+    async check(ctx) {
+      const changes = await opts.collectChanges(ctx.worktree, baseRefFor(ctx));
+      return evaluateDiffRules({
+        changes,
+        forbidTestEditInImpl: ctx.profile.guards.forbidTestEditInImpl,
+        protectedPaths: opts.protectedPaths ?? [],
+      });
+    },
+  };
+}
+
+function defaultBaseRef(ctx: GateContext): string {
+  return `origin/${ctx.profile.baseBranch}`;
 }
 
 export function evaluateDiffRules(input: DiffRulesInput): GateResult {

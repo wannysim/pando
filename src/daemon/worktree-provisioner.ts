@@ -1,3 +1,4 @@
+import { resolveBaseBranch } from "../core/base-branch";
 import { packageCommand } from "../core/config";
 import type { RepoProfile } from "../core/types";
 import { createWorktreeIsolation } from "./worktree-isolation";
@@ -29,7 +30,7 @@ export function createWorktreeProvisioner(opts: WorktreeProvisionerOptions): Wor
           profile: input.profile,
         });
       const result = await ensureWorktree({
-        baseBranch: input.profile.baseBranch,
+        baseBranch: resolveBaseBranch({ item: input.item, profile: input.profile }),
         branch: input.branch,
         envFiles: input.profile.envFiles,
         repoPath: input.profile.path,

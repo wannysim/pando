@@ -36,9 +36,9 @@ usage는 인자 없이, 또는 `help`/`--help`로 본다.
 pnpm pando help
 ```
 
-### Global `pando` command
+### Global `pando` / `pandoctl` commands
 
-repo 안에서 매번 `pnpm pando`를 치는 대신 전역 `pando` 명령으로 만들 수 있다.
+repo 안에서 매번 `pnpm pando` / `pnpm pandoctl`을 치는 대신 전역 명령으로 만들 수 있다. 이 repo의 `package.json` `bin`은 두 명령을 모두 노출한다 — `pando`(데몬 부트스트랩)와 `pandoctl`(운영 CLI).
 
 ```bash
 # repo 안에서 한 번 실행
@@ -47,11 +47,13 @@ pnpm link --global
 npm i -g .
 
 # 이후 어디서든
-pando start
+pando start            # 로컬 daemon/dashboard 부트스트랩
 pando help
+pandoctl list          # 운영 CLI (submit/list/show/retry/cancel/cleanup/...)
+pandoctl show <id>
 ```
 
-> 참고: bare 이름 `pando`는 이미 public npm registry에 점유돼 있다. 따라서 향후 공개 배포를 하려면 scoped/대체 이름(예: `@pando/cli`)이 필요하다. 이는 위 local self-dogfood 사용에는 영향을 주지 않는다 — `pnpm link --global` / `npm i -g .`는 이 repo의 `package.json` `bin`을 그대로 링크하기 때문이다.
+> 참고: bare 이름 `pando`는 이미 public npm registry에 점유돼 있다(ADR-010). 그래서 **배포되는 CLI 이름은 `pandoctl`**이고, npm에 placeholder로 예약돼 있다(#43). 위 `pnpm link --global` / `npm i -g .`는 이 repo의 `package.json` `bin`(`pando`+`pandoctl`)을 그대로 링크하므로 local self-dogfood에 바로 쓸 수 있다. 빌드/번들된 `pandoctl` npm 패키지 publish는 별도 작업이다(roadmap PR 10).
 
 ## Start local pando (manual env path)
 
@@ -104,7 +106,7 @@ PANDO_DB="$ROOT/pando.sqlite" \
   --brief-path briefs/pando-small-task/brief.md
 ```
 
-> CLI는 `pandoctl`이다 (npm 예약 이름; `pnpm pandoctl`은 `tsx src/cli/agentctl.ts`를 호출하는 package script). bin으로 묶이기 전까지 로컬 진입점은 이 script다.
+> CLI는 `pandoctl`이다 (ADR-010, npm 예약 이름). `bin/pandoctl.mjs`가 운영 CLI(`src/cli/agentctl.ts`)를 tsx로 실행하며, `pnpm pandoctl ...` / 전역 `pandoctl ...` / `pnpm tsx src/cli/agentctl.ts ...`는 모두 같은 진입점이다. 내부 모듈 이름은 ADR-010에 따라 당분간 `agentctl`로 유지한다.
 
 현재 dashboard submit도 같은 모델이다. 즉 "brief 파일 경로"를 이미 만들어 둔 뒤 queue에 넣는다. 제품 UX 목표는 웹에서 자연어 작업 설명, 참고할 spec/docs/assets path를 입력하면 pando가 canonical `brief.md`를 생성하고 queue에 넣는 것이다. file-path submit은 advanced/debug path로 남긴다.
 

@@ -31,8 +31,21 @@ export interface CancelJobRequest {
   reason?: string;
 }
 
+export interface InlineBriefInput {
+  title?: string;
+  goal?: string;
+  userStory?: string;
+  acceptanceCriteria?: string[];
+  screensOrBehavior?: string;
+  nonGoals?: string[];
+  assets?: string[];
+  openQuestions?: string[];
+  body?: string;
+}
+
 export interface SubmitBriefRequest {
   branch?: string;
+  brief?: InlineBriefInput;
   briefPath?: string;
   id: string;
   repo: string;

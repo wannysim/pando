@@ -33,6 +33,33 @@ describe("runAgentctl", () => {
     expect(output).toEqual(["queued DEMO-3001"]);
   });
 
+  it("maps --fix-version and --base-branch onto the jira work item", async () => {
+    const store = new AgentctlMemoryStore();
+
+    const exitCode = await runAgentctl(
+      [
+        "submit",
+        "jira",
+        "DEMO-3001",
+        "--repo",
+        "web",
+        "--fix-version",
+        "1.0",
+        "--base-branch",
+        "release/9.9",
+      ],
+      { store },
+    );
+
+    expect(exitCode).toBe(0);
+    expect(store.jobs.get("DEMO-3001")).toMatchObject({
+      item: {
+        baseBranch: "release/9.9",
+        payload: { fixVersion: "1.0", kind: "jira", ticketKey: "DEMO-3001" },
+      },
+    });
+  });
+
   it("uses safe defaults for jira title and retry budget", async () => {
     const store = new AgentctlMemoryStore();
 

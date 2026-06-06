@@ -27,7 +27,9 @@ describe("worktree path helpers", () => {
   });
 });
 
-describe("ensureWorktree", () => {
+// Real-git integration: bare repo init + clone + worktree add can exceed the
+// 5s default under parallel coverage load, so give this suite a wider timeout.
+describe("ensureWorktree", { timeout: 30_000 }, () => {
   it("creates a daemon-mode worktree from the origin base without touching the source checkout", async () => {
     const repo = await createRepo();
     const beforeBranch = await git(repo.path, ["rev-parse", "--abbrev-ref", "HEAD"]);

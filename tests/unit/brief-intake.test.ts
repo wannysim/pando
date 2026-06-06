@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   BRIEF_TEMPLATE,
+  composeBriefMarkdown,
   createBriefIntakeGate,
   loadBriefWorkItem,
   validateBriefMarkdown,
@@ -146,6 +147,54 @@ describe("brief intake", () => {
     expect(result.pass).toBe(false);
     expect(result.reason).toBe("brief.md schema validation failed");
     expect(result.evidence).toContain("brief.md must contain a Goal section");
+  });
+
+  it("composes a canonical, schema-valid brief.md from structured fields", () => {
+    const markdown = composeBriefMarkdown({
+      title: "Refresh home page",
+      goal: "Make the home page clearly present the current consulting offer.",
+      userStory: "As a visitor, I want to understand the offer and contact the owner quickly.",
+      acceptanceCriteria: [
+        "The hero names the offer.",
+        "The contact CTA is visible above the fold.",
+      ],
+      screensOrBehavior: "Use a quiet editorial layout with a compact contact section.",
+      nonGoals: ["Do not add a blog migration."],
+      assets: ["assets/home-reference.png", "docs/spec.md"],
+      openQuestions: ["None"],
+    });
+
+    expect(validateBriefMarkdown(markdown).valid).toBe(true);
+    expect(markdown).toContain("# Refresh home page");
+    expect(markdown).toContain("- [ ] The hero names the offer.");
+    expect(markdown).toContain("- assets/home-reference.png");
+    expect(markdown).toContain("- docs/spec.md");
+
+    const item = composeBriefMarkdown({
+      title: "Refresh home page",
+      goal: "Make the home page clearly present the current consulting offer.",
+      userStory: "As a visitor, I want to understand the offer and contact the owner quickly.",
+      acceptanceCriteria: ["The hero names the offer."],
+      screensOrBehavior: "Use a quiet editorial layout.",
+      nonGoals: ["Do not add a blog migration."],
+      assets: [],
+      openQuestions: [],
+    });
+    expect(item).toContain("## Assets\n\n- None");
+    expect(item).toContain("## Open Questions\n\n- None");
+  });
+
+  it("composes a brief from a freeform body while filling required sections", () => {
+    const markdown = composeBriefMarkdown({
+      title: "Quick fix",
+      body: "Just make the footer year dynamic. It should read the current year.",
+      acceptanceCriteria: ["The footer shows the current year."],
+      assets: ["src/footer.tsx"],
+    });
+
+    expect(validateBriefMarkdown(markdown).valid).toBe(true);
+    expect(markdown).toContain("Just make the footer year dynamic.");
+    expect(markdown).toContain("- src/footer.tsx");
   });
 
   it("surfaces [Blocker] open questions through a deterministic SPEC gate", async () => {

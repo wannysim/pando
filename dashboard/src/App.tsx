@@ -147,8 +147,108 @@ export function DashboardApp({ client }: DashboardAppProps) {
         />
       </section>
 
+      <InlineBriefPanel client={client} onSubmitted={() => void refresh()} />
       <BriefSubmitPanel client={client} onSubmitted={() => void refresh()} />
     </main>
+  );
+}
+
+function InlineBriefPanel({
+  client,
+  onSubmitted,
+}: {
+  client: PandoApiClient;
+  onSubmitted: () => void;
+}) {
+  const [repo, setRepo] = useState("");
+  const [id, setId] = useState("");
+  const [title, setTitle] = useState("");
+  const [body, setBody] = useState("");
+  const [references, setReferences] = useState("");
+  const [errors, setErrors] = useState<string[]>([]);
+  const [submitted, setSubmitted] = useState<string | null>(null);
+
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const nextErrors = [
+      repo.trim().length === 0 ? "Repo is required" : null,
+      id.trim().length === 0 ? "ID is required" : null,
+      body.trim().length === 0 ? "Describe what to build" : null,
+    ].filter((value): value is string => value !== null);
+    setErrors(nextErrors);
+    if (nextErrors.length > 0) return;
+
+    const assets = references
+      .split("\n")
+      .map((line) => line.trim())
+      .filter((line) => line.length > 0);
+
+    const response = await client.submitBrief({
+      brief: {
+        assets: assets.length > 0 ? assets : undefined,
+        body: body.trim(),
+        title: optionalField(title),
+      },
+      id: id.trim(),
+      repo: repo.trim(),
+    });
+    setSubmitted(`queued ${response.job.jobId}`);
+    onSubmitted();
+  }
+
+  return (
+    <section className="submit-panel" aria-labelledby="inline-heading">
+      <div className="panel-header">
+        <div>
+          <p className="eyebrow">Intake</p>
+          <h2 id="inline-heading">Describe a task</h2>
+        </div>
+      </div>
+      <form className="brief-form" onSubmit={(event) => void submit(event)}>
+        <label>
+          <span>Task repo</span>
+          <input value={repo} onChange={(event) => setRepo(event.target.value)} />
+        </label>
+        <label>
+          <span>Task ID</span>
+          <input value={id} onChange={(event) => setId(event.target.value)} />
+        </label>
+        <label>
+          <span>Task title</span>
+          <input value={title} onChange={(event) => setTitle(event.target.value)} />
+        </label>
+        <label>
+          <span>What to build</span>
+          <textarea
+            rows={4}
+            value={body}
+            onChange={(event) => setBody(event.target.value)}
+            placeholder="Describe the change in plain language."
+          />
+        </label>
+        <label>
+          <span>References (one per line)</span>
+          <textarea
+            rows={3}
+            value={references}
+            onChange={(event) => setReferences(event.target.value)}
+            placeholder="spec/docs/asset paths, one per line"
+          />
+        </label>
+        <button type="submit">
+          <Send size={16} aria-hidden="true" />
+          Describe task
+        </button>
+      </form>
+      {errors.length === 0 ? null : (
+        <ul className="form-errors">
+          {errors.map((formError) => (
+            <li key={formError}>{formError}</li>
+          ))}
+        </ul>
+      )}
+      {submitted === null ? null : <p className="success-note">{submitted}</p>}
+    </section>
   );
 }
 
