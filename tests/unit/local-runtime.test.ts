@@ -153,6 +153,29 @@ describe("local runtime helpers", () => {
     expect(buildLocalPipelinePrompt("PLAN", context)).toContain("## Open Questions");
   });
 
+  it("keeps TEST and IMPL prompts bounded to direct worktree edits", () => {
+    const context = {
+      item: {
+        id: "DEMO-1",
+        payload: { briefPath: "/brief.md", kind: "brief" as const },
+        repo: "pando",
+        source: "brief" as const,
+        title: "Demo",
+      },
+      profile: repoProfile("/repo"),
+      worktree: "/worktree",
+    };
+
+    expect(buildLocalPipelinePrompt("TEST", context)).toContain(
+      "Edit files directly in this worktree; do not spawn subagents.",
+    );
+    expect(buildLocalPipelinePrompt("TEST", context)).toContain("relevant test change");
+    expect(buildLocalPipelinePrompt("IMPL", context)).toContain(
+      "Edit files directly in this worktree; do not spawn subagents.",
+    );
+    expect(buildLocalPipelinePrompt("IMPL", context)).toContain("implementation change");
+  });
+
   it("builds PR prompts with base branch context and omits brief paths for non-brief work", () => {
     const prompt = buildLocalPipelinePrompt("PR", {
       item: {
