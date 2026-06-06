@@ -5,9 +5,9 @@
 ## Preconditions
 
 - `pnpm install` 완료
-- `claude`, `codex`, `gh`, `git` CLI 사용 가능
+- `claude`, `gh`, `git` CLI 사용 가능 (`codex` optional — all-Claude profile에서는 불필요)
 - `gh auth status` 통과
-- Claude/Codex auth는 로컬 auth dir 또는 API key로 준비
+- Claude auth는 로컬 auth dir 또는 API key로 준비
 - evidence나 임시 DB는 repo 밖(`/tmp` 등)에 둔다
 
 ## Start local pando
