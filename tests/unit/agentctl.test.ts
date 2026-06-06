@@ -667,6 +667,31 @@ class AgentctlApiClient implements PandoApiClient {
     };
   }
 
+  async cleanupJob(jobId: string) {
+    this.throwIfConfigured();
+    const job = this.jobFor(jobId);
+    return {
+      action: {
+        status: "cleanup_requested",
+        type: "cleanup",
+        worktreePath: job.worktreePath ?? "/worktrees/example",
+      } as const,
+      job,
+    };
+  }
+
+  async submitBrief(input: Parameters<PandoApiClient["submitBrief"]>[0]) {
+    this.throwIfConfigured();
+    return {
+      job: {
+        ...apiJob(input.id),
+        repo: input.repo,
+        source: "brief" as const,
+        title: input.title ?? input.id,
+      },
+    };
+  }
+
   private jobFor(
     jobId: string,
     overrides: { attemptsLeft?: number; status?: JobStatus } = {},

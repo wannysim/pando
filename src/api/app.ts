@@ -1,13 +1,23 @@
 import { Hono } from "hono";
 import type { Context } from "hono";
 import type { ContentfulStatusCode } from "hono/utils/http-status";
-import type { JobStatus } from "../core/types";
-import type { CancelJobInput, JobEventRecord, JobRecord, RetryJobInput } from "../db/index";
+import type { JobStatus, WorkItem } from "../core/types";
+import type {
+  CancelJobInput,
+  EnqueueJobInput,
+  JobCleanupRequest,
+  JobEventRecord,
+  JobRecord,
+  RequestJobCleanupInput,
+  RetryJobInput,
+} from "../db/index";
 import {
+  type ApiBriefSubmitResponse,
   formatStageList,
   formatStatusList,
   isJobStatus,
   isStageName,
+  type ApiJobCleanupResponse,
   toApiJobDetail,
   toApiJobEvent,
   toApiJobSummary,
@@ -21,11 +31,13 @@ import {
 } from "./schema";
 
 export interface PandoApiStore {
+  enqueueJob(input: EnqueueJobInput): JobRecord;
   listJobs(input?: { status?: JobStatus }): JobRecord[];
   getJob(jobId: string): JobRecord | undefined;
   listEvents(jobId: string): JobEventRecord[];
   retryJob(input: RetryJobInput): JobRecord;
   cancelJob(input: CancelJobInput): JobRecord;
+  requestJobCleanup(input: RequestJobCleanupInput): JobCleanupRequest;
 }
 
 export interface PandoApiOptions {
@@ -130,6 +142,36 @@ export function createPandoApiApp(opts: PandoApiOptions): Hono {
     );
   });
 
+  app.post("/jobs/:jobId/cleanup", (context) => {
+    const jobId = context.req.param("jobId");
+    requireJob(opts.store, jobId);
+    const request = opts.store.requestJobCleanup({ jobId, requestedBy: "api" });
+
+    return jsonOk<ApiJobCleanupResponse>(
+      context,
+      {
+        action: {
+          status: "cleanup_requested",
+          type: "cleanup",
+          worktreePath: request.worktreePath,
+        },
+        job: toApiJobSummary(request.job),
+      },
+      202,
+    );
+  });
+
+  app.post("/briefs", async (context) => {
+    const body = await readJsonObject(context);
+    const item = briefWorkItem(body);
+    const job = opts.store.enqueueJob({
+      item,
+      retryBudget: opts.defaultRetryBudget ?? 10,
+    });
+
+    return jsonOk<ApiBriefSubmitResponse>(context, { job: toApiJobSummary(job) }, 201);
+  });
+
   return app;
 }
 
@@ -156,6 +198,21 @@ function requireJob(store: PandoApiStore, jobId: string): JobRecord {
   throw routeError("job_not_found", `job not found: ${jobId}`, 404);
 }
 
+function briefWorkItem(body: Record<string, unknown>): WorkItem {
+  const id = requiredString(body.id, "id");
+  const repo = requiredString(body.repo, "repo");
+  const briefPath = optionalString(body.briefPath, "briefPath") ?? `briefs/${id}/brief.md`;
+
+  return {
+    branch: optionalString(body.branch, "branch"),
+    id,
+    payload: { briefPath, kind: "brief" },
+    repo,
+    source: "brief",
+    title: optionalString(body.title, "title") ?? id,
+  };
+}
+
 async function readJsonObject(context: Context): Promise<Record<string, unknown>> {
   const text = await context.req.text();
   if (text.trim().length === 0) return {};
@@ -177,6 +234,11 @@ function optionalString(value: unknown, field: string): string | undefined {
   if (value === undefined) return undefined;
   if (typeof value === "string") return value;
   throw routeError("invalid_request", `${field} must be a string`, 400);
+}
+
+function requiredString(value: unknown, field: string): string {
+  if (typeof value === "string" && value.length > 0) return value;
+  throw routeError("invalid_request", `${field} is required`, 400);
 }
 
 function jsonOk<T>(context: Context, data: T, status: ContentfulStatusCode = 200): Response {
@@ -205,6 +267,9 @@ function routeErrorFrom(error: Error): ApiRouteError {
     return routeError("job_not_found", message, 404);
   }
   if (message.includes(" is not terminal: ") || message.includes(" is terminal: ")) {
+    return routeError("invalid_job_state", message, 409);
+  }
+  if (message.includes(" has no worktree path to cleanup")) {
     return routeError("invalid_job_state", message, 409);
   }
   return routeError("internal_error", "internal error", 500);
