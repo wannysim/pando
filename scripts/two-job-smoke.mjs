@@ -34,7 +34,11 @@ function readinessEvidence(env, target) {
   const globalConcurrency = globalConcurrencyCheck(env);
   const workerCli = workerCliCheck(env);
   const auth = workerAuthCheck(env);
+  const gitCreds = gitCredentialsCheck(env, target);
   const mounts = mountContractCheck(env, target);
+  // gitCreds is recorded but does NOT contribute to blockers. The worker probe
+  // (claude/codex -p echo) never pushes; git push / PR creation only matters at
+  // the PR stage, which is a documented manual prerequisite (deploy/README.md).
   const blockers = [
     ...globalConcurrency.blockers,
     ...workerCli.blockers,
@@ -46,6 +50,7 @@ function readinessEvidence(env, target) {
     blockers,
     checks: {
       auth: auth.check,
+      gitCreds: gitCreds.check,
       globalConcurrency: globalConcurrency.check,
       mounts: mounts.check,
       workerCli: workerCli.check,
@@ -314,6 +319,49 @@ function workerAuthCheck(env) {
     check: {
       pass: blockers.length === 0,
       signals: { claude, codex },
+    },
+  };
+}
+
+function gitCredentialsCheck(env, target) {
+  const home = env.HOME ?? homedir();
+  const docker = target === "docker";
+  const sshHome = docker ? "/root/.ssh" : join(home, ".ssh");
+  const deployKeyPath = resolvePath(env.PANDO_DEPLOY_KEY ?? join(sshHome, "id_ed25519"));
+  const knownHostsPath = resolvePath(env.PANDO_SSH_KNOWN_HOSTS ?? join(sshHome, "known_hosts"));
+  const credentialStorePath = resolvePath(
+    env.PANDO_GIT_CREDENTIALS ??
+      (docker ? "/root/.git-credentials" : join(home, ".git-credentials")),
+  );
+  const gitconfigPath = resolvePath(
+    env.PANDO_GITCONFIG ?? (docker ? "/root/.gitconfig" : join(home, ".gitconfig")),
+  );
+
+  const deployKeyPresent = pathExists(deployKeyPath) && !pathIsDirectory(deployKeyPath);
+  const knownHostsPresent = pathExists(knownHostsPath);
+  const credentialStorePresent = pathExists(credentialStorePath);
+  const gitconfigPresent = pathExists(gitconfigPath);
+  const tokenEnvPresent = env.GH_TOKEN !== undefined || env.GITHUB_TOKEN !== undefined;
+
+  // A push method is "ready" when either an SSH deploy key or an HTTPS
+  // credential source (credential store / token env) is present. Paths are
+  // recorded for diagnostics; key/token VALUES are never read or recorded.
+  const sshReady = deployKeyPresent;
+  const httpsReady = credentialStorePresent || tokenEnvPresent;
+
+  return {
+    check: {
+      pass: sshReady || httpsReady,
+      signals: {
+        credentialStorePresent,
+        deployKeyPath: deployKeyPresent ? deployKeyPath : null,
+        deployKeyPresent,
+        gitconfigPresent,
+        httpsReady,
+        knownHostsPresent,
+        sshReady,
+        tokenEnvPresent,
+      },
     },
   };
 }
