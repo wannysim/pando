@@ -3,7 +3,7 @@ import {
   loadStageConfigFromYaml,
   resolveStageAllowedTools,
   resolveStageSkill,
-} from "../../src/core/stage-config.js";
+} from "../../src/core/stage-config";
 
 const YAML = `
 stages:

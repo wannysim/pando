@@ -4,16 +4,16 @@ import type {
   JobRecord,
   JobStore,
   UpdateJobStatusInput,
-} from "../../src/db/index.js";
-import { branchForItem, runDaemonOnce } from "../../src/daemon/loop.js";
+} from "../../src/db/index";
+import { branchForItem, runDaemonOnce } from "../../src/daemon/loop";
 import type {
   JobStatus,
   RepoProfile,
   WorkItem,
   WorkerEngine,
   WorkerResult,
-} from "../../src/core/types.js";
-import type { StageConfig } from "../../src/core/stage-config.js";
+} from "../../src/core/types";
+import type { StageConfig } from "../../src/core/stage-config";
 
 describe("runDaemonOnce", () => {
   it("claims one job, provisions a worktree, runs the pipeline, and persists the final status", async () => {

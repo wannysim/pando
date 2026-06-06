@@ -4,7 +4,7 @@ import {
   transition,
   type MachineState,
   type PipelineEvent,
-} from "../core/state-machine.js";
+} from "../core/state-machine";
 import type {
   Gate,
   GateContext,
@@ -13,13 +13,13 @@ import type {
   StageName,
   WorkItem,
   WorkerEngine,
-} from "../core/types.js";
+} from "../core/types";
 import type {
   StageConfig,
   WorkerEngineName,
   WorkerStageKey,
-} from "../core/stage-config.js";
-import { resolveStageAllowedTools } from "../core/stage-config.js";
+} from "../core/stage-config";
+import { resolveStageAllowedTools } from "../core/stage-config";
 
 export interface PipelineRunnerOptions {
   item: WorkItem;

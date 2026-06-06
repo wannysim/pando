@@ -7,7 +7,7 @@ import {
   parseSpecArtifact,
   validatePlanArtifact,
   validateSpecArtifact,
-} from "../../src/core/artifacts.js";
+} from "../../src/core/artifacts";
 
 const FIXTURES = join(import.meta.dirname, "..", "fixtures");
 

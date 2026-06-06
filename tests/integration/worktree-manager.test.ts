@@ -14,7 +14,7 @@ import {
   branchSlug,
   ensureWorktree,
   worktreePathFor,
-} from "../../src/worktree/manager.js";
+} from "../../src/worktree/manager";
 
 const execFileAsync = promisify(execFile);
 const roots: string[] = [];

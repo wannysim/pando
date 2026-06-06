@@ -4,9 +4,9 @@ import type {
   PackageAction,
   PackageManager,
   RepoProfile,
-} from "./types.js";
+} from "./types";
 
-export type { PackageAction, PackageManager } from "./types.js";
+export type { PackageAction, PackageManager } from "./types";
 
 export interface FileProbe {
   exists(path: string): boolean | Promise<boolean>;

@@ -1,15 +1,15 @@
-import { packageCommand } from "../core/config.js";
-import type { RepoProfile } from "../core/types.js";
+import { packageCommand } from "../core/config";
+import type { RepoProfile } from "../core/types";
 import {
   ensureWorktree as defaultEnsureWorktree,
   type EnsureWorktreeOptions,
   type EnsureWorktreeResult,
-} from "../worktree/manager.js";
+} from "../worktree/manager";
 import type {
   WorktreeProvisioner,
   WorktreeProvisionInput,
   WorktreeProvisionResult,
-} from "./loop.js";
+} from "./loop";
 
 export interface WorktreeProvisionerOptions {
   worktreeRoot: string;

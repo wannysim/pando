@@ -2,13 +2,13 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { DatabaseSync } from "node:sqlite";
-import { STAGE_ORDER } from "../core/state-machine.js";
+import { STAGE_ORDER } from "../core/state-machine";
 import type {
   JobStatus,
   RepoProfile,
   StageName,
   WorkItem,
-} from "../core/types.js";
+} from "../core/types";
 
 export interface SqliteJobStoreOptions {
   path: string;

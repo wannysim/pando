@@ -1,4 +1,4 @@
-import type { Gate, GateContext, GateResult, WorkItem } from "../core/types.js";
+import type { Gate, GateContext, GateResult, WorkItem } from "../core/types";
 
 export const BRIEF_TEMPLATE = `# Brief Title
 

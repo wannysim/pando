@@ -5,8 +5,8 @@ import {
   loadBriefWorkItem,
   validateBriefMarkdown,
   type BriefFileReader,
-} from "../../src/intake/brief.js";
-import type { GateContext } from "../../src/core/types.js";
+} from "../../src/intake/brief";
+import type { GateContext } from "../../src/core/types";
 
 const VALID_BRIEF = `# Refresh home page
 

@@ -1,5 +1,5 @@
 import { parse } from "yaml";
-import type { WorkItemSource } from "./types.js";
+import type { WorkItemSource } from "./types";
 
 export const WORKER_STAGE_KEYS = ["spec", "plan", "test", "impl", "review"] as const;
 

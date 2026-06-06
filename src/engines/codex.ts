@@ -4,7 +4,7 @@ import type {
   WorkerEngine,
   WorkerResult,
   WorkerRunOptions,
-} from "../core/types.js";
+} from "../core/types";
 
 const execFileAsync = promisify(execFile);
 

@@ -2,14 +2,14 @@ import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { runAgentctl } from "../../src/cli/agentctl.js";
+import { runAgentctl } from "../../src/cli/agentctl";
 import type {
   JobEventRecord,
   JobRecord,
   JobStore,
   RetryJobInput,
-} from "../../src/db/index.js";
-import type { RepoProfile, WorkItem } from "../../src/core/types.js";
+} from "../../src/db/index";
+import type { RepoProfile, WorkItem } from "../../src/core/types";
 
 describe("runAgentctl", () => {
   it("submits a jira work item", async () => {

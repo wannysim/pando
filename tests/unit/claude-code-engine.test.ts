@@ -12,7 +12,7 @@ import {
   ClaudeCodeEngine,
   DEFAULT_CLAUDE_ALLOWED_TOOLS,
   type CommandRunner,
-} from "../../src/engines/claude-code.js";
+} from "../../src/engines/claude-code";
 
 const roots: string[] = [];
 
@@ -149,7 +149,7 @@ async function fakeExecutable(source: string): Promise<string> {
   const root = await mkdtemp(join(tmpdir(), "pando-claude-engine-"));
   roots.push(root);
 
-  const command = join(root, "fake-claude.js");
+  const command = join(root, "fake-claude");
   await writeFile(command, `#!/usr/bin/env node\n${source}\n`);
   await chmod(command, 0o755);
   return command;

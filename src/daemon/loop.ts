@@ -1,17 +1,17 @@
-import type { JobRecord, JobStore } from "../db/index.js";
-import type { MachineState } from "../core/state-machine.js";
+import type { JobRecord, JobStore } from "../db/index";
+import type { MachineState } from "../core/state-machine";
 import type {
   JobStatus,
   RepoProfile,
   WorkItem,
-} from "../core/types.js";
+} from "../core/types";
 import {
   runPipeline,
   type PipelineRunEvent,
   type PipelineRunResult,
   type PipelineRunnerOptions,
   type PipelineStateChange,
-} from "../pipeline/runner.js";
+} from "../pipeline/runner";
 
 export interface WorktreeProvisioner {
   ensure(input: WorktreeProvisionInput): Promise<WorktreeProvisionResult>;

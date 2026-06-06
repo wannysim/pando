@@ -7,9 +7,9 @@ import type {
   WorkerEngine,
   WorkerRunOptions,
   WorkerResult,
-} from "../../src/core/types.js";
-import { runPipeline } from "../../src/pipeline/runner.js";
-import type { StageConfig } from "../../src/core/stage-config.js";
+} from "../../src/core/types";
+import { runPipeline } from "../../src/pipeline/runner";
+import type { StageConfig } from "../../src/core/stage-config";
 
 describe("runPipeline", () => {
   it("runs worker stages and gates through DONE on the happy path", async () => {

@@ -1,11 +1,11 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { loadRepoProfilesFromYaml, type FileProbe } from "../../src/core/config.js";
-import { loadStageConfigFromYaml } from "../../src/core/stage-config.js";
-import type { WorkerEngine, WorkerRunOptions, WorkerResult } from "../../src/core/types.js";
-import { loadBriefWorkItem } from "../../src/intake/brief.js";
-import { createSpecArtifactGate } from "../../src/pipeline/gates/artifact-schema.js";
-import { runPipeline } from "../../src/pipeline/runner.js";
+import { loadRepoProfilesFromYaml, type FileProbe } from "../../src/core/config";
+import { loadStageConfigFromYaml } from "../../src/core/stage-config";
+import type { WorkerEngine, WorkerRunOptions, WorkerResult } from "../../src/core/types";
+import { loadBriefWorkItem } from "../../src/intake/brief";
+import { createSpecArtifactGate } from "../../src/pipeline/gates/artifact-schema";
+import { runPipeline } from "../../src/pipeline/runner";
 
 const BRIEF = `# Refresh home page
 

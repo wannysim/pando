@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { createSqliteJobStore } from "../../src/db/index.js";
-import type { RepoProfile, WorkItem } from "../../src/core/types.js";
+import { createSqliteJobStore } from "../../src/db/index";
+import type { RepoProfile, WorkItem } from "../../src/core/types";
 
 describe("SqliteJobStore", () => {
   it("enqueues jobs and claims exactly one runnable job", () => {

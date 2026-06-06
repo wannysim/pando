@@ -3,8 +3,8 @@ import {
   createPlanArtifactGate,
   createSpecArtifactGate,
   type TextFileReader,
-} from "../../src/pipeline/gates/artifact-schema.js";
-import type { GateContext } from "../../src/core/types.js";
+} from "../../src/pipeline/gates/artifact-schema";
+import type { GateContext } from "../../src/core/types";
 
 const SPEC = "# Example spec\n\n## Requirements Overview\n\n- Build it\n";
 

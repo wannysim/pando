@@ -1,7 +1,7 @@
 {
   "name": "pando",
   "version": "0.1.0",
-  "packageManager": "pnpm@10.33.2",
+  "packageManager": "pnpm@11.5.2+sha512.71c631e382066efc25625d5cf029075de07b61b37f6e27350fbd84b1bda5864c8c1967adc280776b45c30a715c0359a3be08fef42d5bb09e2b99029979692916",
   "private": true,
   "type": "module",
   "description": "Multi-repo background coding agent orchestrator — one root system, many trunks.",
@@ -26,12 +26,12 @@
     "verify": "pnpm coverage && pnpm lint && pnpm types"
   },
   "devDependencies": {
-    "@types/node": "^22.10.0",
-    "@vitest/coverage-v8": "^4.1.0",
-    "eslint": "^9.17.0",
-    "typescript": "^5.7.0",
-    "typescript-eslint": "^8.18.0",
-    "vitest": "^4.1.0"
+    "@types/node": "^25.9.2",
+    "@vitest/coverage-v8": "^4.1.8",
+    "eslint": "^10.4.1",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.60.1",
+    "vitest": "^4.1.8"
   },
   "dependencies": {
     "yaml": "^2.9.0"

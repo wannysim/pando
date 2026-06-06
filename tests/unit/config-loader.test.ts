@@ -3,7 +3,7 @@ import {
   loadRepoProfilesFromYaml,
   packageCommand,
   type FileProbe,
-} from "../../src/core/config.js";
+} from "../../src/core/config";
 
 const YAML = `
 repos:

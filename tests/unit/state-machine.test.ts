@@ -4,7 +4,7 @@ import {
   STAGE_ORDER,
   transition,
   type MachineState,
-} from "../../src/core/state-machine.js";
+} from "../../src/core/state-machine";
 
 const BUDGET = 3;
 

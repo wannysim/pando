@@ -12,7 +12,7 @@ import {
   CodexEngine,
   parseCodexJsonStream,
   type CommandRunner,
-} from "../../src/engines/codex.js";
+} from "../../src/engines/codex";
 
 const roots: string[] = [];
 
@@ -153,7 +153,7 @@ async function fakeExecutable(source: string): Promise<string> {
   const root = await mkdtemp(join(tmpdir(), "pando-codex-engine-"));
   roots.push(root);
 
-  const command = join(root, "fake-codex.js");
+  const command = join(root, "fake-codex");
   await writeFile(command, `#!/usr/bin/env node\n${source}\n`);
   await chmod(command, 0o755);
   return command;
