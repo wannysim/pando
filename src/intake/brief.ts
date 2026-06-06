@@ -38,6 +38,64 @@ export interface BriefFileReader {
   readText(path: string): Promise<string | undefined>;
 }
 
+export interface BriefComposeInput {
+  title: string;
+  goal?: string;
+  userStory?: string;
+  acceptanceCriteria?: readonly string[];
+  screensOrBehavior?: string;
+  nonGoals?: readonly string[];
+  assets?: readonly string[];
+  openQuestions?: readonly string[];
+  body?: string;
+}
+
+export function composeBriefMarkdown(input: BriefComposeInput): string {
+  const body = input.body?.trim();
+  const acceptance = cleanList(input.acceptanceCriteria);
+  const blocks = [
+    `# ${input.title.trim()}`,
+    section("Goal", input.goal?.trim() || body || input.title.trim()),
+    section(
+      "User Story",
+      input.userStory?.trim() || "As a user, I want this outcome so that I receive value.",
+    ),
+    section(
+      "Acceptance Criteria",
+      bullets(
+        (acceptance.length > 0 ? acceptance : ["The expected behavior is verifiable."]).map(
+          (item) => `[ ] ${item}`,
+        ),
+      ),
+    ),
+    section(
+      "Screens or Behavior",
+      input.screensOrBehavior?.trim() || body || "Describe the visible behavior.",
+    ),
+    section("Non-Goals", listOrNone(input.nonGoals)),
+    section("Assets", listOrNone(input.assets)),
+    section("Open Questions", listOrNone(input.openQuestions)),
+  ];
+  return `${blocks.join("\n\n")}\n`;
+}
+
+function section(label: string, content: string): string {
+  return `## ${label}\n\n${content}`;
+}
+
+function bullets(items: readonly string[]): string {
+  return items.map((item) => `- ${item}`).join("\n");
+}
+
+function listOrNone(items: readonly string[] | undefined): string {
+  const cleaned = cleanList(items);
+  return cleaned.length > 0 ? bullets(cleaned) : "- None";
+}
+
+function cleanList(items: readonly string[] | undefined): string[] {
+  return (items ?? []).map((item) => item.trim()).filter((item) => item.length > 0);
+}
+
 export interface BriefLoadInput {
   id: string;
   repo: string;
