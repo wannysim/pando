@@ -38,15 +38,17 @@ ENV PANDO_STATIC_DASHBOARD_ROOT=/app/dashboard/dist
 #
 # Two ways to put the CLIs in the container (auth still comes from host volumes):
 #   A. Bind-mount the host CLI bin onto PATH via PANDO_WORKER_BIN (/worker-bin).
-#      ONLY works when host and container share OS+arch. Verified here that a
-#      macOS arm64 host CANNOT use this: ~/.local/bin/{claude,codex} are Mach-O
-#      arm64 binaries, so the linux/arm64 container still reports the CLI missing
+#      ONLY works when host and container share OS+arch. Verified that a macOS
+#      arm64 host CANNOT use this: ~/.local/bin/{claude,codex} are Mach-O arm64
+#      binaries, so the linux/arm64 container still reports the CLI missing
 #      (readiness evidence: workerCli.pass=false). Use A on a Linux host only.
-#   B. Install the Linux CLI in the image (recommended for a macOS host). Add an
-#      install layer in this runtime stage, e.g.
-#         RUN npm install -g @anthropic-ai/claude-code @openai/codex
-#      and mount only the auth volumes. Trades version pinning + image size for a
-#      self-contained, cross-platform image.
+#   B. Install the Linux CLI in the image (recommended for a macOS host). This is
+#      the opt-in, version-pinned layer below. Build with
+#         --build-arg INSTALL_WORKER_CLIS=true
+#      (compose: PANDO_INSTALL_WORKER_CLIS=true). Versions are pinned via build
+#      args so "what shipped" matches "what was tested" (handoff: claude 2.1.167,
+#      codex-cli 0.137.0). Verified 2026-06-07: with this layer + auth volumes the
+#      docker readiness probe reports blockers=[] (workerCli.pass=true).
 # Either way the auth volumes (~/.claude, ~/.codex) must be mounted; see
 # deploy/docker-compose.yml and deploy/README.md "Worker readiness".
 ENV PANDO_WORKER_BIN=/worker-bin
@@ -54,6 +56,17 @@ ENV PATH="/worker-bin:${PATH}"
 
 RUN corepack enable
 COPY --from=build /app /app
+
+# Opt-in worker CLI install (option B). Default false keeps the base image lean
+# and secret-free (auth still comes from mounted volumes, never baked here).
+ARG INSTALL_WORKER_CLIS=false
+ARG CLAUDE_CLI_VERSION=2.1.167
+ARG CODEX_CLI_VERSION=0.137.0
+RUN if [ "${INSTALL_WORKER_CLIS}" = "true" ]; then \
+      npm install -g \
+        @anthropic-ai/claude-code@"${CLAUDE_CLI_VERSION}" \
+        @openai/codex@"${CODEX_CLI_VERSION}"; \
+    fi
 
 EXPOSE 3210
 CMD ["pnpm", "start"]
