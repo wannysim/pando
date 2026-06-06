@@ -75,6 +75,7 @@ describe("createLocalDaemonRuntime", () => {
     seed.close();
 
     const runtime = await createLocalDaemonRuntime({
+      collectChanges: async () => [{ path: "src/impl.ts", status: "modified" }],
       configDir,
       dbPath,
       engines: {
@@ -125,8 +126,81 @@ describe("createLocalDaemonRuntime", () => {
     );
     expect(events).toEqual(
       expect.arrayContaining([
+        expect.objectContaining({ gateName: "diff-rules", stage: "IMPL", type: "gate-pass" }),
         expect.objectContaining({ stage: "PR", type: "engine-pass" }),
         expect.objectContaining({ stage: "PR", type: "gate-pass" }),
+      ]),
+    );
+  });
+});
+
+describe("createLocalDaemonRuntime IMPL diff-rules gate", () => {
+  it("fails the job when collected IMPL changes modify a test file", async () => {
+    const root = await mkdtemp(join(tmpdir(), "pando-local-runtime-diff-"));
+    const configDir = join(root, "config");
+    const worktreeRoot = join(root, "worktrees");
+    const repoRoot = join(root, "repo");
+    const dbPath = join(root, "pando.sqlite");
+    const briefPath = join(root, "brief.md");
+    mkdirSync(configDir, { recursive: true });
+    mkdirSync(repoRoot, { recursive: true });
+    writeRuntimeConfig(configDir, repoRoot);
+    writeFileSync(briefPath, briefMarkdown());
+
+    const seed = createSqliteJobStore({ path: dbPath });
+    seed.enqueueJob({
+      item: {
+        branch: "chore/local-runner-task",
+        id: "LOCAL-DIFF-1",
+        payload: { briefPath, kind: "brief" },
+        repo: "pando",
+        source: "brief",
+        title: "Local runner task",
+      },
+      retryBudget: 1,
+    });
+    seed.close();
+
+    const collectChangesCalls: Array<{ worktree: string; baseRef: string }> = [];
+    const runtime = await createLocalDaemonRuntime({
+      collectChanges: async (worktree, baseRef) => {
+        collectChangesCalls.push({ baseRef, worktree });
+        return [{ path: "tests/unit/button.test.ts", status: "modified" }];
+      },
+      configDir,
+      dbPath,
+      engines: {
+        "claude-code": writingEngine([]),
+        codex: writingEngine([]),
+      },
+      ensureWorktree: async (opts): Promise<EnsureWorktreeResult> => {
+        const path = join(worktreeRoot, "pando", opts.branch.replaceAll("/", "-"));
+        mkdirSync(path, { recursive: true });
+        return { branch: opts.branch, path, reused: false };
+      },
+      gateRunner: async () => ({ exitCode: 0, stderr: "", stdout: "" }),
+      globalConcurrency: 1,
+      repoRoot,
+      tickMs: 10,
+      worktreeRoot,
+    });
+
+    await runtime.tick();
+    runtime.stop();
+
+    const store = createSqliteJobStore({ path: dbPath });
+    const job = store.getJob("LOCAL-DIFF-1");
+    const events = store.listEvents("LOCAL-DIFF-1");
+    store.close();
+
+    expect(job?.status).toBe("FAILED");
+    expect(collectChangesCalls).toContainEqual({
+      baseRef: "origin/develop",
+      worktree: expect.any(String),
+    });
+    expect(events).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ gateName: "diff-rules", stage: "IMPL", type: "gate-fail" }),
       ]),
     );
   });
