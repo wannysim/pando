@@ -32,7 +32,7 @@ The readiness evidence records:
 
 - `globalConcurrency.value` and `withinLiveCap`
 - `workerCli.commands.claude/codex.available`
-- auth signals as booleans only (`ANTHROPIC_API_KEY`, `CLAUDE_CONFIG_DIR`, `CLAUDE_CONFIG_FILE`, Claude config file presence, `OPENAI_API_KEY`, `CODEX_HOME`, Codex config dir writable)
+- auth signals as booleans only (`ANTHROPIC_API_KEY`, `CLAUDE_CONFIG_DIR`, `CLAUDE_CONFIG_FILE`, Claude config file presence/non-empty status, `OPENAI_API_KEY`, `CODEX_HOME`, Codex config dir writable)
 - `gitCreds.signals` git push / PR credential presence as booleans only (deploy key, known_hosts, credential store, gitconfig, `GH_TOKEN` / `GITHUB_TOKEN`). Recorded, not a hard blocker; key/token values are never recorded
 - host path readiness for SQLite parent, repos, worktrees, config, and skills
 
@@ -187,6 +187,7 @@ Then add the auth inputs and re-run with the CLI image. Important Docker auth de
 
 - Codex needs a writable `CODEX_HOME`; a read-only `~/.codex` mount can fail before the model call because the CLI writes local state.
 - Claude Code host managed-connector files did not authenticate inside this macOS Docker environment, even when `.claude`, `.claude.json`, and matching `HOME` paths were mounted. Use `ANTHROPIC_API_KEY` or perform a container-local `claude /login` into a persisted, untracked Docker volume before expecting the Claude probe to pass.
+- For host-file Claude mounts, mount both `~/.claude` and the top-level `~/.claude.json`. Do not force `CLAUDE_CONFIG_DIR=/root/.claude` for this path; in this environment that selected a zero-byte nested `.claude/.claude.json` and produced a readiness false positive before the non-empty check was added.
 - The runtime image now installs `ca-certificates`; this removes the Codex `no native root CA certificates found` blocker observed during the first live attempt.
 
 Re-run with the CLI image and the auth strategy you selected:
@@ -197,11 +198,13 @@ docker run --rm \
   -e PANDO_DB=/data/pando.sqlite -e PANDO_REPOS_ROOT=/repos \
   -e PANDO_WORKTREE_ROOT=/worktrees -e PANDO_CONFIG_DIR=/config \
   -e PANDO_SKILLS_ROOT=/skills \
-  -e CLAUDE_CONFIG_DIR=/root/.claude -e CODEX_HOME=/root/.codex \
+  -e CODEX_HOME=/root/.codex \
   -v /tmp/pando-docker-readiness/data:/data \
   -v "$HOME/Github":/repos -v "$HOME/.worktrees":/worktrees \
   -v "$PWD/config":/config:ro -v "$HOME/.ai-skills":/skills:ro \
-  -v "$HOME/.claude":/root/.claude:ro -v "$HOME/.codex":/root/.codex \
+  -v "$HOME/.claude":/root/.claude:ro \
+  -v "$HOME/.claude.json":/root/.claude.json:ro \
+  -v "$HOME/.codex":/root/.codex \
   -v "$HOME/.ssh/id_ed25519":/root/.ssh/id_ed25519:ro \
   -v /tmp/pando-docker-readiness/evidence:/evidence \
   deploy-pando:latest \
@@ -215,7 +218,9 @@ The optional SSH deploy-key mount above lets the `gitCreds` probe report
 ### Interpreting the evidence
 
 - `checks.workerCli.commands.{claude,codex}.available` -> CLI blocker.
-- `checks.auth.signals.claude.configFilePresent` and `checks.auth.signals.codex.configDirWritable` (booleans only) -> auth blocker.
+- `checks.auth.signals.claude.configFilePresent`,
+  `checks.auth.signals.claude.configFileNonEmpty`, and
+  `checks.auth.signals.codex.configDirWritable` (booleans only) -> auth blocker.
 - `checks.gitCreds.signals` (booleans + deploy-key path only) -> git push / PR
   credential presence. Recorded, not a hard blocker.
 - `checks.mounts.paths.*.ready` -> mount blocker.
@@ -228,9 +233,11 @@ The optional SSH deploy-key mount above lets the `gitCreds` probe report
   `blockers` = `[claude CLI not available, codex CLI not available, Claude auth not
   configured, Codex auth not configured]`. So the open blocker is **CLI + auth**, not
   mounts.
-- **Auth volume mounted** (`docker-readiness-mounted.json`): mounting `~/.claude` /
-  `~/.codex` at `/root/.claude` / `/root/.codex` flips `auth.pass` to `true`
-  (`configDirPresent: true`). Auth-by-volume works.
+- **Auth volume mounted** (`docker-readiness-mounted.json`): mounting only
+  `~/.claude` / `~/.codex` at `/root/.claude` / `/root/.codex` is not enough for a
+  reliable Claude signal. The Docker default checks top-level `/root/.claude.json`
+  and now records `configFileNonEmpty`; a zero-byte nested `.claude/.claude.json`
+  is a blocker, not a pass.
 - **Host bin mounted, macOS host**: mounting `~/.local/bin` at `/worker-bin` did
   **not** make the CLI available — `workerCli.pass` stayed `false`. The host
   binaries are Mach-O arm64; the `linux/arm64` container cannot exec them. This is
@@ -247,9 +254,77 @@ Evidence root: `/tmp/pando-docker-live-worker-smoke-20260607/evidence`.
 - First `docker-live-worker-smoke.json`: both worker commands ran but exited `1`. Claude reported `Not logged in`; Codex reported `no native root CA certificates found`.
 - Follow-up fixes in this branch:
   - runtime image installs `ca-certificates`, `git`, and `openssh-client`;
-  - readiness records `claude.configFilePresent` and `codex.configDirWritable`;
+  - readiness records `claude.configFilePresent`, `claude.configFileNonEmpty`,
+    and `codex.configDirWritable`;
   - read-only Codex auth dirs are blockers instead of false positives.
 - Post-CA rerun (`docker-live-worker-smoke-post-ca.json`): readiness blockers were `[]`; Codex exited `0` (`timedOut=false`), confirming the CA layer fixed the image blocker. Claude still exited `1` with mounted host/copy config, confirming the remaining blocker is Docker Claude auth. Next successful Docker live worker smoke requires `ANTHROPIC_API_KEY` or a container-local `claude /login` credential.
+
+Task 3 rerun (`/tmp/pando-docker-live-worker-smoke-auth-20260607-120217/evidence`):
+with the CLI image, CA bundle, writable Codex auth, SSH credential signal, and
+top-level `/root/.claude.json` mounted, readiness blockers were `[]`, Codex exited
+`0`, and Claude exited `1` (`timedOut=false`). A classified Claude-only check
+matched the login blocker. The remaining action is to rerun with
+`ANTHROPIC_API_KEY` or container-local `claude /login` credentials.
+
+### Next Docker Claude auth commands
+
+API-key mode:
+
+```bash
+export ANTHROPIC_API_KEY="<set locally; do not commit>"
+RUN_ID="$(date +%Y%m%d-%H%M%S)"
+ROOT="/tmp/pando-docker-live-worker-smoke-auth-$RUN_ID"
+mkdir -p "$ROOT/data" "$ROOT/worktrees" "$ROOT/evidence"
+
+PANDO_INSTALL_WORKER_CLIS=true docker compose -f deploy/docker-compose.yml build pando
+
+docker run --rm \
+  -e ANTHROPIC_API_KEY \
+  -e PANDO_GLOBAL_CONCURRENCY=2 \
+  -e PANDO_SMOKE_RUN_ID="$RUN_ID" \
+  -e PANDO_DB=/data/pando.sqlite -e PANDO_REPOS_ROOT=/repos \
+  -e PANDO_WORKTREE_ROOT=/worktrees -e PANDO_CONFIG_DIR=/config \
+  -e PANDO_SKILLS_ROOT=/skills -e CODEX_HOME=/root/.codex \
+  -v "$ROOT/data":/data -v "$HOME/Github":/repos \
+  -v "$ROOT/worktrees":/worktrees -v "$PWD/config":/config:ro \
+  -v "$HOME/.ai-skills":/skills:ro -v "$HOME/.codex":/root/.codex \
+  -v "$ROOT/evidence":/evidence \
+  deploy-pando:latest \
+  node scripts/two-job-smoke.mjs --mode live --target docker \
+  --evidence /evidence/docker-live-worker-smoke-api-key.json
+```
+
+Container-local login mode:
+
+```bash
+CLAUDE_AUTH_HOME="/tmp/pando-docker-claude-auth"
+mkdir -p "$CLAUDE_AUTH_HOME"
+
+docker run --rm -it \
+  -e HOME=/auth \
+  -v "$CLAUDE_AUTH_HOME":/auth \
+  deploy-pando:latest \
+  claude /login
+
+RUN_ID="$(date +%Y%m%d-%H%M%S)"
+ROOT="/tmp/pando-docker-live-worker-smoke-auth-$RUN_ID"
+mkdir -p "$ROOT/data" "$ROOT/worktrees" "$ROOT/evidence"
+
+docker run --rm \
+  -e HOME=/auth \
+  -e PANDO_GLOBAL_CONCURRENCY=2 \
+  -e PANDO_SMOKE_RUN_ID="$RUN_ID" \
+  -e PANDO_DB=/data/pando.sqlite -e PANDO_REPOS_ROOT=/repos \
+  -e PANDO_WORKTREE_ROOT=/worktrees -e PANDO_CONFIG_DIR=/config \
+  -e PANDO_SKILLS_ROOT=/skills -e CODEX_HOME=/root/.codex \
+  -v "$ROOT/data":/data -v "$HOME/Github":/repos \
+  -v "$ROOT/worktrees":/worktrees -v "$PWD/config":/config:ro \
+  -v "$HOME/.ai-skills":/skills:ro -v "$CLAUDE_AUTH_HOME":/auth:ro \
+  -v "$HOME/.codex":/root/.codex -v "$ROOT/evidence":/evidence \
+  deploy-pando:latest \
+  node scripts/two-job-smoke.mjs --mode live --target docker \
+  --evidence /evidence/docker-live-worker-smoke-claude-login.json
+```
 
 Git push / PR credentials are recorded as `gitCreds` probe signals (deploy key or credential store, see `deploy/README.md`); mount one before the PR stage.
 

@@ -48,8 +48,12 @@ services:
       # 2) Worker auth. NEVER bake auth into the image.
       #    Claude: mounted host files may not authenticate inside Docker on macOS;
       #    prefer ANTHROPIC_API_KEY or a container-local `claude /login` volume for
-      #    live Docker workers. A read-only mount is useful as a readiness signal.
+      #    live Docker workers. A read-only host-file mount is only a readiness
+      #    signal and needs both ~/.claude and top-level ~/.claude.json. Do not set
+      #    CLAUDE_CONFIG_DIR=/root/.claude for this host-file path; it can select a
+      #    nested zero-byte config file instead of /root/.claude.json.
       # - "${PANDO_CLAUDE_CONFIG:-~/.claude}:/root/.claude:ro"
+      # - "${PANDO_CLAUDE_CONFIG_FILE:-~/.claude.json}:/root/.claude.json:ro"
       #    Codex: CODEX_HOME must be writable because the CLI writes local state.
       # - "${PANDO_CODEX_CONFIG:-~/.codex}:/root/.codex"
       #
@@ -68,7 +72,6 @@ services:
     # environment additions (uncomment in the environment: block above):
     #   ANTHROPIC_API_KEY: "${ANTHROPIC_API_KEY:-}"
     #   OPENAI_API_KEY: "${OPENAI_API_KEY:-}"
-    #   CLAUDE_CONFIG_DIR: "/root/.claude"
     #   CODEX_HOME: "/root/.codex"
     healthcheck:
       test:

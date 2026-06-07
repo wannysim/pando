@@ -37,6 +37,7 @@
       "CLAUDE_CONFIG_DIR",
       "CLAUDE_CONFIG_FILE",
       "Claude config file present",
+      "Claude config file non-empty",
       "OPENAI_API_KEY",
       "CODEX_HOME",
       "Codex config dir writable"

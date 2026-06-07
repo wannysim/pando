@@ -65,8 +65,10 @@ async function liveEvidence(env, target, readiness) {
   const jobs = await Promise.all(
     liveProbeSpecs(env, readiness).map((spec) => runLiveProbe(spec, env)),
   );
+  const blockers = liveBlockers(jobs, readiness, target);
 
   return {
+    blockers,
     checks: {
       gateEvidence: {
         pass: jobs.every(
@@ -88,6 +90,80 @@ async function liveEvidence(env, target, readiness) {
     readiness,
     schemaVersion: 1,
     target,
+  };
+}
+
+function liveBlockers(jobs, readiness, target) {
+  return jobs.flatMap((job) => {
+    if (job.worker.exitCode === 0 && job.worker.timedOut === false) return [];
+
+    if (job.worker.command === "claude") {
+      return [claudeLiveBlocker(job, readiness, target)];
+    }
+
+    if (job.worker.command === "codex") {
+      return [codexLiveBlocker(job)];
+    }
+
+    return [workerLiveBlocker(job)];
+  });
+}
+
+function claudeLiveBlocker(job, readiness, target) {
+  const claudeSignals = readiness.checks.auth.signals.claude;
+  const hasApiKey = claudeSignals.apiKeyPresent === true;
+  const hostFileOnly =
+    !hasApiKey &&
+    claudeSignals.configDirPresent === true &&
+    claudeSignals.configFilePresent === true &&
+    claudeSignals.configFileNonEmpty === true;
+
+  return {
+    evidence: {
+      authMode: hasApiKey ? "api-key-or-env" : hostFileOnly ? "host-file-signal" : "missing",
+      exitCode: job.worker.exitCode,
+      timedOut: job.worker.timedOut,
+    },
+    jobId: job.id,
+    kind: target === "docker" ? "docker-claude-auth" : "claude-auth",
+    nextCommands: [
+      "export ANTHROPIC_API_KEY='<set locally; do not commit>' and rerun the Docker live smoke with -e ANTHROPIC_API_KEY",
+      "or run claude /login inside a persisted, untracked Docker auth volume and mount that volume for the live smoke",
+    ],
+    reason:
+      target === "docker" && hostFileOnly
+        ? "Claude host-file auth was visible as a readiness signal, but the Docker live worker exited non-zero; use ANTHROPIC_API_KEY or container-local claude /login."
+        : "Claude live worker exited non-zero; verify Claude auth without recording secret values.",
+  };
+}
+
+function codexLiveBlocker(job) {
+  return {
+    evidence: {
+      exitCode: job.worker.exitCode,
+      timedOut: job.worker.timedOut,
+    },
+    jobId: job.id,
+    kind: "codex-live-worker",
+    nextCommands: [
+      "verify OPENAI_API_KEY or writable CODEX_HOME inside the container",
+      "rerun the Docker live smoke after the Codex auth path is ready",
+    ],
+    reason: "Codex live worker exited non-zero.",
+  };
+}
+
+function workerLiveBlocker(job) {
+  return {
+    evidence: {
+      command: job.worker.command,
+      exitCode: job.worker.exitCode,
+      timedOut: job.worker.timedOut,
+    },
+    jobId: job.id,
+    kind: "live-worker",
+    nextCommands: ["inspect CLI availability/auth readiness and rerun the live smoke"],
+    reason: "Live worker exited non-zero.",
   };
 }
 
@@ -309,7 +385,8 @@ function workerAuthCheck(env) {
   const claude = {
     apiKeyPresent: hasNonEmptyEnv(env, "ANTHROPIC_API_KEY"),
     configDirPresent: pathExists(claudeConfigDir),
-    configFilePresent: pathExists(claudeConfigFile) && !pathIsDirectory(claudeConfigFile),
+    configFileNonEmpty: fileNonEmpty(claudeConfigFile),
+    configFilePresent: filePresent(claudeConfigFile),
   };
   const codex = {
     apiKeyPresent: hasNonEmptyEnv(env, "OPENAI_API_KEY"),
@@ -317,7 +394,10 @@ function workerAuthCheck(env) {
     configDirWritable: pathWritable(codexConfigDir),
   };
   const blockers = [];
-  if (!claude.apiKeyPresent && !(claude.configDirPresent && claude.configFilePresent)) {
+  if (
+    !claude.apiKeyPresent &&
+    !(claude.configDirPresent && claude.configFilePresent && claude.configFileNonEmpty)
+  ) {
     blockers.push("Claude authentication is not configured");
   }
   if (!codex.apiKeyPresent && !(codex.configDirPresent && codex.configDirWritable)) {
@@ -429,6 +509,19 @@ function resolvePath(path) {
 
 function pathExists(path) {
   return existsSync(path);
+}
+
+function filePresent(path) {
+  return pathExists(path) && !pathIsDirectory(path);
+}
+
+function fileNonEmpty(path) {
+  try {
+    const stat = statSync(path);
+    return stat.isFile() && stat.size > 0;
+  } catch {
+    return false;
+  }
 }
 
 function pathWritable(path) {
