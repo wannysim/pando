@@ -87,6 +87,24 @@ describe("createPlanArtifactGate", () => {
     expect(result.reason).toBe("PLAN.md schema validation failed");
     expect(result.evidence).toContain("PLAN.md title must include a ticket key like [AP-1234]");
   });
+
+  it("does not require a ticket key for brief-source jobs", async () => {
+    const gate = createPlanArtifactGate(
+      reader({ "/worktree/PLAN.md": PLAN.replace("[DEMO-1234] ", "") }),
+    );
+    const ctx: GateContext = {
+      ...baseContext(),
+      item: {
+        id: "pando-port-tip",
+        payload: { briefPath: "briefs/pando-port-tip/brief.md", kind: "brief" as const },
+        repo: "pando",
+        source: "brief" as const,
+        title: "Example",
+      },
+    };
+
+    await expect(gate.check(ctx)).resolves.toEqual({ pass: true });
+  });
 });
 
 function baseContext(): GateContext {
