@@ -190,10 +190,14 @@ export async function main(args = process.argv.slice(2)): Promise<number> {
   }
 }
 
-if (isDirectRun()) {
+if (isDirectRun() && !isEmbedded()) {
   void main().then((exitCode) => {
     process.exitCode = exitCode;
   });
+}
+
+function isEmbedded(): boolean {
+  return (globalThis as { __PANDOCTL_EMBEDDED__?: boolean }).__PANDOCTL_EMBEDDED__ === true;
 }
 
 interface ParsedArgs {

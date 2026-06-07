@@ -139,8 +139,12 @@ function emptyToUndefined(value: string | undefined): string | undefined {
 }
 
 /* v8 ignore start -- process bootstrap is covered by Docker smoke, not unit tests. */
-if (isDirectRun()) {
+if (isDirectRun() && !isEmbedded()) {
   void startFromEnv();
+}
+
+function isEmbedded(): boolean {
+  return (globalThis as { __PANDOCTL_EMBEDDED__?: boolean }).__PANDOCTL_EMBEDDED__ === true;
 }
 
 async function startFromEnv(): Promise<void> {
