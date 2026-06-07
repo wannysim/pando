@@ -19,6 +19,8 @@ import type {
 import {
   type ApiAnalyticsResponse,
   type ApiBriefSubmitResponse,
+  type ApiRepoList,
+  type ApiRepoSummary,
   formatStageList,
   formatStatusList,
   isJobStatus,
@@ -48,6 +50,7 @@ export interface PandoApiStore {
 }
 
 export type ReadinessEvidenceSource = () => Promise<unknown> | unknown;
+export type RepoSource = () => Promise<readonly ApiRepoSummary[]> | readonly ApiRepoSummary[];
 
 export interface PandoApiOptions {
   store: PandoApiStore;
@@ -55,6 +58,7 @@ export interface PandoApiOptions {
   staticDashboard?: StaticDashboardOptions;
   briefMaterializer?: BriefMaterializerOptions;
   readinessSource?: ReadinessEvidenceSource;
+  repoSource?: RepoSource;
   now?: () => string;
 }
 
@@ -125,6 +129,11 @@ export function createPandoApiApp(opts: PandoApiOptions): Hono {
     return jsonOk<ApiJobEventsResponse>(context, {
       events: opts.store.listEvents(jobId).map(toApiJobEvent),
     });
+  });
+
+  app.get("/repos", async (context) => {
+    const repos = opts.repoSource === undefined ? [] : await opts.repoSource();
+    return jsonOk<ApiRepoList>(context, { repos: [...repos] });
   });
 
   app.get("/analytics", async (context) => {

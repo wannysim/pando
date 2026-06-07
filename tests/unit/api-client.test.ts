@@ -30,6 +30,16 @@ describe("Pando API client", () => {
     });
   });
 
+  it("reads the repo list through the shared client", async () => {
+    const app = createPandoApiApp({
+      repoSource: () => [{ name: "pando" }],
+      store: new ClientMemoryStore([]),
+    });
+    const client = createPandoApiClient({ baseUrl: "http://pando.local", fetch: appFetch(app) });
+
+    await expect(client.listRepos()).resolves.toEqual({ repos: [{ name: "pando" }] });
+  });
+
   it("reads failure analytics through the shared client", async () => {
     const app = createPandoApiApp({
       now: () => "2026-06-07T00:00:00.000Z",

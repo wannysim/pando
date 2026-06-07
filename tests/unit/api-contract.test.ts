@@ -679,6 +679,31 @@ describe("Pando Hono API", () => {
     expect(body.data.failures.passRate).toBe(0);
   });
 
+  it("lists configured repos from the repo source", async () => {
+    const app = createPandoApiApp({
+      repoSource: () => [{ name: "pando" }, { name: "web" }],
+      store: new ApiMemoryStore([]),
+    });
+
+    const response = await app.request("/repos");
+    const body = (await response.json()) as ApiResponse<{ repos: { name: string }[] }>;
+
+    expect(response.status).toBe(200);
+    if (!body.ok) throw new Error("expected repos ok response");
+    expect(body.data.repos).toEqual([{ name: "pando" }, { name: "web" }]);
+  });
+
+  it("returns an empty repo list when no repo source is configured", async () => {
+    const app = createPandoApiApp({ store: new ApiMemoryStore([]) });
+
+    const response = await app.request("/repos");
+    const body = (await response.json()) as ApiResponse<{ repos: { name: string }[] }>;
+
+    expect(response.status).toBe(200);
+    if (!body.ok) throw new Error("expected repos ok response");
+    expect(body.data.repos).toEqual([]);
+  });
+
   it("returns stable JSON for unknown routes", async () => {
     const app = createPandoApiApp({ store: new ApiMemoryStore([]) });
 

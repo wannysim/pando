@@ -48,8 +48,8 @@ describe("DashboardApp", () => {
     expect(await screen.findByRole("heading", { name: "DEMO-5001" })).toBeVisible();
     expect(screen.getAllByText("Build minimal dashboard").length).toBeGreaterThan(0);
     expect(screen.getByText("Work item")).toBeVisible();
-    expect(screen.getByText("stage-failed")).toBeVisible();
-    expect(screen.getByText("checksum mismatch")).toBeVisible();
+    expect(screen.getByText("Stage timeline")).toBeVisible();
+    expect(screen.getAllByText("checksum mismatch").length).toBeGreaterThan(0);
     expect(screen.getByText('{"changed":["src/example.test.ts"]}')).toBeVisible();
     expect(screen.getByText("/worktrees/pando/feat-w5-minimal-dashboard")).toBeVisible();
   });
@@ -90,6 +90,61 @@ describe("DashboardApp", () => {
     expect(client.analytics).toHaveBeenCalled();
   });
 
+  it("shows an in-progress indicator and live badge while a job is active", async () => {
+    const client = createMockClient();
+    client.listJobs.mockResolvedValue({ jobs: [jobSummary("DEMO-9001", "IMPL")] });
+
+    render(<DashboardApp client={client} />);
+
+    expect(await screen.findByText(/auto-refresh/i)).toBeVisible();
+    expect(screen.getByLabelText("in progress")).toBeVisible();
+  });
+
+  it("auto-refreshes on an interval while a job is active", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      const client = createMockClient();
+      client.listJobs.mockResolvedValue({ jobs: [jobSummary("DEMO-9001", "IMPL")] });
+
+      render(<DashboardApp client={client} />);
+      await screen.findByText(/auto-refresh/i);
+      const initial = client.listJobs.mock.calls.length;
+
+      await vi.advanceTimersByTimeAsync(4500);
+      expect(client.listJobs.mock.calls.length).toBeGreaterThan(initial);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("does not show the live badge when all jobs are terminal", async () => {
+    const client = createMockClient(); // default job is FAILED (terminal)
+
+    render(<DashboardApp client={client} />);
+
+    await screen.findByRole("button", { name: /open DEMO-5001/i });
+    expect(screen.queryByText(/auto-refresh/i)).toBeNull();
+  });
+
+  it("shows a canceling state and disables the cancel button when a cancel is pending", async () => {
+    const client = createMockClient();
+    client.getJob.mockResolvedValue({
+      job: {
+        ...jobSummary("DEMO-5001", "IMPL"),
+        cancelRequestedAt: "2026-06-06T00:05:00.000Z",
+        workItem: workItem("DEMO-5001"),
+      },
+      recentEvents: jobDetail().recentEvents,
+    });
+    const user = userEvent.setup();
+    render(<DashboardApp client={client} />);
+
+    await user.click(await screen.findByRole("button", { name: /open DEMO-5001/i }));
+
+    expect(await screen.findByText("Canceling…")).toBeVisible();
+    expect(screen.getByRole("button", { name: /cancel requested/i })).toBeDisabled();
+  });
+
   it("renders health with the private-network auth assumption", async () => {
     const client = createMockClient();
 
@@ -125,7 +180,7 @@ describe("DashboardApp", () => {
     expect(screen.getByText("ID is required")).toBeVisible();
     expect(client.submitBrief).not.toHaveBeenCalled();
 
-    await user.type(screen.getByLabelText("Repo"), "pando");
+    await user.selectOptions(screen.getByLabelText("Repo"), "pando");
     await user.type(screen.getByLabelText("ID"), "dashboard-brief");
     await user.type(screen.getByLabelText("Title"), "Dashboard brief");
     await user.type(screen.getByLabelText("Brief path"), "briefs/dashboard/brief.md");
@@ -154,7 +209,7 @@ describe("DashboardApp", () => {
     expect(screen.getByText("Add at least one acceptance criterion")).toBeVisible();
     expect(client.submitBrief).not.toHaveBeenCalled();
 
-    await user.type(screen.getByLabelText("Task repo"), "pando");
+    await user.selectOptions(screen.getByLabelText("Task repo"), "pando");
     await user.type(screen.getByLabelText("Task ID"), "footer-year");
     await user.type(screen.getByLabelText("Task title"), "Make the footer year dynamic");
     await user.type(
@@ -194,7 +249,7 @@ describe("DashboardApp", () => {
     render(<DashboardApp client={client} />);
 
     await screen.findByRole("button", { name: /open DEMO-5001/i });
-    await user.type(screen.getByLabelText("Task repo"), "pando");
+    await user.selectOptions(screen.getByLabelText("Task repo"), "pando");
     await user.type(screen.getByLabelText("Task ID"), "footer-year");
     await user.type(screen.getByLabelText("What to build"), "Make the footer year dynamic.");
     await user.type(
@@ -225,8 +280,8 @@ describe("DashboardApp", () => {
     expect(within(strip).getByText("feat/operations-pass")).toBeVisible();
   });
 
-  // AC-4b: gateName shown when present
-  it("EventRow shows gateName when non-null (AC-4b)", async () => {
+  // Stage timeline shows the gate that ran for a stage
+  it("stage timeline shows the gate name for a stage", async () => {
     const client = createMockClient(); // fixture event has gateName: "checksum"
     const user = userEvent.setup();
     render(<DashboardApp client={client} />);
@@ -237,8 +292,8 @@ describe("DashboardApp", () => {
     expect(within(eventList).getByText("checksum")).toBeVisible();
   });
 
-  // AC-4b: gateName shows "-" when null (exact text-node match, not substring of "stage-failed")
-  it("EventRow shows '-' for null gateName (AC-4b)", async () => {
+  // The noisy null-status "-" badge is gone; a gate-less stage renders no dash
+  it("stage timeline renders no '-' noise for events without a gate or status", async () => {
     const client = createMockClient();
     client.getJob.mockResolvedValue(jobDetailWithNullGateName());
     const user = userEvent.setup();
@@ -247,25 +302,25 @@ describe("DashboardApp", () => {
     await user.click(await screen.findByRole("button", { name: /open DEMO-5001/i }));
 
     const eventList = await screen.findByRole("list");
-    // A standalone "-" element must appear in the event list for null gateName
-    expect(within(eventList).getAllByText("-").length).toBeGreaterThan(0);
+    expect(within(eventList).queryByText("-")).toBeNull();
+    expect(within(eventList).getByText("failed")).toBeVisible();
   });
 
-  // AC-4c: status field rendered in event row
-  it("EventRow shows status when non-null (AC-4c)", async () => {
-    const client = createMockClient(); // fixture event has status: "FAILED"
+  // Stage timeline shows the stage outcome, not the raw per-event status
+  it("stage timeline shows the stage outcome", async () => {
+    const client = createMockClient(); // fixture stage-failed at IMPL
     const user = userEvent.setup();
     render(<DashboardApp client={client} />);
 
     await user.click(await screen.findByRole("button", { name: /open DEMO-5001/i }));
 
-    // "FAILED" must appear inside the event list (not just the job status badge)
     const eventList = await screen.findByRole("list");
-    expect(within(eventList).getByText("FAILED")).toBeVisible();
+    expect(within(eventList).getByText("failed")).toBeVisible();
+    expect(within(eventList).getByText("IMPL")).toBeVisible();
   });
 
-  // AC-4d: evidence text shown when non-null (regression: must keep working in dense layout)
-  it("EventRow shows evidence text when non-null (AC-4d)", async () => {
+  // Evidence text stays visible in the stage timeline
+  it("stage timeline shows evidence text when non-null", async () => {
     const client = createMockClient();
     const user = userEvent.setup();
     render(<DashboardApp client={client} />);
@@ -358,6 +413,7 @@ describe("DashboardApp", () => {
 function createMockClient(): Mocked<PandoApiClient> {
   return {
     analytics: vi.fn(async () => analytics()),
+    listRepos: vi.fn(async () => ({ repos: [{ name: "pando" }, { name: "web" }] })),
     cancelJob: vi.fn(async () => actionResponse("cancel", "cancel_requested")),
     cleanupJob: vi.fn(async () => cleanupResponse()),
     getJob: vi.fn(async () => jobDetail()),

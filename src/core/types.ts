@@ -46,7 +46,7 @@ export interface RepoProfile {
   releaseBranchTemplate?: string;
   packageManager?: PackageManager;
   setup: PackageAction;
-  gates: { test: PackageAction; lint?: PackageAction; types?: PackageAction };
+  gates: { test?: PackageAction; lint?: PackageAction; types?: PackageAction };
   concurrency: number;
   portRange: [number, number];
   envFiles?: string[];

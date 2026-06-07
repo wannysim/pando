@@ -1,10 +1,11 @@
-import { readFile } from "node:fs/promises";
+import { readFile, stat } from "node:fs/promises";
 import { createServer, type IncomingMessage } from "node:http";
-import { tmpdir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { Readable } from "node:stream";
 import process from "node:process";
-import { createPandoApiApp, type ReadinessEvidenceSource } from "./api/app";
+import { createPandoApiApp, type ReadinessEvidenceSource, type RepoSource } from "./api/app";
+import { loadRepoProfilesFromYaml } from "./core/config";
 import { createLocalDaemonRuntime, type DaemonLoopController } from "./daemon/local-runtime";
 import { createSqliteJobStore } from "./db/index";
 import { createFsBriefWriter } from "./intake/brief-materializer";
@@ -35,6 +36,7 @@ export function createPandoServer(opts: PandoServerOptions) {
   const app = createPandoApiApp({
     briefMaterializer: { inboxRoot: opts.briefInboxRoot, writer: createFsBriefWriter() },
     readinessSource: fileReadinessSource(opts.readinessEvidencePath),
+    repoSource: configDirRepoSource(opts.daemon.configDir),
     staticDashboard:
       opts.dashboardRoot === undefined
         ? undefined
@@ -100,6 +102,32 @@ export function serverOptionsFromEnv(env: NodeJS.ProcessEnv = process.env): Pand
 function fileReadinessSource(path: string | undefined): ReadinessEvidenceSource | undefined {
   if (path === undefined) return undefined;
   return async () => JSON.parse(await readFile(path, "utf8")) as unknown;
+}
+
+function configDirRepoSource(configDir: string): RepoSource {
+  return async () => {
+    try {
+      const yaml = await readFile(join(configDir, "repos.yaml"), "utf8");
+      const profiles = await loadRepoProfilesFromYaml(yaml, {
+        files: { exists: pathExists },
+        homeDir: homedir(),
+      });
+      return Object.keys(profiles)
+        .sort()
+        .map((name) => ({ name }));
+    } catch {
+      return [];
+    }
+  };
+}
+
+async function pathExists(path: string): Promise<boolean> {
+  try {
+    await stat(path);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function toWebRequest(request: IncomingMessage, host: string, port: number): Request {

@@ -268,6 +268,48 @@ describe("local runtime helpers", () => {
     expect(prompt).not.toContain("Brief path:");
   });
 
+  it("builds PR prompts from configured package gates instead of hard-coded pando verification", () => {
+    const prompt = buildLocalPipelinePrompt("PR", {
+      item: {
+        id: "DEMO-1",
+        payload: { kind: "jira", ticketKey: "DEMO-1" },
+        repo: "web",
+        source: "jira",
+        title: "Demo",
+      },
+      profile: { ...repoProfile("/repo"), packageManager: "yarn" },
+      worktree: "/worktree",
+    });
+
+    expect(prompt).toContain("Run the configured verification commands:");
+    expect(prompt).toContain("1. yarn test");
+    expect(prompt).toContain("2. yarn lint");
+    expect(prompt).toContain("3. yarn tsc --noEmit");
+    expect(prompt).not.toContain("pnpm verify");
+  });
+
+  it("omits unconfigured PR verification gates from prompts", () => {
+    const prompt = buildLocalPipelinePrompt("PR", {
+      item: {
+        id: "DEMO-1",
+        payload: { kind: "brief", briefPath: "/brief.md" },
+        repo: "docs",
+        source: "brief",
+        title: "Demo",
+      },
+      profile: {
+        ...repoProfile("/repo"),
+        gates: { lint: "lint" },
+        packageManager: "npm",
+      },
+      worktree: "/worktree",
+    });
+
+    expect(prompt).toContain("1. npm run lint");
+    expect(prompt).not.toContain("npm run test");
+    expect(prompt).not.toContain("pnpm verify");
+  });
+
   it("returns deterministic shell gate results for successful and failed commands", async () => {
     await expect(
       shellGateRunner('node -e "process.exit(0)"', { cwd: process.cwd() }),
