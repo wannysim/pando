@@ -516,6 +516,33 @@ describe("runPipeline", () => {
     expect(failed?.payload).toMatchObject({ providerKind: "timeout" });
   });
 
+  it("stops cooperatively between stages when shouldCancel turns true", async () => {
+    let checks = 0;
+    const calls: string[] = [];
+    const result = await runPipeline({
+      engines: {
+        "claude-code": engine("claude-code", calls),
+        codex: engine("codex", calls),
+      },
+      gates: {
+        PLAN: [gate("plan-gate", () => ({ pass: true }))],
+        SPEC: [gate("spec-gate", () => ({ pass: true }))],
+      },
+      item: workItem(),
+      profile: repoProfile(),
+      shouldCancel: () => {
+        checks += 1;
+        return checks > 1; // allow SPEC, then cancel before PLAN
+      },
+      stageConfig: stageConfig(),
+      worktree: "/worktree",
+    });
+
+    expect(result.canceled).toBe(true);
+    expect(result.final.status).toBe("PLAN");
+    expect(calls).toEqual(["claude-code:Run SPEC"]);
+  });
+
   it("resumes from a persisted stage without rerunning earlier stages", async () => {
     const calls: string[] = [];
 

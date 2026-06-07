@@ -157,9 +157,18 @@ async function runClaimedJob(
         persistStateChange(opts.store, job.item.id, worktree.path, change);
       },
       profile,
+      shouldCancel: () => opts.store.getJob(job.item.id)?.cancelRequestedAt !== undefined,
       stageConfig: opts.stageConfig,
       worktree: worktree.path,
     });
+
+    if (result.canceled === true) {
+      const canceled = opts.store.completeJobCancellation({
+        jobId: job.item.id,
+        stoppedBy: "daemon",
+      });
+      return { finalStatus: canceled.status, jobId: job.item.id, status: "canceled" };
+    }
 
     persistFinalState(opts.store, job.item.id, worktree.path, result.final);
     return { finalStatus: result.final.status, jobId: job.item.id, status: "ran" };
@@ -184,11 +193,10 @@ async function stopCancelRequestedJob(
   job: JobRecord,
 ): Promise<DaemonJobResult> {
   try {
-    if (opts.runningJobs === undefined) {
-      throw new Error("running job controller is not configured");
-    }
-
-    await opts.runningJobs.requestStop({ job });
+    // A running-job controller can hard-stop an in-flight worker; when none is
+    // wired (e.g. the local daemon), cooperative cancellation already stopped the
+    // pipeline, so just finalize the cancellation here.
+    await opts.runningJobs?.requestStop({ job });
     const canceled = opts.store.completeJobCancellation({
       jobId: job.item.id,
       stoppedBy: "daemon",

@@ -37,6 +37,8 @@ export interface PipelineRunnerOptions {
   onStateChange?: (change: PipelineStateChange) => MaybePromise<void>;
   clock?: PipelineClock;
   retryPolicies?: ProviderRetryPolicies;
+  /** Cooperative cancellation: checked at each stage boundary. */
+  shouldCancel?: () => boolean;
 }
 
 export interface PromptBuildContext {
@@ -48,6 +50,7 @@ export interface PromptBuildContext {
 export interface PipelineRunResult {
   final: MachineState;
   events: PipelineRunEvent[];
+  canceled?: boolean;
 }
 
 export interface PipelineStateChange {
@@ -142,6 +145,9 @@ export async function runPipeline(opts: PipelineRunnerOptions): Promise<Pipeline
   }
 
   while (isStageStatus(state.status)) {
+    if (opts.shouldCancel?.() === true) {
+      return { canceled: true, events, final: state };
+    }
     const stage = state.status;
     const attempt = budget - state.attemptsLeft + 1;
     const stageResult = await runStage(stage, attempt, budget, opts, emit, clock);

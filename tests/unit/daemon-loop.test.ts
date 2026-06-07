@@ -366,6 +366,36 @@ describe("runDaemonOnce", () => {
     });
   });
 
+  it("cancels a running job when the pipeline reports cooperative cancellation", async () => {
+    const item = workItem("DEMO-2401");
+    const store = new MemoryJobStore(jobRecord(item, "SPEC", 3));
+    let sawCancelHook = false;
+
+    const result = await runDaemonOnce({
+      engines: {
+        "claude-code": engine("claude-code"),
+        codex: engine("codex"),
+      },
+      profiles: { web: repoProfile() },
+      runner: async (runnerOpts) => {
+        sawCancelHook = typeof runnerOpts.shouldCancel === "function";
+        return { canceled: true, events: [], final: { attemptsLeft: 3, status: "SPEC" } };
+      },
+      stageConfig: stageConfig(),
+      store,
+      worktrees: {
+        async ensure(input) {
+          return { branch: input.branch, path: "/worktrees/web/feat-DEMO-2401" };
+        },
+      },
+    });
+
+    expect(sawCancelHook).toBe(true);
+    expect(result).toEqual({ finalStatus: "CANCELED", jobId: "DEMO-2401", status: "canceled" });
+    expect(store.job?.status).toBe("CANCELED");
+    expect(store.events.at(-1)).toMatchObject({ status: "CANCELED", type: "canceled" });
+  });
+
   it("resumes a persisted active stage once after a crash", async () => {
     const item = workItem("DEMO-2302");
     const store = new QueueJobStore([jobRecord(item, "IMPL", 2)]);
