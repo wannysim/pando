@@ -10,6 +10,7 @@ const DEFAULT_HOST = "127.0.0.1";
 const PORT_FALLBACK_ATTEMPTS = 10;
 const MIN_CONCURRENCY = 1;
 const MAX_CONCURRENCY = 3;
+const DEFAULT_DASHBOARD_ROOT = "dashboard/dist";
 
 export interface StartableServer {
   address(): { address: string; family: string; port: number } | string | null;
@@ -31,7 +32,7 @@ export type ResolvedStartArgs = { kind: "help" } | { kind: "start"; options: Pan
 
 export function resolvePandoStartArgs(
   argv: readonly string[],
-  _env: NodeJS.ProcessEnv,
+  env: NodeJS.ProcessEnv,
   now: Date,
 ): ResolvedStartArgs {
   const [command, ...rest] = argv;
@@ -44,7 +45,7 @@ export function resolvePandoStartArgs(
     kind: "start",
     options: {
       briefInboxRoot: `${runRoot}/briefs`,
-      dashboardRoot: undefined,
+      dashboardRoot: emptyToUndefined(env.PANDO_STATIC_DASHBOARD_ROOT) ?? DEFAULT_DASHBOARD_ROOT,
       daemon: {
         configDir: options.configDir ?? "config",
         enabled: true,
@@ -57,6 +58,10 @@ export function resolvePandoStartArgs(
       port: options.port ?? DEFAULT_PORT,
     },
   };
+}
+
+function emptyToUndefined(value: string | undefined): string | undefined {
+  return value === undefined || value.length === 0 ? undefined : value;
 }
 
 export function formatStartupBanner(input: {

@@ -2,13 +2,19 @@ import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { runAgentctl } from "../../src/cli/agentctl";
+import { agentctlDbPathFromEnv, runAgentctl } from "../../src/cli/agentctl";
 import type { PandoApiClient } from "../../src/api/client";
 import type { ApiHealth, ApiJobSummary } from "../../src/api/schema";
 import type { JobEventRecord, JobRecord, JobStore, RetryJobInput } from "../../src/db/index";
 import type { JobStatus, RepoProfile, WorkItem } from "../../src/core/types";
 
 describe("runAgentctl", () => {
+  it("defaults local DB access to tmp instead of creating pando.sqlite in cwd", () => {
+    expect(agentctlDbPathFromEnv({})).toBe("/tmp/pando.sqlite");
+    expect(agentctlDbPathFromEnv({ PANDO_DB: "" })).toBe("/tmp/pando.sqlite");
+    expect(agentctlDbPathFromEnv({ PANDO_DB: "/data/pando.sqlite" })).toBe("/data/pando.sqlite");
+  });
+
   it("submits a jira work item", async () => {
     const store = new AgentctlMemoryStore();
     const output: string[] = [];

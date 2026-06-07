@@ -28,7 +28,7 @@ describe("resolvePandoStartArgs", () => {
     const root = "/tmp/pando-local-20260607-123456";
     expect(resolved.options).toEqual({
       briefInboxRoot: `${root}/briefs`,
-      dashboardRoot: undefined,
+      dashboardRoot: "dashboard/dist",
       daemon: {
         configDir: "config",
         enabled: true,
@@ -63,6 +63,16 @@ describe("resolvePandoStartArgs", () => {
     expect(resolved.options.daemon.configDir).toBe("/etc/pando");
     expect(resolved.options.daemon.globalConcurrency).toBe(3);
     expect(resolved.options.daemon.tickMs).toBe(250);
+  });
+
+  it("honors an explicit static dashboard root from env", () => {
+    const resolved = resolvePandoStartArgs(
+      ["start"],
+      { PANDO_STATIC_DASHBOARD_ROOT: "/tmp/pando-dashboard-dist" },
+      FIXED_NOW,
+    );
+    if (resolved.kind !== "start") throw new Error("expected start");
+    expect(resolved.options.dashboardRoot).toBe("/tmp/pando-dashboard-dist");
   });
 
   it("rejects a concurrency outside 1..3", () => {
@@ -159,10 +169,15 @@ describe("runPandoStart", () => {
 
   it("boots the server and daemon on the default port and logs the banner", async () => {
     const lines: string[] = [];
+    const optionsSeen: unknown[] = [];
     let started = false;
     const code = await runPandoStart(
       ["start"],
       deps({
+        createServer: (options) => {
+          optionsSeen.push(options);
+          return fakeServer();
+        },
         createDaemon: async () => ({
           start() {
             started = true;
@@ -175,6 +190,7 @@ describe("runPandoStart", () => {
     );
     expect(code).toBe(0);
     expect(started).toBe(true);
+    expect(optionsSeen).toEqual([expect.objectContaining({ dashboardRoot: "dashboard/dist" })]);
     expect(lines.join("\n")).toContain("http://127.0.0.1:3210/dashboard");
   });
 

@@ -27,7 +27,7 @@ through different boundaries.
 | Trigger | `PANDO_API_URL` is set (or `apiClient` injected) | `PANDO_API_URL` is unset |
 | Talks to | running daemon over HTTP | local SQLite file directly |
 | Requires daemon running | yes | no |
-| SQLite access | the daemon owns the file | this process opens `PANDO_DB` (default `./pando.sqlite`) |
+| SQLite access | the daemon owns the file | this process opens `PANDO_DB` (default `/tmp/pando.sqlite`) |
 | Auth boundary | private-network API (see ADR-009) | local filesystem only |
 
 ### API-backed mode (`PANDO_API_URL`)
@@ -59,10 +59,11 @@ PANDO_API_URL is required for API-backed agentctl commands
 
 ### Local DB mode (no `PANDO_API_URL`)
 
-With `PANDO_API_URL` unset, agentctl opens the SQLite store directly (path from
-`PANDO_DB`, default `./pando.sqlite`). Use this for one-off enqueue and
-inspection when no daemon is running, or in scripts that drive the store before
-starting the daemon.
+With `PANDO_API_URL` unset, agentctl opens the SQLite store directly. Set
+`PANDO_DB` to the DB path printed by `pandoctl start` when you want to inspect or
+modify that local run. If `PANDO_DB` is omitted, the fallback is
+`/tmp/pando.sqlite` so accidental commands do not create `pando.sqlite` in the
+current directory.
 
 ```bash
 pnpm tsx src/cli/agentctl.ts submit brief \

@@ -2,13 +2,13 @@
 import { spawn, spawnSync } from "node:child_process";
 import { accessSync, constants, existsSync, statSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
+import { homedir } from "node:os";
 import { delimiter, dirname, join, resolve } from "node:path";
 import process from "node:process";
-import { homedir } from "node:os";
 
 const args = parseArgs(process.argv.slice(2));
 const requestedMode = args.mode ?? (process.env.PANDO_LIVE_SMOKE === "1" ? "live" : "fake");
-const evidencePath = resolve(args.evidence ?? "smoke/evidence/two-job-smoke.json");
+const evidencePath = resolve(args.evidence ?? "/tmp/pando-two-job-smoke/two-job-smoke.json");
 const requestedTarget = args.target ?? "host";
 
 const evidence = await (requestedMode === "readiness"

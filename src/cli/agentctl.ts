@@ -50,6 +50,7 @@ export interface AgentctlOptions {
 
 const TERMINAL_STATUSES: readonly JobStatus[] = ["DONE", "FAILED", "ESCALATED", "CANCELED"];
 const DEFAULT_WATCH_INTERVAL_MS = 2000;
+const DEFAULT_AGENTCTL_DB_PATH = "/tmp/pando.sqlite";
 const SMOKE_TARGETS: readonly string[] = ["host", "docker"];
 
 export async function runAgentctl(args: readonly string[], opts: AgentctlOptions): Promise<number> {
@@ -165,7 +166,7 @@ export async function runAgentctl(args: readonly string[], opts: AgentctlOptions
 export async function main(args = process.argv.slice(2)): Promise<number> {
   const { createSqliteJobStore } = await import("../db/index");
   const store = createSqliteJobStore({
-    path: process.env.PANDO_DB ?? "./pando.sqlite",
+    path: agentctlDbPathFromEnv(process.env),
   });
 
   try {
@@ -188,6 +189,14 @@ export async function main(args = process.argv.slice(2)): Promise<number> {
   } finally {
     store.close();
   }
+}
+
+export function agentctlDbPathFromEnv(env: NodeJS.ProcessEnv = process.env): string {
+  return emptyToUndefined(env.PANDO_DB) ?? DEFAULT_AGENTCTL_DB_PATH;
+}
+
+function emptyToUndefined(value: string | undefined): string | undefined {
+  return value === undefined || value.length === 0 ? undefined : value;
 }
 
 if (isDirectRun() && !isEmbedded()) {
