@@ -11,7 +11,8 @@
 - Host에서 실제 `claude`/`codex` CLI worker 2-job probe와 host full-daemon live dogfood가 통과했다(PR #28~#29).
 - PR #36~#38에서 pando가 concurrency 3 self-dogfood batch로 README/getting-started, dashboard operations context, agentctl operations status 작업을 끝까지 돌리고 PR까지 만들었다.
 - Dashboard/CLI follow-up, draft PR gate, real git checksum/diff adapter, release/* base-branch routing이 develop에 반영됐다(PR #40~#44, #52~#53).
-- Docker image는 opt-in worker CLI install layer, CA bundle, git/ssh runtime, auth/git credential readiness evidence를 갖췄다(PR #45, #55, 이번 follow-up). Docker live worker smoke는 실제로 시도했고, post-CA rerun에서 Codex는 exit `0`까지 확인했다. 이 환경에서 Claude Code managed connector는 container로 상속되지 않아 실제 Docker Claude call은 API-key mode 또는 container-local `claude /login` credential이 필요하다는 blocker를 구조화 evidence로 남겼다.
+- Docker image는 opt-in worker CLI install layer, CA bundle, git/ssh runtime, auth/git credential readiness evidence를 갖췄다(PR #45, #55, follow-up). Docker live worker smoke는 실제로 시도했고, post-CA rerun에서 Codex는 exit `0`까지 확인했다. 이 환경에서 Claude Code managed connector는 container로 상속되지 않아 실제 Docker Claude call은 API-key mode 또는 container-local `claude /login` credential이 필요하다는 blocker를 구조화 evidence로 남겼다.
+- PR #62로 `pnpm pando start`는 source checkout의 `dashboard/dist`를 기본 dashboard root로 쓰고, accidental local DB/evidence artifact는 repo root가 아니라 `/tmp`로 가게 됐다. `pandoctl` release workflow도 생겼지만 실제 npm publish는 W6 마지막 순서다.
 - worker readiness/live smoke evidence는 structured JSON으로 남긴다.
 
 Stacked PR Roadmap의 PR 1~10이 모두 닫혔다. 마지막 항목이던 npm 배포 경로(PR 10)는 아래처럼 정리됐다.
@@ -367,4 +368,13 @@ PANDO_API_URL=http://127.0.0.1:3210 \
 
 ## 다음 결정
 
-Stacked PR Roadmap(PR 1~10)은 모두 닫혔다. 다음 작업은 **W6 운영 확장**이다. W6 후보는 Docker live worker smoke를 API-key/container-local credential로 재실행, 3~5 job soak/nightly run, notifications, failure analytics, provider backoff, GitHub/Jira write-back, auth hardening, `pandoctl@0.1.0` 실제 npm publish다.
+Stacked PR Roadmap(PR 1~10)은 모두 닫혔다. 다음 작업은 **W6 운영 확장**이고, 진행 순서는 아래로 고정한다. #1은 이 문서 업데이트로 완료됐고, 다음 활성 작업은 #2다.
+
+1. ✅ **Docs/current-state sync** — handoff, roadmap, next-session prompt가 최신 merge 상태와 다음 순서를 같은 말로 설명하게 맞춰졌다.
+2. **3~5 job soak/nightly 운영화** — 반복 실행 가능한 soak/nightly 루틴과 `/tmp` structured JSON summary를 만든다. 기존 jobs/events payload를 쓰고 새 DB table은 추가하지 않는다.
+3. **Dashboard failure/readiness analytics** — soak/nightly 결과, terminal failure reason, readiness/auth blocker를 dashboard에서 바로 읽게 한다.
+4. **Provider backoff/retry policy** — timeout/rate-limit/auth/transient failure를 deterministic failure kind로 나누고 provider별 retry/backoff를 정교화한다.
+5. **Docker Claude live worker smoke** — `ANTHROPIC_API_KEY` 또는 container-local `claude /login` credential로 Docker Claude blocker를 재검증한다.
+6. **`pandoctl@0.1.0` 실제 npm publish** — release workflow dry-run → publish → global install/update smoke를 마지막에 수행한다.
+
+notifications, GitHub Issue/Jira write-back, auth hardening, Docker egress policy, split containers/TUI는 위 순서가 끝난 뒤 다시 우선순위를 잡는다.

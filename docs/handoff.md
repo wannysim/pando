@@ -116,7 +116,7 @@
 
 **다음 세션 시작점 — W6 운영 확장.**
 
-W5의 최소 운영 준비와 첫 3-job self-dogfood batch는 닫혔다. 이후 운영 표면 다듬기에서 **pando start 단일 명령(#41), dashboard operations follow-up(#42), agentctl watch/smoke readiness(#40), draft PR gate(#44), pandoctl bin rename + README/docs parity(#51), real git checksum/diff gate adapter(#52), release/* base-branch routing(#53), web inline brief intake(#54), Docker worker readiness hardening(#55 + follow-up)** 이 닫혔다. 마지막 roadmap 항목이던 **pandoctl npm distribution(PR 10)** 도 이번 작업으로 닫혔다 — 통합 `pandoctl` 진입점 + esbuild 번들 빌드 + 실제 `pandoctl@0.1.0` 패키지. Stacked PR Roadmap(PR 1~10)은 전부 닫혔고, 다음은 **W6 운영 확장**(Docker live worker smoke 재실행, soak/nightly, notifications, failure analytics, `pandoctl@0.1.0` 실제 npm publish)이다.
+W5의 최소 운영 준비와 첫 3-job self-dogfood batch는 닫혔다. 이후 운영 표면 다듬기에서 **pando start 단일 명령(#41), dashboard operations follow-up(#42), agentctl watch/smoke readiness(#40), draft PR gate(#44), pandoctl bin rename + README/docs parity(#51), real git checksum/diff gate adapter(#52), release/* base-branch routing(#53), web inline brief intake(#54), Docker worker readiness hardening(#55 + follow-up), local start dashboard/artifact hygiene(#62)** 이 닫혔다. 마지막 roadmap 항목이던 **pandoctl npm distribution(PR 10)** 도 닫혔다 — 통합 `pandoctl` 진입점 + esbuild 번들 빌드 + 실제 `pandoctl@0.1.0` 패키지. Stacked PR Roadmap(PR 1~10)은 전부 닫혔고, 다음은 **W6 운영 확장**이다.
 
 ## 남아있는 작업
 
@@ -130,7 +130,15 @@ W5의 최소 운영 준비와 첫 3-job self-dogfood batch는 닫혔다. 이후 
 8. ✅ **Release branch routing** (PR #53) — Jira `fixVersion` 기반 `release/*` base branch 매핑과 `WorkItem.baseBranch` override를 ADR-011과 코드/테스트로 고정했다.
 9. ✅ **Docker worker readiness** (PR #55 + 이번 follow-up) — opt-in Linux worker CLI install layer, CA bundle, git/ssh runtime, auth/git credential readiness evidence를 갖췄다. Docker live worker smoke는 실제 실행했고 post-CA rerun에서 Codex는 exit `0`, Claude는 auth blocker로 exit `1`이었다. 이 환경에서 Claude Code managed connector는 container로 상속되지 않아 실제 Docker Claude call은 `ANTHROPIC_API_KEY` 또는 container-local `claude /login` credential이 필요하다는 blocker를 evidence로 남겼다.
 10. ✅ **pandoctl npm distribution** (roadmap PR 10) — 통합 진입점 `src/cli/pandoctl.ts`가 `start`(= `pando start`)와 ops 서브커맨드를 한 바이너리로 합친다. `packages/pandoctl`는 esbuild로 번들된 `dist/pandoctl.mjs`(shebang) + `schema.sql`을 담은 실제 publish 후보(`pandoctl@0.1.0`)다. `better-sqlite3`만 native external로 두고 `npm i -g pandoctl`을 임시 `--prefix`로 검증했다(prebuilt 해결, node-gyp 불필요). 실제 npm publish는 W6 항목으로 남긴다.
-11. **W6 운영 확장 후보** — Docker live worker smoke를 API-key/container-local credential로 재실행, 3~5 job soak/nightly run, notifications, failure analytics, provider backoff, GitHub Issue/Jira write-back, auth hardening, Docker egress policy, split containers, `pandoctl@0.1.0` 실제 npm publish는 PR 10 이후 범위다.
+11. **W6 다음 작업 순서** — 다음 작업은 후보가 아니라 아래 순서로 진행한다. #1은 이 문서 업데이트로 완료됐고, 다음 활성 작업은 #2다.
+    1. ✅ **Docs/current-state sync** — PR #62 이후 상태를 handoff/roadmap/prompt에 맞췄다. `pando start`는 source checkout의 `dashboard/dist`를 기본 dashboard root로 쓰고, accidental DB/evidence artifact는 repo root가 아니라 `/tmp`로 간다. `pandoctl` release workflow는 생겼지만 실제 npm publish는 아직 마지막 순서다.
+    2. **3~5 job soak/nightly 운영화** — 기존 soak/failure analytics 기반을 nightly 또는 반복 실행 가능한 운영 루틴으로 올린다. 새 DB table은 추가하지 말고 기존 jobs/events payload와 `/tmp` structured JSON summary를 사용한다.
+    3. **Dashboard failure/readiness analytics** — soak/nightly 결과, terminal failure reason, readiness/auth blocker를 dashboard에서 바로 읽을 수 있게 한다. 판단은 DB/event/structured evidence만 사용하고 LLM output text는 쓰지 않는다.
+    4. **Provider backoff/retry policy** — timeout/rate-limit/auth/transient failure를 deterministic failure kind로 나누고 provider별 retry/backoff를 정교화한다. 비용과 무한 retry를 줄이는 것이 목표다.
+    5. **Docker Claude live worker smoke** — 위 운영 루틴이 먼저 안정된 뒤 `ANTHROPIC_API_KEY` 또는 container-local `claude /login` credential로 Docker Claude live blocker를 다시 검증한다.
+    6. **`pandoctl@0.1.0` 실제 npm publish** — 마지막에 release workflow dry-run → publish → global install/update smoke를 닫는다.
+
+낮은 우선순위 후보: notifications, GitHub Issue/Jira write-back, auth hardening, Docker egress policy, split containers/TUI. 위 1~6이 끝나기 전에는 새 범위를 섞지 않는다.
 
 새 세션에 그대로 전달할 상세 프롬프트는 `docs/next-session-prompt.md`에 있다.
 
@@ -161,7 +169,7 @@ W5 우선순위(TDD):
 - `docs/research-v1.md` — 도구/패턴 리서치 (모델명·가격은 2차 소스, 재확인 필요)
 - `docs/design-v2-multi-repo.md` — n×n 설계, `~/.ai-skills` 자산 매핑 (§4·§7 PLAN은 ADR-007 반영됨)
 - `docs/w5-operational-readiness.md` — W5 테스트 시나리오 매트릭스, dashboard/API MVP, Docker shape, W5/W6 경계
-- `docs/practical-adoption-roadmap.md` — PR #36~#55 이후 상태와 남은 PR 10(`pandoctl` npm distribution), Docker live worker credential blocker, "pando에게 시키는 법"
+- `docs/practical-adoption-roadmap.md` — PR #36~#62 이후 상태와 W6 실행 순서, Docker live worker credential blocker, pandoctl publish 순서
 - `docs/adr/` — 001~011. **009**는 W5 dashboard/API/deploy 기본값(Vite React SPA + Hono + single container)을 고정하고, **011**은 release/* base-branch routing을 고정한다. 바꾸려면 새 ADR 먼저
 - `docs/repo-structure.md` — 구조·인터페이스
 - `docs/engineering-standards.md` — 개발 방법론 (superpowers + agent-skills 채택분)
