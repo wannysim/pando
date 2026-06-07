@@ -368,9 +368,9 @@ PANDO_API_URL=http://127.0.0.1:3210 \
 
 ## 다음 결정
 
-Stacked PR Roadmap(PR 1~10)은 모두 닫혔다. 다음 작업은 **W6 운영 확장**이고, 진행 순서는 아래로 고정한다.
+Stacked PR Roadmap(PR 1~10)은 모두 닫혔다. 다음 작업은 **W6 운영 확장**이고, 진행 순서는 아래로 고정한다. #1은 이 문서 업데이트로 완료됐고, 다음 활성 작업은 #2다.
 
-1. **Docs/current-state sync** — handoff, roadmap, next-session prompt가 최신 merge 상태와 다음 순서를 같은 말로 설명하게 유지한다.
+1. ✅ **Docs/current-state sync** — handoff, roadmap, next-session prompt가 최신 merge 상태와 다음 순서를 같은 말로 설명하게 맞춰졌다.
 2. **3~5 job soak/nightly 운영화** — 반복 실행 가능한 soak/nightly 루틴과 `/tmp` structured JSON summary를 만든다. 기존 jobs/events payload를 쓰고 새 DB table은 추가하지 않는다.
 3. **Dashboard failure/readiness analytics** — soak/nightly 결과, terminal failure reason, readiness/auth blocker를 dashboard에서 바로 읽게 한다.
 4. **Provider backoff/retry policy** — timeout/rate-limit/auth/transient failure를 deterministic failure kind로 나누고 provider별 retry/backoff를 정교화한다.

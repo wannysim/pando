@@ -20,14 +20,14 @@ CLAUDE.md, docs/handoff.md, docs/practical-adoption-roadmap.md, docs/runbooks/lo
 - PR #62로 `pnpm pando start`가 source checkout의 `dashboard/dist`를 기본 dashboard root로 쓰고, accidental local DB/evidence artifact는 repo root가 아니라 `/tmp`로 가게 됐다.
 
 W6 실행 순서:
-1. Docs/current-state sync: handoff/roadmap/prompt가 최신 merge 상태와 다음 순서를 같은 말로 설명하게 유지한다.
+1. ✅ Docs/current-state sync: handoff/roadmap/prompt가 최신 merge 상태와 다음 순서를 같은 말로 설명하게 맞춰졌다.
 2. 3~5 job soak/nightly 운영화: 반복 실행 가능한 soak/nightly 루틴과 `/tmp` structured JSON summary를 만든다.
 3. Dashboard failure/readiness analytics: soak/nightly 결과, terminal failure reason, readiness/auth blocker를 dashboard에서 바로 읽게 한다.
 4. Provider backoff/retry policy: timeout/rate-limit/auth/transient failure를 deterministic failure kind로 나누고 retry/backoff를 정교화한다.
 5. Docker Claude live worker smoke: `ANTHROPIC_API_KEY` 또는 container-local `claude /login` credential로 Docker Claude blocker를 재검증한다.
 6. `pandoctl@0.1.0` 실제 npm publish: release workflow dry-run → publish → global install/update smoke는 마지막에 수행한다.
 
-다음 세션에서는 위 순서에서 아직 끝나지 않은 가장 앞 항목 하나만 골라 작게 진행한다. notifications, GitHub Issue/Jira write-back, auth hardening, Docker egress policy, split containers/TUI는 위 1~6 이후로 미룬다.
+다음 세션에서는 #2부터 시작한다. 그 뒤에도 위 순서에서 아직 끝나지 않은 가장 앞 항목 하나만 골라 작게 진행한다. notifications, GitHub Issue/Jira write-back, auth hardening, Docker egress policy, split containers/TUI는 위 1~6 이후로 미룬다.
 
 지켜야 할 규칙:
 - 새 DB table 추가하지 말 것.
