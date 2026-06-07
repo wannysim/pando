@@ -76,3 +76,42 @@ stderr, message text, and other sensitive payload keys are omitted or reduced to
 byte counts.
 
 Keep all evidence under `/tmp` and do not commit it.
+
+## Nightly Aggregation
+
+`smoke:full-daemon` runs a single soak run. `soak:nightly` runs several soak
+iterations back-to-back and aggregates them into one nightly summary so a
+repeated routine produces a stable, scannable pass-rate signal. Each iteration
+is a full `runHostFullDaemonSmoke` run with its own DB, worktree root, and
+evidence under a per-iteration directory.
+
+```bash
+pnpm soak:nightly -- \
+  --mode contract \
+  --iterations 3 \
+  --jobs 3 \
+  --global-concurrency 2 \
+  --run-id "nightly-$(date +%Y%m%d)"
+```
+
+Defaults are `--mode contract`, `--iterations 3`, `--jobs 3`. The output root
+defaults to `/tmp/pando-soak-nightly/<run-id>` and can be overridden with
+`--output-dir`. Use `--mode live` only when worker CLI auth and credentials are
+ready (it can spend model credits). The command exits non-zero when the
+aggregate is not fully green, so it can gate a nightly job.
+
+The aggregate summary at `<output-dir>/nightly-summary.json` contains:
+
+- `mode`, `iterations`, `jobsPerIteration`, `totalJobs`
+- `totals` summed across all iterations (same shape as a single run)
+- `passRate` (`success / totalJobs`, rounded to 4 decimals) and `ok`
+  (true only when every job succeeded and at least one job ran)
+- `failureReasons`: a histogram of `{terminalStatus, reason, count}` for every
+  non-success terminal job, sorted by count then status then reason
+- `iterationsBreakdown`: per-iteration `runId`, evidence/failure-summary paths,
+  `totals`, `totalJobs`, and `passRate`
+
+Per-iteration evidence and failure summaries live under
+`<output-dir>/iteration-<n>/`. The aggregation reuses each run's deterministic
+`failure-summary.json`, so no raw worker output reaches the nightly summary.
+Keep all evidence under `/tmp` and do not commit it.

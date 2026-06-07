@@ -35,6 +35,7 @@
     "smoke:pandoctl-pack": "node scripts/pandoctl-pack-smoke.mjs",
     "smoke:full-daemon": "tsx scripts/full-daemon-smoke.ts",
     "smoke:two-job": "node scripts/two-job-smoke.mjs",
+    "soak:nightly": "tsx scripts/soak-nightly.ts",
     "prepare": "husky"
   },
   "dependencies": {
