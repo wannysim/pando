@@ -37,10 +37,18 @@ describe("bin wrappers", () => {
     expect(result.stdout).toContain("pando start");
   }, 30_000);
 
-  it("bin/pandoctl.mjs resolves the operational CLI", async () => {
+  it("bin/pandoctl.mjs resolves the unified start + operational CLI", async () => {
     const result = await runBin("bin/pandoctl.mjs", []);
     expect(result.code).toBe(1);
+    expect(result.stderr).toContain("pandoctl start");
     expect(result.stderr).toContain("submit");
     expect(result.stderr).toContain("show <job-id>");
+  }, 30_000);
+
+  it("bin/pandoctl.mjs help prints the unified surface to stdout", async () => {
+    const result = await runBin("bin/pandoctl.mjs", ["help"]);
+    expect(result.code).toBe(0);
+    expect(result.stdout).toContain("pandoctl start");
+    expect(result.stdout).toContain("pandoctl submit");
   }, 30_000);
 });

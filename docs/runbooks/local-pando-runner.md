@@ -36,24 +36,45 @@ usage는 인자 없이, 또는 `help`/`--help`로 본다.
 pnpm pando help
 ```
 
-### Global `pando` / `pandoctl` commands
+### Published `pandoctl` (npm)
 
-repo 안에서 매번 `pnpm pando` / `pnpm pandoctl`을 치는 대신 전역 명령으로 만들 수 있다. 이 repo의 `package.json` `bin`은 두 명령을 모두 노출한다 — `pando`(데몬 부트스트랩)와 `pandoctl`(운영 CLI).
+배포되는 운영 CLI는 `pandoctl` 하나로 통합돼 있다. local start와 job operation을 한 바이너리의 서브커맨드로 제공한다.
 
 ```bash
-# repo 안에서 한 번 실행
+npm i -g pandoctl      # 또는: npx pandoctl <command>
+
+pandoctl start         # 로컬 daemon/dashboard/API 부트스트랩 (= 이 repo의 `pando start`)
+pandoctl list          # 운영 CLI (submit/list/show/retry/cancel/cleanup/watch/smoke)
+pandoctl show <id>
+pandoctl help
+```
+
+패키지는 자체 JS를 esbuild로 번들하고, native 모듈은 `better-sqlite3` 하나만 dependency로 두어 설치 시 prebuilt 바이너리로 해결한다. dashboard SPA 자산은 번들에 포함하지 않으므로, dashboard는 `PANDO_STATIC_DASHBOARD_ROOT`로 빌드된 dashboard root가 주어질 때만(Docker 이미지 또는 dashboard를 빌드한 repo 체크아웃) 서빙된다.
+
+체크아웃에서 배포본을 빌드/검증하려면:
+
+```bash
+pnpm build:pandoctl        # packages/pandoctl/dist/pandoctl.mjs (+ schema.sql) 생성
+pnpm smoke:pandoctl-pack   # npm pack 내용·compiled bin·native sqlite 로드 검증, /tmp에 evidence
+```
+
+### Global `pando` / `pandoctl` from a checkout
+
+repo 안에서 매번 `pnpm pando` / `pnpm pandoctl`을 치는 대신 전역 명령으로 만들 수도 있다. 이 repo의 `package.json` `bin`은 `pando`와 `pandoctl`을 모두 노출하며, `pandoctl`은 이제 `start`까지 포함한 통합 진입점(`src/cli/pandoctl.ts`)에 연결된다.
+
+```bash
+# repo 안에서 한 번 실행 (tsx 기반 dev shim)
 pnpm link --global
 # 또는
 npm i -g .
 
 # 이후 어디서든
-pando start            # 로컬 daemon/dashboard 부트스트랩
-pando help
-pandoctl list          # 운영 CLI (submit/list/show/retry/cancel/cleanup/...)
-pandoctl show <id>
+pandoctl start         # 통합 진입점 (= pando start)
+pando start            # 동일한 daemon 부트스트랩 (backward-compat)
+pandoctl list
 ```
 
-> 참고: bare 이름 `pando`는 이미 public npm registry에 점유돼 있다(ADR-010). 그래서 **배포되는 CLI 이름은 `pandoctl`**이고, npm에 placeholder로 예약돼 있다(#43). 위 `pnpm link --global` / `npm i -g .`는 이 repo의 `package.json` `bin`(`pando`+`pandoctl`)을 그대로 링크하므로 local self-dogfood에 바로 쓸 수 있다. 빌드/번들된 `pandoctl` npm 패키지 publish는 별도 작업이다(roadmap PR 10).
+> 참고: bare 이름 `pando`는 이미 public npm registry에 점유돼 있다(ADR-010). 그래서 **배포되는 CLI 이름은 `pandoctl`**이다. 위 `pnpm link --global` / `npm i -g .`는 이 repo의 tsx 기반 dev shim을 링크하고, `npm i -g pandoctl`은 `packages/pandoctl`의 번들된 배포본을 설치한다. 내부 모듈 이름 `agentctl`은 ADR-010에 따라 당분간 유지한다.
 
 ## Start local pando (manual env path)
 

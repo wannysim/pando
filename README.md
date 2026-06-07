@@ -20,13 +20,27 @@ It processes many repos × many tickets in flight, distinguishing company repos 
 
 ## Status
 
-Early implementation. A one-command local run (`pando start`) boots the daemon and dashboard, inline natural-language brief intake is available in the dashboard/API, and brief-based self-dogfood against the pando repo works. Host worker smoke and host full-daemon dogfood have passed; Docker worker readiness is narrowed to explicit CLI/auth/git evidence. The remaining roadmap item is the real `pandoctl` npm distribution. See the design docs under [docs/](./docs) (written in Korean):
+Early implementation. A one-command local run (`pandoctl start`, also `pando start`) boots the daemon and dashboard, inline natural-language brief intake is available in the dashboard/API, and brief-based self-dogfood against the pando repo works. Host worker smoke and host full-daemon dogfood have passed; Docker worker readiness is narrowed to explicit CLI/auth/git evidence. The operational CLI now ships as a buildable `pandoctl` npm package that unifies local start and job operations under one binary. See the design docs under [docs/](./docs) (written in Korean):
 
 - [research-v1.md](./docs/research-v1.md) — tooling & pattern research
 - [design-v2-multi-repo.md](./docs/design-v2-multi-repo.md) — n×n design built on reusable agent-skill assets
 - [repo-structure.md](./docs/repo-structure.md) — repo layout & core interfaces
 - [engineering-standards.md](./docs/engineering-standards.md) — development methodology
 - [adr/](./docs/adr) — architecture decision records
+
+## Install
+
+The operational CLI is published as **`pandoctl`** — one binary that both boots a local pando instance (`pandoctl start`) and operates the job queue (`pandoctl list/show/submit/...`).
+
+```bash
+npm i -g pandoctl     # or: npx pandoctl <command>
+pandoctl start        # boot local daemon + dashboard + API
+pandoctl help
+```
+
+The package bundles its own JavaScript; only `better-sqlite3` is native and is resolved from prebuilt binaries at install time. The package does not bundle the dashboard SPA assets — `pandoctl start` serves the API/daemon, and the dashboard is served only when a built dashboard root is provided via `PANDO_STATIC_DASHBOARD_ROOT` (the Docker image, or a repo checkout that has built the dashboard). Do not expose the daemon/API outside a private local network; public auth is intentionally not implemented.
+
+To build and pack the distribution from a checkout: `pnpm build:pandoctl` then `pnpm smoke:pandoctl-pack` (the smoke writes structured evidence under `/tmp`).
 
 ## Local run
 
@@ -58,15 +72,15 @@ Use the dashboard inline brief form for the normal path: write the natural-langu
 
 ### Check status and stop
 
-The operational CLI is **`pandoctl`** (reserved on [npm](https://www.npmjs.com/package/pandoctl); the bare `pando` name was taken — see [ADR-010](./docs/adr/010-cli-name-pandoctl.md)). The `pandoctl` bin maps to the operational CLI; `pando start` is the separate daemon-bootstrap command above. Run any of these equivalents:
+The CLI is **`pandoctl`** (published on [npm](https://www.npmjs.com/package/pandoctl); the bare `pando` name was taken — see [ADR-010](./docs/adr/010-cli-name-pandoctl.md)). It is one binary: `pandoctl start` boots the daemon (the `pando start` command above is the same bootstrap), and the other subcommands operate the job queue. Run any of these equivalents:
 
 ```bash
 pnpm pandoctl list          # package script (prefix with PANDO_API_URL=... to reach a running daemon)
-pandoctl list               # global bin after `pnpm link --global` / `npm i -g .`
+pandoctl list               # global bin (npm i -g pandoctl, or `pnpm link --global` from a checkout)
 pnpm pandoctl show <id>
 ```
 
-See the runbook for the full env-var prefixes. Stop: **Ctrl-C** the `pando start` (or `pnpm start`) process. Temporary artifacts live under `/tmp` and can be removed afterwards.
+See the runbook for the full env-var prefixes. Stop: **Ctrl-C** the `pandoctl start` (or `pnpm start`) process. Temporary artifacts live under `/tmp` and can be removed afterwards.
 
 ## Development
 

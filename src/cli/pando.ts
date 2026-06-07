@@ -232,8 +232,8 @@ function defaultProbePort(port: number, host: string): Promise<boolean> {
   });
 }
 
-if (isDirectRun()) {
-  void runPandoStart(process.argv.slice(2), {
+export function defaultPandoStartDeps(): PandoStartDeps {
+  return {
     now: () => new Date(),
     createServer: (options) => createPandoServer(options) as unknown as StartableServer,
     createDaemon: (options) =>
@@ -252,9 +252,21 @@ if (isDirectRun()) {
     probePort: defaultProbePort,
     ensureDir: async (path) => void (await mkdir(path, { recursive: true })),
     log: (line) => console.log(line),
-  }).then((code) => {
+  };
+}
+
+export function runPandoStartCli(argv: readonly string[]): Promise<number> {
+  return runPandoStart(argv, defaultPandoStartDeps());
+}
+
+if (isDirectRun() && !isEmbedded()) {
+  void runPandoStartCli(process.argv.slice(2)).then((code) => {
     if (code !== 0) process.exitCode = code;
   });
+}
+
+function isEmbedded(): boolean {
+  return (globalThis as { __PANDOCTL_EMBEDDED__?: boolean }).__PANDOCTL_EMBEDDED__ === true;
 }
 
 function isDirectRun(): boolean {
