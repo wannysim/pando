@@ -1,5 +1,10 @@
 import { STAGE_ORDER } from "../core/state-machine";
 import type { JobStatus, StageName, WorkItem } from "../core/types";
+import {
+  resolveClaudeCredentialMode,
+  type ClaudeCredentialResolution,
+  type ClaudeCredentialSignals,
+} from "../daemon/claude-credential-mode";
 import type { FailureAnalytics } from "../daemon/failure-analytics";
 import type { JobEventRecord, JobRecord } from "../db/index";
 
@@ -118,6 +123,7 @@ export interface ApiReadinessSummary {
   ok: boolean;
   blockers: string[];
   checks: ApiReadinessCheck[];
+  claude: ClaudeCredentialResolution | null;
 }
 
 export interface ApiAnalyticsResponse {
@@ -130,14 +136,47 @@ export function toReadinessSummary(raw: unknown): ApiReadinessSummary | null {
   if (typeof raw !== "object" || raw === null || Array.isArray(raw)) return null;
   const record = raw as Record<string, unknown>;
   const blockers = stringArray(record.blockers);
+  const target = typeof record.target === "string" ? record.target : "unknown";
 
   return {
     blockers,
     checks: readinessChecks(record.checks),
+    claude: readinessClaude(record.checks, target),
     mode: typeof record.mode === "string" ? record.mode : "unknown",
     ok: blockers.length === 0,
-    target: typeof record.target === "string" ? record.target : "unknown",
+    target,
   };
+}
+
+function readinessClaude(checks: unknown, target: string): ClaudeCredentialResolution | null {
+  const signals = claudeSignals(checks);
+  if (signals === undefined) return null;
+  return resolveClaudeCredentialMode(signals, target === "docker" ? "docker" : "host");
+}
+
+function claudeSignals(checks: unknown): ClaudeCredentialSignals | undefined {
+  const claude = nestedRecord(checks, ["auth", "signals", "claude"]);
+  if (claude === undefined) return undefined;
+  return {
+    apiKeyPresent: boolish(claude.apiKeyPresent),
+    configDirPresent: boolish(claude.configDirPresent),
+    configFileNonEmpty: boolish(claude.configFileNonEmpty),
+    configFilePresent: boolish(claude.configFilePresent),
+  };
+}
+
+function nestedRecord(value: unknown, path: string[]): Record<string, unknown> | undefined {
+  let current = value;
+  for (const key of path) {
+    if (typeof current !== "object" || current === null || Array.isArray(current)) return undefined;
+    current = (current as Record<string, unknown>)[key];
+  }
+  if (typeof current !== "object" || current === null || Array.isArray(current)) return undefined;
+  return current as Record<string, unknown>;
+}
+
+function boolish(value: unknown): boolean | undefined {
+  return typeof value === "boolean" ? value : undefined;
 }
 
 function readinessChecks(value: unknown): ApiReadinessCheck[] {

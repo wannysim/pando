@@ -620,11 +620,47 @@ describe("Pando Hono API", () => {
         { name: "auth", pass: false },
         { name: "mounts", pass: true },
       ],
+      claude: null,
       mode: "live",
       ok: false,
       target: "docker",
     });
     expect(JSON.stringify(body)).not.toContain("stack");
+  });
+
+  it("resolves the docker claude credential mode from readiness auth signals", async () => {
+    const app = createPandoApiApp({
+      now: () => "2026-06-07T00:00:00.000Z",
+      readinessSource: () => ({
+        blockers: [],
+        checks: {
+          auth: {
+            pass: true,
+            signals: {
+              claude: {
+                apiKeyPresent: false,
+                configDirPresent: true,
+                configFileNonEmpty: true,
+                configFilePresent: true,
+              },
+            },
+          },
+        },
+        mode: "readiness",
+        target: "docker",
+      }),
+      store: new ApiMemoryStore([]),
+    });
+
+    const response = await app.request("/analytics");
+    const body = (await response.json()) as ApiResponse<ApiAnalyticsResponse>;
+    if (!body.ok) throw new Error("expected analytics ok response");
+
+    expect(body.data.readiness?.claude).toMatchObject({
+      liveRunnable: false,
+      mode: "host-file-only",
+    });
+    expect(JSON.stringify(body)).not.toContain("apiKeyPresent");
   });
 
   it("returns null readiness when no readiness source is configured", async () => {

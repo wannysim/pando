@@ -426,7 +426,18 @@ function ReadinessSection({ readiness }: { readiness: ApiAnalyticsResponse["read
             <Badge variant={readiness.ok ? "success" : "destructive"}>
               {readiness.ok ? "ready" : "blocked"}
             </Badge>
+            {readiness.claude === null ? null : (
+              <Badge variant={readiness.claude.liveRunnable ? "success" : "warning"}>
+                claude: {readiness.claude.mode}
+                {readiness.claude.liveRunnable ? "" : " (not live-runnable)"}
+              </Badge>
+            )}
           </div>
+          {readiness.claude?.blocker === undefined ? null : (
+            <Text className="readiness-blocker" variant="description">
+              {readiness.claude.blocker.reason}
+            </Text>
+          )}
           {readiness.blockers.length > 0 ? (
             <div className="readiness-blockers">
               {readiness.blockers.map((blocker) => (

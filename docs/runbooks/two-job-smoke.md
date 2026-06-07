@@ -359,3 +359,39 @@ pnpm smoke:two-job -- --mode fake --evidence smoke/evidence/two-job-smoke-fake.j
 ```
 
 Use fallback when live credentials, repo mounts, provider access, or cost approval are missing. The evidence file must include the fallback reason and the same four checks as the live smoke.
+
+## Docker Claude credential mode (W6 #5)
+
+In Docker, the Claude Code managed connector does not reliably inherit into the
+container, so a read-only host-file mount is only a readiness signal — a live
+Docker Claude worker needs `ANTHROPIC_API_KEY` or a container-local
+`claude /login` credential. `deploy/docker-compose.yml` now forwards
+`ANTHROPIC_API_KEY` / `OPENAI_API_KEY` from the host env (empty by default, no
+secret committed).
+
+`resolveClaudeCredentialMode` (`src/daemon/claude-credential-mode.ts`) maps the
+readiness auth signals to a deterministic mode, and the API surfaces it on
+`GET /analytics` → `readiness.claude` so the dashboard shows it:
+
+| Mode | Live-runnable | Meaning |
+|------|---------------|---------|
+| `api-key` | yes | `ANTHROPIC_API_KEY` is set |
+| `host-file` (host target) | yes | complete `~/.claude` + `~/.claude.json` |
+| `host-file-only` (docker target) | no | host-file signal only; connector may not inherit |
+| `missing` | no | no API key and no complete config file |
+
+Re-verify the Docker Claude live worker once a credential is available:
+
+```bash
+export ANTHROPIC_API_KEY='<set locally; do not commit>'
+PANDO_GLOBAL_CONCURRENCY=2 PANDO_LIVE_SMOKE=1 \
+  pnpm smoke:two-job -- --mode live --target docker \
+  --evidence /tmp/pando-docker-claude-live.json
+```
+
+2026-06-07 status: re-verification is still credential-gated. On the dev host
+`ANTHROPIC_API_KEY` was unset and only host-file signals were present, so the
+deterministic resolution was `host-file-only` / not live-runnable with the
+credential blocker above. The Docker daemon was up; the live worker call was not
+run because no API-key/container-login credential was available. Run the command
+above once a credential is provisioned to close the blocker.

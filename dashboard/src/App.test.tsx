@@ -85,6 +85,8 @@ describe("DashboardApp", () => {
     expect(within(readiness).getByText("claude not logged in")).toBeVisible();
     expect(within(readiness).getByText("target=docker")).toBeVisible();
     expect(within(readiness).getByText("blocked")).toBeVisible();
+    expect(within(readiness).getByText(/claude: host-file-only/i)).toBeVisible();
+    expect(within(readiness).getByText(/not live-runnable/i)).toBeVisible();
     expect(client.analytics).toHaveBeenCalled();
   });
 
@@ -401,6 +403,14 @@ function analytics(): ApiAnalyticsResponse {
         { name: "auth", pass: false },
         { name: "mounts", pass: true },
       ],
+      claude: {
+        blocker: {
+          nextCommands: ["export ANTHROPIC_API_KEY=..."],
+          reason: "Claude host-file auth is only a readiness signal in Docker.",
+        },
+        liveRunnable: false,
+        mode: "host-file-only",
+      },
       mode: "live",
       ok: false,
       target: "docker",
