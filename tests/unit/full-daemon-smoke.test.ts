@@ -111,6 +111,68 @@ describe("runHostFullDaemonSmoke", () => {
     expect(evidence.jobs.map((job) => job.finalStatus)).toEqual(["DONE", "DONE"]);
   });
 
+  it("runs a configurable three-job soak and writes terminal failure analytics", async () => {
+    const root = mkdtempSync(join(tmpdir(), "pando-full-daemon-soak-"));
+    const failureSummaryPath = join(root, "failure-summary.json");
+    const worktreeRoot = join(root, "worktrees");
+
+    const evidence = await runHostFullDaemonSmoke({
+      clock: sequenceClock(),
+      dbPath: join(root, "pando.sqlite"),
+      ensureWorktree: fakeEnsureWorktree(worktreeRoot),
+      evidencePath: join(root, "evidence.json"),
+      failureSummaryPath,
+      gateRunner: async (command, opts) => {
+        if (command === "pnpm test" && opts.cwd.includes("unit-soak-3")) {
+          return { exitCode: 1, stderr: "", stdout: '{"exitCode":1}' };
+        }
+        return { exitCode: 0, stderr: "", stdout: "" };
+      },
+      globalConcurrency: 2,
+      jobCount: 3,
+      now: () => "2026-06-07T00:00:00.000Z",
+      repoRoot: process.cwd(),
+      runId: "unit-soak",
+      worktreeRoot,
+    });
+
+    expect(evidence.checks.jobsClaimed).toEqual({ actual: 3, expected: 3, pass: true });
+    expect(evidence.jobs.map((job) => job.id)).toEqual([
+      "PANDO-FULL-SMOKE-1",
+      "PANDO-FULL-SMOKE-2",
+      "PANDO-FULL-SMOKE-3",
+    ]);
+    expect(evidence.jobs.map((job) => job.finalStatus)).toEqual(["DONE", "DONE", "FAILED"]);
+    expect(evidence.failureSummary.path).toBe(failureSummaryPath);
+    expect(evidence.failureSummary.totals).toMatchObject({
+      failure: 1,
+      success: 2,
+    });
+
+    const summary = JSON.parse(
+      readFileSync(failureSummaryPath, "utf8"),
+    ) as typeof evidence.failureSummary.summary;
+    expect(summary.jobs).toHaveLength(3);
+    const failedJob = summary.jobs[2];
+    expect(failedJob).toBeDefined();
+    expect(failedJob).toMatchObject({
+      evidence: {
+        path: join(root, "job-evidence", "PANDO-FULL-SMOKE-3.json"),
+        summary: {
+          evidence: { kind: "structured-json", value: { exitCode: 1 } },
+          eventType: "stage-failed",
+          gateName: "test-exit-code",
+        },
+      },
+      finalStatus: "FAILED",
+      jobId: "PANDO-FULL-SMOKE-3",
+      reason: "test gate failed with exit code 1",
+      stage: "TEST",
+      terminalStatus: "failure",
+    });
+    expect(JSON.parse(readFileSync(failedJob!.evidence.path, "utf8"))).toEqual(failedJob);
+  });
+
   it("supports live mode wiring with injected process runners", async () => {
     const root = mkdtempSync(join(tmpdir(), "pando-full-daemon-smoke-live-"));
     const worktreeRoot = join(root, "worktrees");
@@ -213,7 +275,7 @@ describe("runHostFullDaemonSmoke", () => {
       worktreeRoot,
     });
 
-    expect(evidence.checks.twoJobsClaimed.pass).toBe(true);
+    expect(evidence.checks.twoJobsClaimed).toMatchObject({ pass: true });
     expect(evidence.checks.providerCap).toEqual({
       pass: true,
       usage: { confluence: 2 },

@@ -1,6 +1,6 @@
 import { exec } from "node:child_process";
 import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
-import { homedir, tmpdir } from "node:os";
+import { homedir } from "node:os";
 import { dirname, isAbsolute, join, resolve } from "node:path";
 import { promisify } from "node:util";
 import { loadOrchestratorConfigFromYaml, loadRepoProfilesFromYaml } from "../core/config";
@@ -16,6 +16,7 @@ import { createPackageActionGate, type GateCommandRunner } from "../pipeline/gat
 import type { PipelineClock } from "../pipeline/runner";
 import { createRunScheduler } from "../scheduler/scheduler";
 import { runDaemonOnce, type DaemonJobResult, type DaemonOnceResult } from "./loop";
+import { summarizeTerminalJobs, type TerminalRunSummary } from "./failure-analytics";
 import { createWorktreeProvisioner, type EnsureWorktreePort } from "./worktree-provisioner";
 
 export type FullDaemonSmokeMode = "contract" | "live";
@@ -27,8 +28,11 @@ export interface FullDaemonSmokeOptions {
   worktreeRoot?: string;
   dbPath?: string;
   evidencePath?: string;
+  failureSummaryPath?: string;
   runId?: string;
   globalConcurrency?: number;
+  jobCount?: number;
+  maxTicks?: number;
   now?: () => string;
   clock?: PipelineClock;
   ensureWorktree?: EnsureWorktreePort;
@@ -45,11 +49,17 @@ export interface FullDaemonSmokeEvidence {
   target: "host";
   runId: string;
   checks: {
-    twoJobsClaimed: { expected: 2; actual: number; pass: boolean };
+    jobsClaimed: { expected: number; actual: number; pass: boolean };
+    twoJobsClaimed?: { expected: 2; actual: number; pass: boolean };
     globalConcurrency: { value: number; withinLiveCap: boolean };
     worktreeCollision: { pass: boolean };
     providerCap: { pass: boolean; usage: Partial<Record<ContextProvider, number>> };
     gateEvidence: { pass: boolean };
+  };
+  failureSummary: {
+    path: string;
+    summary: TerminalRunSummary;
+    totals: TerminalRunSummary["totals"];
   };
   jobs: FullDaemonSmokeJobEvidence[];
 }
@@ -74,14 +84,18 @@ export interface FullDaemonSmokeJobEvidence {
 }
 
 const execAsync = promisify(exec);
-const PANDO_SMOKE_JOB_IDS = ["PANDO-FULL-SMOKE-1", "PANDO-FULL-SMOKE-2"] as const;
+const DEFAULT_SMOKE_JOB_COUNT = 2;
+const MAX_SOAK_JOB_COUNT = 5;
+const MIN_SOAK_JOB_COUNT = 2;
+const TERMINAL_STATUSES = new Set<JobStatus>(["CANCELED", "DONE", "ESCALATED", "FAILED"]);
 
 export async function runHostFullDaemonSmoke(
   opts: FullDaemonSmokeOptions = {},
 ): Promise<FullDaemonSmokeEvidence> {
   const mode = opts.mode ?? "contract";
   const runId = sanitizeRunId(opts.runId ?? defaultRunId());
-  const tmpRoot = join(tmpdir(), "pando-full-daemon-smoke", runId);
+  const jobCount = smokeJobCount(opts.jobCount ?? DEFAULT_SMOKE_JOB_COUNT);
+  const tmpRoot = join("/tmp", "pando-full-daemon-smoke", runId);
   const repoRoot = resolve(opts.repoRoot ?? process.cwd());
   const configDir = resolvePath(opts.configDir ?? join(repoRoot, "config"), repoRoot);
   const worktreeRoot = resolvePath(opts.worktreeRoot ?? join(tmpRoot, "worktrees"), repoRoot);
@@ -90,9 +104,15 @@ export async function runHostFullDaemonSmoke(
     opts.evidencePath ?? join(tmpRoot, "full-daemon-smoke.json"),
     repoRoot,
   );
+  const failureSummaryPath = resolvePath(
+    opts.failureSummaryPath ?? join(tmpRoot, "failure-summary.json"),
+    repoRoot,
+  );
+  const targetJobIds = smokeJobIds(jobCount);
 
   await mkdir(dirname(dbPath), { recursive: true });
   await mkdir(dirname(evidencePath), { recursive: true });
+  await mkdir(dirname(failureSummaryPath), { recursive: true });
 
   const [reposYaml, stagesYaml, orchestratorYaml] = await Promise.all([
     readFile(join(configDir, "repos.yaml"), "utf8"),
@@ -113,7 +133,7 @@ export async function runHostFullDaemonSmoke(
   const store = createSqliteJobStore({ now: opts.now, path: dbPath });
 
   try {
-    for (const item of await createSmokeWorkItems(runId, tmpRoot)) {
+    for (const item of await createSmokeWorkItems(runId, tmpRoot, targetJobIds)) {
       store.enqueueJob({ item, retryBudget: stageConfig.defaults.retryBudget });
     }
 
@@ -121,29 +141,41 @@ export async function runHostFullDaemonSmoke(
       globalConcurrency,
       providerConcurrency: orchestrator.providerConcurrency,
     });
-    const result = await runDaemonOnce({
+    const daemonJobs = await runSmokeDaemonUntilSettled({
       buildPrompt: smokePrompt,
       clock: opts.clock,
       engines: createSmokeEngines(mode, opts.engineRunners),
       gates: createSmokeGates(opts.gateRunner ?? defaultGateRunner(mode)),
+      maxTicks: opts.maxTicks ?? Math.max(jobCount, 1) * (stageConfig.defaults.retryBudget + 2),
       profiles: { pando: pandoProfile },
       scheduler,
       stageConfig,
       store,
+      targetJobIds,
       worktrees: createWorktreeProvisioner({
         ensureWorktree: opts.ensureWorktree,
         worktreeRoot,
       }),
     });
+    const failureSummary = buildFailureSummary({
+      generatedAt: opts.now?.() ?? new Date().toISOString(),
+      path: failureSummaryPath,
+      store,
+      targetJobIds,
+    });
+    await writeFailureSummary(failureSummaryPath, failureSummary);
     const evidence = buildEvidence({
+      daemonJobs,
+      expectedJobCount: jobCount,
+      failureSummary,
+      failureSummaryPath,
       globalConcurrency,
       mode,
       profile: pandoProfile,
       providerConcurrency: orchestrator.providerConcurrency,
-      result,
       runId,
       store,
-      targetJobIds: PANDO_SMOKE_JOB_IDS,
+      targetJobIds,
     });
 
     await writeFile(evidencePath, `${JSON.stringify(evidence, null, 2)}\n`);
@@ -151,6 +183,46 @@ export async function runHostFullDaemonSmoke(
   } finally {
     store.close();
   }
+}
+
+async function runSmokeDaemonUntilSettled(input: {
+  buildPrompt: typeof smokePrompt;
+  clock: FullDaemonSmokeOptions["clock"];
+  engines: ReturnType<typeof createSmokeEngines>;
+  gates: ReturnType<typeof createSmokeGates>;
+  maxTicks: number;
+  profiles: Record<string, RepoProfile>;
+  scheduler: ReturnType<typeof createRunScheduler>;
+  stageConfig: ReturnType<typeof loadStageConfigFromYaml>;
+  store: ReturnType<typeof createSqliteJobStore>;
+  targetJobIds: readonly string[];
+  worktrees: ReturnType<typeof createWorktreeProvisioner>;
+}): Promise<DaemonJobResult[]> {
+  const results = new Map<string, DaemonJobResult>();
+
+  for (let tick = 0; tick < input.maxTicks; tick += 1) {
+    if (targetJobsSettled(input.store, input.targetJobIds)) break;
+
+    const result = await runDaemonOnce({
+      buildPrompt: input.buildPrompt,
+      clock: input.clock,
+      engines: input.engines,
+      gates: input.gates,
+      profiles: input.profiles,
+      scheduler: input.scheduler,
+      stageConfig: input.stageConfig,
+      store: input.store,
+      worktrees: input.worktrees,
+    });
+
+    for (const job of daemonJobResults(result)) {
+      results.set(job.jobId, job);
+    }
+
+    if (result.status === "idle") break;
+  }
+
+  return [...results.values()];
 }
 
 function createSmokeEngines(
@@ -176,14 +248,18 @@ function createSmokeGates(runner: GateCommandRunner) {
   };
 }
 
-async function createSmokeWorkItems(runId: string, tmpRoot: string): Promise<WorkItem[]> {
+async function createSmokeWorkItems(
+  runId: string,
+  tmpRoot: string,
+  jobIds: readonly string[],
+): Promise<WorkItem[]> {
   const briefRoot = join(tmpRoot, "briefs");
   await mkdir(briefRoot, { recursive: true });
 
   return await Promise.all(
-    PANDO_SMOKE_JOB_IDS.map(async (id, index): Promise<WorkItem> => {
+    jobIds.map(async (id, index): Promise<WorkItem> => {
       const briefPath = join(briefRoot, `${id}.md`);
-      await writeFile(briefPath, smokeBrief(id), "utf8");
+      await writeFile(briefPath, smokeBrief(id, jobIds.length), "utf8");
 
       return {
         branch: `chore/pando-full-daemon-smoke-${runId}-${index + 1}`,
@@ -197,15 +273,15 @@ async function createSmokeWorkItems(runId: string, tmpRoot: string): Promise<Wor
   );
 }
 
-function smokeBrief(id: string): string {
+function smokeBrief(id: string, jobCount: number): string {
   return `# Goal
 Run a deterministic pando full-daemon smoke contract for ${id}.
 
 # User Story
-As the daemon operator, I want pando to run exactly two self-profile jobs through the host daemon path.
+As the daemon operator, I want pando to run ${jobCount} self-profile jobs through the host daemon path.
 
 # Acceptance Criteria
-- Exactly two jobs are claimed.
+- Exactly ${jobCount} jobs are claimed.
 - Worktree paths do not collide.
 - Provider caps are not exceeded.
 - Gate evidence is structured JSON.
@@ -282,7 +358,10 @@ async function shellGateRunner(
 }
 
 function buildEvidence(input: {
-  result: DaemonOnceResult;
+  daemonJobs: readonly DaemonJobResult[];
+  expectedJobCount: number;
+  failureSummary: TerminalRunSummary;
+  failureSummaryPath: string;
   store: ReturnType<typeof createSqliteJobStore>;
   targetJobIds: readonly string[];
   globalConcurrency: number;
@@ -291,7 +370,7 @@ function buildEvidence(input: {
   mode: FullDaemonSmokeMode;
   runId: string;
 }): FullDaemonSmokeEvidence {
-  const daemonJobs = daemonJobResults(input.result);
+  const daemonJobs = input.daemonJobs;
   const jobs = input.targetJobIds.map((jobId) => {
     const job = input.store.getJob(jobId);
     if (job === undefined) throw new Error(`smoke job missing from store: ${jobId}`);
@@ -327,6 +406,11 @@ function buildEvidence(input: {
     };
   });
   const providerUsage = providerUsageFor(input.profile, daemonJobs.length);
+  const jobsClaimed = {
+    actual: daemonJobs.length,
+    expected: input.expectedJobCount,
+    pass: daemonJobs.length === input.expectedJobCount,
+  };
 
   return {
     checks: {
@@ -345,14 +429,24 @@ function buildEvidence(input: {
         pass: providerCapPass(providerUsage, input.providerConcurrency),
         usage: providerUsage,
       },
-      twoJobsClaimed: {
-        actual: daemonJobs.length,
-        expected: 2,
-        pass: daemonJobs.length === 2,
-      },
+      jobsClaimed,
+      ...(input.expectedJobCount === 2
+        ? {
+            twoJobsClaimed: {
+              actual: daemonJobs.length,
+              expected: 2 as const,
+              pass: daemonJobs.length === 2,
+            },
+          }
+        : {}),
       worktreeCollision: {
         pass: new Set(jobs.map((job) => job.worktreePath).filter(isString)).size === jobs.length,
       },
+    },
+    failureSummary: {
+      path: input.failureSummaryPath,
+      summary: input.failureSummary,
+      totals: input.failureSummary.totals,
     },
     jobs,
     mode: input.mode,
@@ -362,10 +456,65 @@ function buildEvidence(input: {
   };
 }
 
+function buildFailureSummary(input: {
+  generatedAt: string;
+  path: string;
+  store: ReturnType<typeof createSqliteJobStore>;
+  targetJobIds: readonly string[];
+}): TerminalRunSummary {
+  const jobs = input.targetJobIds.map((jobId) => {
+    const job = input.store.getJob(jobId);
+    if (job === undefined) throw new Error(`smoke job missing from store: ${jobId}`);
+    return job;
+  });
+  const eventsByJobId = Object.fromEntries(
+    input.targetJobIds.map((jobId) => [jobId, input.store.listEvents(jobId)]),
+  );
+
+  return summarizeTerminalJobs({
+    evidenceRoot: join(dirname(input.path), "job-evidence"),
+    eventsByJobId,
+    generatedAt: input.generatedAt,
+    jobs,
+  });
+}
+
+async function writeFailureSummary(path: string, summary: TerminalRunSummary): Promise<void> {
+  await mkdir(dirname(path), { recursive: true });
+  for (const job of summary.jobs) {
+    await mkdir(dirname(job.evidence.path), { recursive: true });
+    await writeFile(job.evidence.path, `${JSON.stringify(job, null, 2)}\n`);
+  }
+  await writeFile(path, `${JSON.stringify(summary, null, 2)}\n`);
+}
+
 function daemonJobResults(result: DaemonOnceResult): DaemonJobResult[] {
   if (result.status === "idle") return [];
   if ("jobs" in result) return result.jobs;
   return [result];
+}
+
+function targetJobsSettled(
+  store: ReturnType<typeof createSqliteJobStore>,
+  jobIds: readonly string[],
+): boolean {
+  return jobIds.every((jobId) => {
+    const job = store.getJob(jobId);
+    return job !== undefined && TERMINAL_STATUSES.has(job.status);
+  });
+}
+
+function smokeJobCount(value: number): number {
+  if (!Number.isInteger(value) || value < MIN_SOAK_JOB_COUNT || value > MAX_SOAK_JOB_COUNT) {
+    throw new Error(
+      `full daemon smoke jobCount must be an integer from ${MIN_SOAK_JOB_COUNT} to ${MAX_SOAK_JOB_COUNT}`,
+    );
+  }
+  return value;
+}
+
+function smokeJobIds(count: number): string[] {
+  return Array.from({ length: count }, (_, index) => `PANDO-FULL-SMOKE-${index + 1}`);
 }
 
 function providerUsageFor(
