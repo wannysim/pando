@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 import type { JobEventRecord, JobRecord } from "../../src/db/index";
-import { summarizeTerminalJobs } from "../../src/daemon/failure-analytics";
+import {
+  aggregateFailureReasons,
+  buildFailureAnalytics,
+  summarizeTerminalJobs,
+  type TerminalJobSummary,
+  type TerminalStatusLabel,
+} from "../../src/daemon/failure-analytics";
 import type { JobStatus, StageName, WorkItem } from "../../src/core/types";
 
 describe("summarizeTerminalJobs", () => {
@@ -291,6 +297,105 @@ describe("summarizeTerminalJobs", () => {
     expect(JSON.stringify(summary)).not.toContain("omit me");
   });
 });
+
+describe("buildFailureAnalytics", () => {
+  it("derives totals, pass rate, and a sorted failure-reason histogram from a run summary", () => {
+    const analytics = buildFailureAnalytics({
+      generatedAt: "2026-06-07T00:00:00.000Z",
+      jobs: [
+        terminalJob("A", "success", "job completed successfully"),
+        terminalJob("B", "success", "job completed successfully"),
+        terminalJob("C", "failure", "test gate failed with exit code 1"),
+        terminalJob("D", "failure", "test gate failed with exit code 1"),
+        terminalJob("E", "timeout", "worker timed out"),
+        terminalJob("F", "running", "job is not terminal: IMPL"),
+      ],
+      schemaVersion: 1,
+      totals: {
+        cancel: 0,
+        escalated: 0,
+        failure: 2,
+        retried: 0,
+        running: 1,
+        success: 2,
+        timeout: 1,
+      },
+    });
+
+    expect(analytics.totalJobs).toBe(6);
+    expect(analytics.passRate).toBe(0.3333);
+    expect(analytics.totals.success).toBe(2);
+    expect(analytics.failureReasons).toEqual([
+      { count: 2, reason: "test gate failed with exit code 1", terminalStatus: "failure" },
+      { count: 1, reason: "worker timed out", terminalStatus: "timeout" },
+    ]);
+  });
+
+  it("returns a zero pass rate and no failure reasons for an empty run", () => {
+    const analytics = buildFailureAnalytics({
+      generatedAt: "2026-06-07T00:00:00.000Z",
+      jobs: [],
+      schemaVersion: 1,
+      totals: {
+        cancel: 0,
+        escalated: 0,
+        failure: 0,
+        retried: 0,
+        running: 0,
+        success: 0,
+        timeout: 0,
+      },
+    });
+
+    expect(analytics.totalJobs).toBe(0);
+    expect(analytics.passRate).toBe(0);
+    expect(analytics.failureReasons).toEqual([]);
+  });
+});
+
+describe("aggregateFailureReasons", () => {
+  it("ignores successful jobs and sorts ties by status then reason", () => {
+    const reasons = aggregateFailureReasons([
+      terminalJob("A", "success", "job completed successfully"),
+      terminalJob("B", "escalated", "blocking-questions"),
+      terminalJob("C", "failure", "lint gate failed"),
+    ]);
+
+    expect(reasons).toEqual([
+      { count: 1, reason: "blocking-questions", terminalStatus: "escalated" },
+      { count: 1, reason: "lint gate failed", terminalStatus: "failure" },
+    ]);
+  });
+});
+
+function terminalJob(
+  id: string,
+  terminalStatus: TerminalStatusLabel,
+  reason: string,
+): TerminalJobSummary {
+  return {
+    durationMs: 1000,
+    evidence: {
+      path: `/tmp/evidence/${id}.json`,
+      summary: {
+        eventSequence: 1,
+        eventType: "stage-completed",
+        evidence: { kind: "none" },
+        gateName: null,
+        payload: {},
+        reason,
+        stage: "PR",
+        status: terminalStatus === "success" ? "DONE" : "FAILED",
+      },
+    },
+    finalStatus: terminalStatus === "success" ? "DONE" : "FAILED",
+    jobId: id,
+    reason,
+    retryCount: 0,
+    stage: "PR",
+    terminalStatus,
+  };
+}
 
 function job(id: string, status: JobStatus, options: { clearTimes?: boolean } = {}): JobRecord {
   return {

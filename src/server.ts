@@ -1,9 +1,10 @@
+import { readFile } from "node:fs/promises";
 import { createServer, type IncomingMessage } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Readable } from "node:stream";
 import process from "node:process";
-import { createPandoApiApp } from "./api/app";
+import { createPandoApiApp, type ReadinessEvidenceSource } from "./api/app";
 import { createLocalDaemonRuntime, type DaemonLoopController } from "./daemon/local-runtime";
 import { createSqliteJobStore } from "./db/index";
 import { createFsBriefWriter } from "./intake/brief-materializer";
@@ -16,6 +17,7 @@ export interface PandoServerOptions {
   dbPath: string;
   daemon: PandoDaemonServerOptions;
   dashboardRoot?: string;
+  readinessEvidencePath?: string;
   host: string;
   port: number;
 }
@@ -32,6 +34,7 @@ export function createPandoServer(opts: PandoServerOptions) {
   const store = createSqliteJobStore({ path: opts.dbPath });
   const app = createPandoApiApp({
     briefMaterializer: { inboxRoot: opts.briefInboxRoot, writer: createFsBriefWriter() },
+    readinessSource: fileReadinessSource(opts.readinessEvidencePath),
     staticDashboard:
       opts.dashboardRoot === undefined
         ? undefined
@@ -90,7 +93,13 @@ export function serverOptionsFromEnv(env: NodeJS.ProcessEnv = process.env): Pand
     dbPath: emptyToUndefined(env.PANDO_DB) ?? DEFAULT_DB_PATH,
     host: env.PANDO_HOST ?? "127.0.0.1",
     port: parsePositiveInteger(env.PANDO_PORT, DEFAULT_PORT, "PANDO_PORT"),
+    readinessEvidencePath: emptyToUndefined(env.PANDO_READINESS_EVIDENCE),
   };
+}
+
+function fileReadinessSource(path: string | undefined): ReadinessEvidenceSource | undefined {
+  if (path === undefined) return undefined;
+  return async () => JSON.parse(await readFile(path, "utf8")) as unknown;
 }
 
 function toWebRequest(request: IncomingMessage, host: string, port: number): Request {

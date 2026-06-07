@@ -1,5 +1,6 @@
 import type { JobStatus, StageName } from "../core/types";
 import type {
+  ApiAnalyticsResponse,
   ApiError,
   ApiBriefSubmitResponse,
   ApiHealth,
@@ -54,6 +55,7 @@ export interface SubmitBriefRequest {
 
 export interface PandoApiClient {
   health(): Promise<ApiHealth>;
+  analytics(): Promise<ApiAnalyticsResponse>;
   listJobs(input?: ListJobsRequest): Promise<ApiJobList>;
   getJob(jobId: string): Promise<ApiJobDetailResponse>;
   listEvents(jobId: string): Promise<ApiJobEventsResponse>;
@@ -80,6 +82,9 @@ export function createPandoApiClient(opts: PandoApiClientOptions): PandoApiClien
   return {
     async health() {
       return await request<ApiHealth>(fetcher, baseUrl, "/health");
+    },
+    async analytics() {
+      return await request<ApiAnalyticsResponse>(fetcher, baseUrl, "/analytics");
     },
     async listJobs(input) {
       const query =

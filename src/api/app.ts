@@ -4,6 +4,7 @@ import { Hono } from "hono";
 import type { Context } from "hono";
 import type { ContentfulStatusCode } from "hono/utils/http-status";
 import type { JobStatus, WorkItem } from "../core/types";
+import { buildFailureAnalytics, summarizeTerminalJobs } from "../daemon/failure-analytics";
 import type { BriefComposeInput } from "../intake/brief";
 import { materializeInlineBrief, type BriefWriter } from "../intake/brief-materializer";
 import type {
@@ -16,6 +17,7 @@ import type {
   RetryJobInput,
 } from "../db/index";
 import {
+  type ApiAnalyticsResponse,
   type ApiBriefSubmitResponse,
   formatStageList,
   formatStatusList,
@@ -25,6 +27,7 @@ import {
   toApiJobDetail,
   toApiJobEvent,
   toApiJobSummary,
+  toReadinessSummary,
   type ApiError,
   type ApiHealth,
   type ApiJobActionResponse,
@@ -44,11 +47,15 @@ export interface PandoApiStore {
   requestJobCleanup(input: RequestJobCleanupInput): JobCleanupRequest;
 }
 
+export type ReadinessEvidenceSource = () => Promise<unknown> | unknown;
+
 export interface PandoApiOptions {
   store: PandoApiStore;
   defaultRetryBudget?: number;
   staticDashboard?: StaticDashboardOptions;
   briefMaterializer?: BriefMaterializerOptions;
+  readinessSource?: ReadinessEvidenceSource;
+  now?: () => string;
 }
 
 export interface BriefMaterializerOptions {
@@ -117,6 +124,21 @@ export function createPandoApiApp(opts: PandoApiOptions): Hono {
     requireJob(opts.store, jobId);
     return jsonOk<ApiJobEventsResponse>(context, {
       events: opts.store.listEvents(jobId).map(toApiJobEvent),
+    });
+  });
+
+  app.get("/analytics", async (context) => {
+    const generatedAt = (opts.now ?? defaultNow)();
+    const jobs = opts.store.listJobs();
+    const eventsByJobId = Object.fromEntries(
+      jobs.map((job) => [job.item.id, opts.store.listEvents(job.item.id)]),
+    );
+    const summary = summarizeTerminalJobs({ eventsByJobId, evidenceRoot: "", generatedAt, jobs });
+
+    return jsonOk<ApiAnalyticsResponse>(context, {
+      failures: buildFailureAnalytics(summary),
+      generatedAt,
+      readiness: toReadinessSummary(await readReadiness(opts.readinessSource)),
     });
   });
 
@@ -297,6 +319,19 @@ function parseAttemptsLeft(value: unknown, defaultRetryBudget: number): number {
   if (value === undefined) return defaultRetryBudget;
   if (Number.isInteger(value) && typeof value === "number" && value > 0) return value;
   throw routeError("invalid_attempts", "attemptsLeft must be a positive integer", 400);
+}
+
+function defaultNow(): string {
+  return new Date().toISOString();
+}
+
+async function readReadiness(source: ReadinessEvidenceSource | undefined): Promise<unknown> {
+  if (source === undefined) return undefined;
+  try {
+    return await source();
+  } catch {
+    return undefined;
+  }
 }
 
 function requireJob(store: PandoApiStore, jobId: string): JobRecord {

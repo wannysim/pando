@@ -4,6 +4,7 @@ import { describe, expect, it, vi, type Mocked } from "vitest";
 import { DashboardApp } from "./App";
 import type { PandoApiClient } from "../../src/api/client";
 import type {
+  ApiAnalyticsResponse,
   ApiBriefSubmitResponse,
   ApiHealth,
   ApiJobActionResponse,
@@ -68,6 +69,22 @@ describe("DashboardApp", () => {
     expect(client.cancelJob).toHaveBeenCalledWith("DEMO-5001", { reason: "dashboard" });
     expect(client.cleanupJob).toHaveBeenCalledWith("DEMO-5001");
     expect(client.listJobs.mock.calls.length).toBeGreaterThan(initialRefreshes);
+  });
+
+  it("renders failure analytics and readiness blockers from the analytics endpoint", async () => {
+    const client = createMockClient();
+
+    render(<DashboardApp client={client} />);
+
+    const panel = await screen.findByTestId("analytics-panel");
+    expect(within(panel).getByText("pass 50% (2/4)")).toBeVisible();
+    expect(within(panel).getByText("test gate failed with exit code 1")).toBeVisible();
+
+    const readiness = within(panel).getByTestId("readiness-section");
+    expect(within(readiness).getByText("claude not logged in")).toBeVisible();
+    expect(within(readiness).getByText("target=docker")).toBeVisible();
+    expect(within(readiness).getByText("blocked")).toBeVisible();
+    expect(client.analytics).toHaveBeenCalled();
   });
 
   it("renders health with the private-network auth assumption", async () => {
@@ -310,6 +327,7 @@ describe("DashboardApp", () => {
 
 function createMockClient(): Mocked<PandoApiClient> {
   return {
+    analytics: vi.fn(async () => analytics()),
     cancelJob: vi.fn(async () => actionResponse("cancel", "cancel_requested")),
     cleanupJob: vi.fn(async () => cleanupResponse()),
     getJob: vi.fn(async () => jobDetail()),
@@ -327,6 +345,38 @@ function createMockClient(): Mocked<PandoApiClient> {
         },
       }),
     ),
+  };
+}
+
+function analytics(): ApiAnalyticsResponse {
+  return {
+    failures: {
+      failureReasons: [
+        { count: 2, reason: "test gate failed with exit code 1", terminalStatus: "failure" },
+      ],
+      passRate: 0.5,
+      totalJobs: 4,
+      totals: {
+        cancel: 0,
+        escalated: 0,
+        failure: 2,
+        retried: 0,
+        running: 0,
+        success: 2,
+        timeout: 0,
+      },
+    },
+    generatedAt: "2026-06-07T00:00:00.000Z",
+    readiness: {
+      blockers: ["claude not logged in"],
+      checks: [
+        { name: "auth", pass: false },
+        { name: "mounts", pass: true },
+      ],
+      mode: "live",
+      ok: false,
+      target: "docker",
+    },
   };
 }
 

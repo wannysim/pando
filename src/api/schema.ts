@@ -1,5 +1,6 @@
 import { STAGE_ORDER } from "../core/state-machine";
 import type { JobStatus, StageName, WorkItem } from "../core/types";
+import type { FailureAnalytics } from "../daemon/failure-analytics";
 import type { JobEventRecord, JobRecord } from "../db/index";
 
 export const JOB_STATUS_VALUES = [
@@ -102,6 +103,58 @@ export interface ApiJobCleanupResponse {
 
 export interface ApiBriefSubmitResponse {
   job: ApiJobSummary;
+}
+
+export type ApiFailureAnalytics = FailureAnalytics;
+
+export interface ApiReadinessCheck {
+  name: string;
+  pass: boolean;
+}
+
+export interface ApiReadinessSummary {
+  target: string;
+  mode: string;
+  ok: boolean;
+  blockers: string[];
+  checks: ApiReadinessCheck[];
+}
+
+export interface ApiAnalyticsResponse {
+  generatedAt: string;
+  failures: ApiFailureAnalytics;
+  readiness: ApiReadinessSummary | null;
+}
+
+export function toReadinessSummary(raw: unknown): ApiReadinessSummary | null {
+  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) return null;
+  const record = raw as Record<string, unknown>;
+  const blockers = stringArray(record.blockers);
+
+  return {
+    blockers,
+    checks: readinessChecks(record.checks),
+    mode: typeof record.mode === "string" ? record.mode : "unknown",
+    ok: blockers.length === 0,
+    target: typeof record.target === "string" ? record.target : "unknown",
+  };
+}
+
+function readinessChecks(value: unknown): ApiReadinessCheck[] {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return [];
+  return Object.entries(value as Record<string, unknown>)
+    .map(([name, check]): ApiReadinessCheck | undefined => {
+      if (typeof check !== "object" || check === null) return undefined;
+      const pass = (check as Record<string, unknown>).pass;
+      return typeof pass === "boolean" ? { name, pass } : undefined;
+    })
+    .filter((check): check is ApiReadinessCheck => check !== undefined)
+    .sort((a, b) => a.name.localeCompare(b.name));
+}
+
+function stringArray(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter((item): item is string => typeof item === "string");
 }
 
 export function isJobStatus(value: string): value is JobStatus {
