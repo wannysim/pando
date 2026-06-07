@@ -225,7 +225,9 @@ Keep the change scoped to this job.`;
 Implement the smallest change that satisfies PLAN.md and the tests.
 Edit files directly in this worktree; do not spawn subagents.
 Before exiting, make sure git diff contains the implementation change.
-Do not modify tests unless PLAN.md explicitly says the tests are wrong.
+Never modify, add, or delete files under tests/ in this stage. The diff-rules
+gate hard-rejects any test-file change in IMPL and fails the stage, so adjust
+the implementation instead. If a test looks wrong, leave it untouched.
 Keep unrelated files untouched.`;
   }
 
