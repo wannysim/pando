@@ -96,6 +96,18 @@ describe("loadRepoProfilesFromYaml", () => {
     expect(profiles["personal-site"]?.workItemSource).toBe("brief");
   });
 
+  it("allows repo profiles without a test gate", async () => {
+    const profiles = await loadRepoProfilesFromYaml(
+      YAML.replace("      test: test\n      types: typecheck", "      lint: lint"),
+      {
+        homeDir: "/Users/me",
+        files: probe(["/Users/me/Github/web/yarn.lock"]),
+      },
+    );
+
+    expect(profiles["personal-site"]?.gates).toEqual({ lint: "lint" });
+  });
+
   it("parses an optional release_branch_template onto releaseBranchTemplate", async () => {
     const withTemplate = YAML.replace(
       "base_branch: develop\n    intake:\n      sources: [jira]",
