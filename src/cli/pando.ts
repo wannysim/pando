@@ -2,8 +2,12 @@ import { mkdir } from "node:fs/promises";
 import { createServer as createNetServer } from "node:net";
 import process from "node:process";
 import { pathToFileURL } from "node:url";
+import { homedir } from "node:os";
+import { basename } from "node:path";
 import { createPandoServer, type PandoServerOptions } from "../server";
 import { createLocalDaemonRuntime, type DaemonLoopController } from "../daemon/local-runtime";
+import { defaultManifestPath, recordRun } from "../worktree/run-manifest";
+import type { RunRecord } from "../core/run-gc";
 
 const DEFAULT_PORT = 3210;
 const DEFAULT_HOST = "127.0.0.1";
@@ -25,6 +29,7 @@ export interface PandoStartDeps {
   createDaemon(options: PandoServerOptions): Promise<DaemonLoopController | undefined>;
   probePort(port: number, host: string): Promise<boolean>;
   ensureDir(path: string): Promise<void>;
+  recordRun(record: RunRecord): Promise<void>;
   log(line: string): void;
 }
 
@@ -69,7 +74,6 @@ export function formatStartupBanner(input: {
   port: number;
   worktreeRoot: string;
 }): string[] {
-  const runRoot = runRootOf(input.worktreeRoot);
   return [
     "pando is running.",
     `  Dashboard:     http://${DEFAULT_HOST}:${input.port}/dashboard`,
@@ -77,7 +81,7 @@ export function formatStartupBanner(input: {
     `  DB path:       ${input.dbPath}`,
     `  Worktree root: ${input.worktreeRoot}`,
     "  Stop:          press Ctrl+C",
-    `  Cleanup:       rm -rf ${runRoot}`,
+    "  Cleanup:       pandoctl gc --force  (reclaims this run-root once stopped)",
   ];
 }
 
@@ -111,8 +115,15 @@ export async function runPandoStart(
 
   const options: PandoServerOptions = { ...resolved.options, port };
   const worktreeRoot = options.daemon.worktreeRoot ?? `${options.dbPath}/worktrees`;
-  await deps.ensureDir(runRootOf(worktreeRoot));
+  const runRoot = runRootOf(worktreeRoot);
+  await deps.ensureDir(runRoot);
   await deps.ensureDir(worktreeRoot);
+  await deps.recordRun({
+    id: basename(runRoot),
+    runRoot,
+    pid: process.pid,
+    startedAt: deps.now().toISOString(),
+  });
   const daemon = await deps.createDaemon(options);
   const server = deps.createServer(options);
 
@@ -256,6 +267,7 @@ export function defaultPandoStartDeps(): PandoStartDeps {
         : Promise.resolve(undefined),
     probePort: defaultProbePort,
     ensureDir: async (path) => void (await mkdir(path, { recursive: true })),
+    recordRun: (record) => recordRun(defaultManifestPath(process.env, homedir()), record),
     log: (line) => console.log(line),
   };
 }
