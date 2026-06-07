@@ -9,6 +9,7 @@ import {
 const args = parseArgs(process.argv.slice(2));
 const evidence = await runHostFullDaemonSmoke(args);
 console.log(`wrote ${evidence.mode} full-daemon smoke evidence for ${evidence.jobs.length} jobs`);
+console.log(`wrote terminal failure summary to ${evidence.failureSummary.path}`);
 
 function parseArgs(argv: readonly string[]): FullDaemonSmokeOptions {
   const parsed: FullDaemonSmokeOptions = {};
@@ -23,6 +24,11 @@ function parseArgs(argv: readonly string[]): FullDaemonSmokeOptions {
     }
     if (token === "--evidence") {
       parsed.evidencePath = readValue(argv, index, token);
+      index += 1;
+      continue;
+    }
+    if (token === "--failure-summary") {
+      parsed.failureSummaryPath = readValue(argv, index, token);
       index += 1;
       continue;
     }
@@ -53,6 +59,11 @@ function parseArgs(argv: readonly string[]): FullDaemonSmokeOptions {
     }
     if (token === "--global-concurrency") {
       parsed.globalConcurrency = positiveInteger(readValue(argv, index, token), token);
+      index += 1;
+      continue;
+    }
+    if (token === "--jobs") {
+      parsed.jobCount = positiveInteger(readValue(argv, index, token), token);
       index += 1;
       continue;
     }
