@@ -33,7 +33,9 @@ interface GcFlags {
 const HELP_TOKENS: readonly string[] = ["help", "--help", "-h"];
 
 export async function runPandoGc(argv: readonly string[], deps: PandoGcDeps): Promise<number> {
-  const flags = parseFlags(argv);
+  // The pandoctl router forwards the full argv including the leading "gc"
+  // command token (same contract as `start`); drop it before parsing flags.
+  const flags = parseFlags(argv[0] === "gc" ? argv.slice(1) : argv);
   if (flags === "help") {
     for (const line of usageLines()) deps.log(line);
     return 0;

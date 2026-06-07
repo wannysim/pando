@@ -152,4 +152,14 @@ describe("runPandoGc — reporting", () => {
     expect(code).toBe(0);
     expect(h.lines.join("\n")).toMatch(/pando gc/i);
   });
+
+  it("accepts the router contract where argv keeps the leading gc command token", async () => {
+    const orphan = makeRun({ id: "dead", runRoot: "/tmp/pando-dead", pid: 99 });
+    const h = harness([orphan], []);
+
+    const code = await runPandoGc(["gc", "--force"], h.deps);
+
+    expect(code).toBe(0);
+    expect(h.removed).toEqual(["/tmp/pando-dead"]);
+  });
 });
