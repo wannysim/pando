@@ -5,6 +5,7 @@ export interface CommandRunnerOptions {
   cwd: string;
   env: NodeJS.ProcessEnv;
   timeoutMs: number;
+  signal?: AbortSignal;
 }
 
 export interface CommandResult {
@@ -86,6 +87,7 @@ export class CodexEngine implements WorkerEngine {
     const result = await this.runner(this.command, buildCodexArgs(opts), {
       cwd: opts.cwd,
       env: { ...process.env, ...opts.env },
+      signal: opts.signal,
       timeoutMs: opts.timeoutMs,
     });
     const parsed = parseCodexJsonStream(result.stdout);
@@ -122,6 +124,10 @@ async function spawnRunner(
       child.kill("SIGTERM");
     }, opts.timeoutMs);
 
+    const onAbort = () => child.kill("SIGTERM");
+    if (opts.signal?.aborted === true) child.kill("SIGTERM");
+    else opts.signal?.addEventListener("abort", onAbort, { once: true });
+
     child.stdout?.on("data", (chunk) => {
       if (stdout.length < maxBuffer) stdout += asText(chunk);
     });
@@ -132,12 +138,14 @@ async function spawnRunner(
       if (settled) return;
       settled = true;
       clearTimeout(timer);
+      opts.signal?.removeEventListener("abort", onAbort);
       resolve({ exitCode: 1, stderr: error.message, stdout });
     });
     child.on("close", (code) => {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
+      opts.signal?.removeEventListener("abort", onAbort);
       resolve({ exitCode: typeof code === "number" ? code : 1, stderr, stdout, timedOut });
     });
   });

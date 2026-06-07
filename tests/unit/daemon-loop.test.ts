@@ -366,6 +366,69 @@ describe("runDaemonOnce", () => {
     });
   });
 
+  it("cancels a running job when the pipeline reports cooperative cancellation", async () => {
+    const item = workItem("DEMO-2401");
+    const store = new MemoryJobStore(jobRecord(item, "SPEC", 3));
+    let sawCancelHook = false;
+
+    const result = await runDaemonOnce({
+      engines: {
+        "claude-code": engine("claude-code"),
+        codex: engine("codex"),
+      },
+      profiles: { web: repoProfile() },
+      runner: async (runnerOpts) => {
+        sawCancelHook = typeof runnerOpts.shouldCancel === "function";
+        return { canceled: true, events: [], final: { attemptsLeft: 3, status: "SPEC" } };
+      },
+      stageConfig: stageConfig(),
+      store,
+      worktrees: {
+        async ensure(input) {
+          return { branch: input.branch, path: "/worktrees/web/feat-DEMO-2401" };
+        },
+      },
+    });
+
+    expect(sawCancelHook).toBe(true);
+    expect(result).toEqual({ finalStatus: "CANCELED", jobId: "DEMO-2401", status: "canceled" });
+    expect(store.job?.status).toBe("CANCELED");
+    expect(store.events.at(-1)).toMatchObject({ status: "CANCELED", type: "canceled" });
+  });
+
+  it("aborts the in-flight worker when a cancel arrives mid-run", async () => {
+    const item = workItem("DEMO-2402");
+    const store = new MemoryJobStore(jobRecord(item, "SPEC", 3));
+
+    const result = await runDaemonOnce({
+      cancellationWatchMs: 5,
+      engines: {
+        "claude-code": engine("claude-code"),
+        codex: engine("codex"),
+      },
+      profiles: { web: repoProfile() },
+      runner: async (runnerOpts) => {
+        // Simulate a cancel request landing while the worker is running.
+        store.job = { ...store.job!, cancelRequestedAt: "2026-06-06T00:00:01.000Z" };
+        await new Promise<void>((resolve) => {
+          if (runnerOpts.signal?.aborted === true) return resolve();
+          runnerOpts.signal?.addEventListener("abort", () => resolve(), { once: true });
+        });
+        return { canceled: true, events: [], final: { attemptsLeft: 3, status: "SPEC" } };
+      },
+      stageConfig: stageConfig(),
+      store,
+      worktrees: {
+        async ensure(input) {
+          return { branch: input.branch, path: "/worktrees/web/feat-DEMO-2402" };
+        },
+      },
+    });
+
+    expect(result).toEqual({ finalStatus: "CANCELED", jobId: "DEMO-2402", status: "canceled" });
+    expect(store.job?.status).toBe("CANCELED");
+  });
+
   it("resumes a persisted active stage once after a crash", async () => {
     const item = workItem("DEMO-2302");
     const store = new QueueJobStore([jobRecord(item, "IMPL", 2)]);
