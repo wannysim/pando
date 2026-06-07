@@ -27,6 +27,13 @@ services:
       PANDO_SKILLS_ROOT: "/skills"
       PANDO_STATIC_DASHBOARD_ROOT: "/app/dashboard/dist"
       PANDO_GLOBAL_CONCURRENCY: "${PANDO_GLOBAL_CONCURRENCY:-2}"
+      # Worker credentials for live Docker workers. Empty by default so no secret
+      # is committed and the HTTP-only skeleton is unaffected; values come from the
+      # host env or an untracked .env file. ANTHROPIC_API_KEY is the recommended
+      # path for Docker Claude (managed-connector inheritance is unreliable in a
+      # container — see deploy/README.md and docs/runbooks/two-job-smoke.md).
+      ANTHROPIC_API_KEY: "${ANTHROPIC_API_KEY:-}"
+      OPENAI_API_KEY: "${OPENAI_API_KEY:-}"
     volumes:
       - "pando-data:/data"
       - "${PANDO_REPOS_ROOT:-~/Github}:/repos"
@@ -65,14 +72,13 @@ services:
       #    b) gh / HTTPS token via git credential store (host-managed, read-only):
       # - "${PANDO_GIT_CREDENTIALS:-~/.git-credentials}:/root/.git-credentials:ro"
       # - "${PANDO_GITCONFIG:-~/.gitconfig}:/root/.gitconfig:ro"
-    # For Docker live workers, set API-key mode or mount a container-local
-    # Claude login volume if host managed-connector inheritance fails (observed on
-    # macOS). Values come from the host env or an untracked .env file; do NOT
-    # commit secrets. See deploy/README.md.
-    # environment additions (uncomment in the environment: block above):
-    #   ANTHROPIC_API_KEY: "${ANTHROPIC_API_KEY:-}"
-    #   OPENAI_API_KEY: "${OPENAI_API_KEY:-}"
-    #   CODEX_HOME: "/root/.codex"
+    # For Docker live workers, ANTHROPIC_API_KEY / OPENAI_API_KEY are forwarded
+    # from the host env (or an untracked .env file) via the environment: block
+    # above; both default to empty so no secret is committed. As an alternative to
+    # ANTHROPIC_API_KEY, mount a container-local `claude /login` volume if host
+    # managed-connector inheritance fails (observed on macOS). For Codex, set
+    # CODEX_HOME: "/root/.codex" alongside the writable codex config mount. See
+    # deploy/README.md and docs/runbooks/two-job-smoke.md.
     healthcheck:
       test:
         - "CMD-SHELL"
