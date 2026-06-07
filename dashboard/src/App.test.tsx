@@ -126,6 +126,25 @@ describe("DashboardApp", () => {
     expect(screen.queryByText(/auto-refresh/i)).toBeNull();
   });
 
+  it("shows a canceling state and disables the cancel button when a cancel is pending", async () => {
+    const client = createMockClient();
+    client.getJob.mockResolvedValue({
+      job: {
+        ...jobSummary("DEMO-5001", "IMPL"),
+        cancelRequestedAt: "2026-06-06T00:05:00.000Z",
+        workItem: workItem("DEMO-5001"),
+      },
+      recentEvents: jobDetail().recentEvents,
+    });
+    const user = userEvent.setup();
+    render(<DashboardApp client={client} />);
+
+    await user.click(await screen.findByRole("button", { name: /open DEMO-5001/i }));
+
+    expect(await screen.findByText("Canceling…")).toBeVisible();
+    expect(screen.getByRole("button", { name: /cancel requested/i })).toBeDisabled();
+  });
+
   it("renders health with the private-network auth assumption", async () => {
     const client = createMockClient();
 

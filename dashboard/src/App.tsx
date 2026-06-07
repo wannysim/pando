@@ -106,32 +106,37 @@ export function DashboardApp({ client }: DashboardAppProps) {
     setRepos(next.repos);
   }, [client]);
 
-  const loadJobs = useCallback(async () => {
-    setListState("loading");
-    setError(null);
-    try {
-      const next = await client.listJobs(listInput);
-      setJobs(next.jobs);
-      setListState("ready");
-      return next.jobs;
-    } catch (loadError) {
-      setListState("error");
-      setError(errorMessage(loadError));
-      return [];
-    }
-  }, [client, listInput]);
+  const loadJobs = useCallback(
+    async ({ silent = false }: { silent?: boolean } = {}) => {
+      if (!silent) setListState("loading");
+      setError(null);
+      try {
+        const next = await client.listJobs(listInput);
+        setJobs(next.jobs);
+        setListState("ready");
+        return next.jobs;
+      } catch (loadError) {
+        setListState("error");
+        setError(errorMessage(loadError));
+        return [];
+      }
+    },
+    [client, listInput],
+  );
 
   const loadDetail = useCallback(
-    async (jobId: string) => {
+    async (jobId: string, { silent = false }: { silent?: boolean } = {}) => {
       setSelectedJobId(jobId);
-      setDetailState("loading");
+      // A background poll must never flip to the loading skeleton: that unmounts
+      // the detail panel, collapsing expanded timelines and resetting scroll.
+      if (!silent) setDetailState("loading");
       setError(null);
       try {
         const next = await client.getJob(jobId);
         setDetail(next);
         setDetailState("ready");
       } catch (loadError) {
-        setDetailState("error");
+        if (!silent) setDetailState("error");
         setError(errorMessage(loadError));
       }
     },
@@ -151,8 +156,8 @@ export function DashboardApp({ client }: DashboardAppProps) {
   const refresh = useCallback(async () => {
     await loadHealth();
     await loadAnalytics();
-    await loadJobs();
-    if (selectedJobId !== null) await loadDetail(selectedJobId);
+    await loadJobs({ silent: true });
+    if (selectedJobId !== null) await loadDetail(selectedJobId, { silent: true });
   }, [loadAnalytics, loadDetail, loadHealth, loadJobs, selectedJobId]);
 
   const hasActiveJobs = useMemo(() => jobs.some((job) => isActiveStatus(job.status)), [jobs]);
@@ -674,6 +679,7 @@ function JobDetailPanel({
 
   const job = detail.job;
   const now = new Date();
+  const cancelPending = job.cancelRequestedAt !== null && isActiveStatus(job.status);
 
   return (
     <Card className="detail-panel" aria-label="Job detail">
@@ -683,7 +689,15 @@ function JobDetailPanel({
           <CardTitle>{job.jobId}</CardTitle>
           <Text variant="description">{job.title}</Text>
         </div>
-        <StatusBadge status={job.status} />
+        <div className="detail-status">
+          <StatusBadge status={job.status} />
+          {cancelPending ? (
+            <Badge className="live-badge" variant="warning">
+              <Loader2 className="spin" size={12} aria-hidden="true" />
+              Canceling…
+            </Badge>
+          ) : null}
+        </div>
       </CardHeader>
 
       <CardContent>
@@ -735,13 +749,13 @@ function JobDetailPanel({
             Retry from {retryStage}
           </Button>
           <Button
-            disabled={actionBusy !== null}
+            disabled={actionBusy !== null || cancelPending}
             variant="outline"
             type="button"
             onClick={() => onCancel(job.jobId)}
           >
             <Ban size={16} aria-hidden="true" />
-            Cancel job
+            {cancelPending ? "Cancel requested" : "Cancel job"}
           </Button>
           <Button
             disabled={actionBusy !== null}
