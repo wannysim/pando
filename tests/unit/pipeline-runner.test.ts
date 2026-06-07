@@ -464,6 +464,58 @@ describe("runPipeline", () => {
     expect(result.events.filter((event) => event.type === "gate-fail")).toHaveLength(2);
   });
 
+  it("escalates a non-retryable auth engine failure without burning the retry budget", async () => {
+    const result = await runPipeline({
+      engines: {
+        "claude-code": failingEngine("claude-code", { errorCode: "not_logged_in", exitCode: 1 }),
+        codex: engine("codex", []),
+      },
+      item: workItem(),
+      profile: repoProfile(),
+      stageConfig: { ...stageConfig(), defaults: { retryBudget: 3, timeoutMinutes: 30 } },
+      worktree: "/worktree",
+    });
+
+    expect(result.final).toEqual({ attemptsLeft: 3, status: "ESCALATED" });
+    const failed = result.events.find((event) => event.type === "engine-fail");
+    expect(failed?.payload).toMatchObject({ providerKind: "auth" });
+  });
+
+  it("retries a transient engine failure with backoff until the budget is exhausted", async () => {
+    const result = await runPipeline({
+      engines: {
+        "claude-code": failingEngine("claude-code", { exitCode: 1 }),
+        codex: engine("codex", []),
+      },
+      item: workItem(),
+      profile: repoProfile(),
+      stageConfig: { ...stageConfig(), defaults: { retryBudget: 2, timeoutMinutes: 30 } },
+      worktree: "/worktree",
+    });
+
+    expect(result.final).toEqual({ attemptsLeft: 0, status: "FAILED" });
+    const engineFails = result.events.filter((event) => event.type === "engine-fail");
+    expect(engineFails).toHaveLength(2);
+    expect(engineFails[0]?.payload).toMatchObject({ backoffMs: 2_000, providerKind: "transient" });
+  });
+
+  it("classifies a timed-out engine failure as a retryable timeout", async () => {
+    const result = await runPipeline({
+      engines: {
+        "claude-code": failingEngine("claude-code", { exitCode: 1, timedOut: true }),
+        codex: engine("codex", []),
+      },
+      item: workItem(),
+      profile: repoProfile(),
+      stageConfig: { ...stageConfig(), defaults: { retryBudget: 1, timeoutMinutes: 30 } },
+      worktree: "/worktree",
+    });
+
+    expect(result.final.status).toBe("FAILED");
+    const failed = result.events.find((event) => event.type === "engine-fail");
+    expect(failed?.payload).toMatchObject({ providerKind: "timeout" });
+  });
+
   it("resumes from a persisted stage without rerunning earlier stages", async () => {
     const calls: string[] = [];
 
@@ -527,6 +579,18 @@ function engine(name: WorkerEngine["name"], calls: string[]): WorkerEngine {
     async run(opts: WorkerRunOptions): Promise<WorkerResult> {
       calls.push(`${name}:${opts.prompt}`);
       return { ok: true, output: "ok" };
+    },
+  };
+}
+
+function failingEngine(
+  name: WorkerEngine["name"],
+  failure: { exitCode?: number; timedOut?: boolean; errorCode?: string },
+): WorkerEngine {
+  return {
+    name,
+    async run(): Promise<WorkerResult> {
+      return { ok: false, output: "failed", ...failure };
     },
   };
 }

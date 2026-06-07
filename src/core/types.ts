@@ -78,6 +78,13 @@ export interface WorkerResult {
    * Hyrum's Law 방어: Gate 컨텍스트에는 의도적으로 노출하지 않는다 (ADR-002).
    */
   output: string;
+  /**
+   * 결정적 실패 신호 — retry/backoff 분류 전용 (LLM 텍스트 아님).
+   * exitCode/timedOut/errorCode는 프로세스/구조화 JSON에서만 채운다.
+   */
+  exitCode?: number;
+  timedOut?: boolean;
+  errorCode?: string;
 }
 
 export interface WorkerEngine {

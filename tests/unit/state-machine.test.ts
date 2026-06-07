@@ -94,6 +94,17 @@ describe("escalation", () => {
       /invalid/i,
     );
   });
+
+  it("NON_RETRYABLE: any stage → ESCALATED without consuming the budget", () => {
+    for (const stage of STAGE_ORDER) {
+      const next = transition(at(stage, 2), { type: "NON_RETRYABLE" }, BUDGET);
+      expect(next).toEqual({ attemptsLeft: 2, status: "ESCALATED" });
+    }
+  });
+
+  it("rejects NON_RETRYABLE from QUEUED", () => {
+    expect(() => transition(at("QUEUED"), { type: "NON_RETRYABLE" }, BUDGET)).toThrow(/invalid/i);
+  });
 });
 
 describe("invalid transitions", () => {
@@ -115,6 +126,7 @@ describe("invalid transitions", () => {
       { type: "GATE_FAIL" },
       { type: "CHANGES_REQUESTED" },
       { type: "BLOCKING_QUESTIONS" },
+      { type: "NON_RETRYABLE" },
     ] as const;
     for (const status of ["DONE", "FAILED", "ESCALATED", "CANCELED"] as const) {
       for (const event of events) {

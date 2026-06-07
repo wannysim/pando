@@ -5,6 +5,7 @@
  *                  │               ▲      │
  *                  │               └──────┘ CHANGES_REQUESTED (budget 차감)
  * SPEC/PLAN → ESCALATED (blocking open questions)
+ * 모든 단계: NON_RETRYABLE → ESCALATED (auth 등 재시도 불가 provider 실패, budget 보존)
  * 모든 단계: GATE_FAIL → 같은 단계 재시도 (budget 차감), 소진 시 FAILED
  *
  * 순수 함수만 — I/O 없음 (CLAUDE.md 규율 4).
@@ -21,7 +22,8 @@ export type PipelineEvent =
   | { type: "GATE_PASS" }
   | { type: "GATE_FAIL" }
   | { type: "CHANGES_REQUESTED" }
-  | { type: "BLOCKING_QUESTIONS" };
+  | { type: "BLOCKING_QUESTIONS" }
+  | { type: "NON_RETRYABLE" };
 
 export interface MachineState {
   status: JobStatus;
@@ -81,6 +83,10 @@ export function transition(
 
     case "BLOCKING_QUESTIONS":
       if (state.status !== "SPEC" && state.status !== "PLAN") invalid(state, event);
+      return { status: "ESCALATED", attemptsLeft: state.attemptsLeft };
+
+    case "NON_RETRYABLE":
+      if (!isStage(state.status)) invalid(state, event);
       return { status: "ESCALATED", attemptsLeft: state.attemptsLeft };
   }
 }

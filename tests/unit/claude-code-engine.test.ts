@@ -82,8 +82,10 @@ describe("ClaudeCodeEngine", () => {
     });
 
     expect(result).toEqual({
+      exitCode: 0,
       ok: true,
       output: '{"ok":true}\nwarn\n',
+      timedOut: false,
     });
     expect(calls).toHaveLength(1);
     expect(calls[0]?.[0]).toBe("claude-test");
@@ -106,7 +108,7 @@ describe("ClaudeCodeEngine", () => {
         prompt: "plan",
         timeoutMs: 30_000,
       }),
-    ).resolves.toEqual({ ok: false, output: "failed\n" });
+    ).resolves.toEqual({ exitCode: 2, ok: false, output: "failed\n", timedOut: false });
   });
 
   it("collects successful CLI output through the default execFile runner", async () => {
@@ -122,7 +124,7 @@ describe("ClaudeCodeEngine", () => {
         prompt: "plan",
         timeoutMs: 30_000,
       }),
-    ).resolves.toEqual({ ok: true, output: "ok\nwarn\n" });
+    ).resolves.toEqual({ exitCode: 0, ok: true, output: "ok\nwarn\n", timedOut: false });
   });
 
   it("preserves failed stdout and stderr through the default execFile runner", async () => {
@@ -138,7 +140,7 @@ describe("ClaudeCodeEngine", () => {
         prompt: "plan",
         timeoutMs: 30_000,
       }),
-    ).resolves.toEqual({ ok: false, output: "out\nerr\n" });
+    ).resolves.toEqual({ exitCode: 7, ok: false, output: "out\nerr\n", timedOut: false });
   });
 });
 

@@ -103,9 +103,11 @@ describe("CodexEngine", () => {
 
     expect(result).toEqual({
       costUsd: 1.5,
+      exitCode: 0,
       ok: true,
       output: "done\nwarn\n",
       sessionId: "sess-1",
+      timedOut: false,
     });
     expect(calls[0]?.[0]).toBe("codex-test");
     expect(calls[0]?.[2]).toMatchObject({
@@ -140,7 +142,14 @@ describe("CodexEngine", () => {
         prompt: "Implement",
         timeoutMs: 30_000,
       }),
-    ).resolves.toEqual({ ok: false, output: "out\nerr\n" });
+    ).resolves.toEqual({
+      costUsd: undefined,
+      exitCode: 9,
+      ok: false,
+      output: "out\nerr\n",
+      sessionId: undefined,
+      timedOut: false,
+    });
   });
 
   it("closes stdin for the default runner so codex exec does not wait for input", async () => {
