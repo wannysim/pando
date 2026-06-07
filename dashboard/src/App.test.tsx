@@ -2,6 +2,7 @@ import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi, type Mocked } from "vitest";
 import { DashboardApp } from "./App";
+import { PandoApiClientError } from "../../src/api/client";
 import type { PandoApiClient } from "../../src/api/client";
 import type {
   ApiAnalyticsResponse,
@@ -148,6 +149,7 @@ describe("DashboardApp", () => {
 
     expect(screen.getByText("Repo is required")).toBeVisible();
     expect(screen.getByText("ID is required")).toBeVisible();
+    expect(screen.getByText("Add at least one acceptance criterion")).toBeVisible();
     expect(client.submitBrief).not.toHaveBeenCalled();
 
     await user.type(screen.getByLabelText("Task repo"), "pando");
@@ -158,6 +160,10 @@ describe("DashboardApp", () => {
       "The footer should show the current year automatically.",
     );
     await user.type(
+      screen.getByLabelText("Acceptance criteria (one per line)"),
+      "The footer shows the current year\nNo code files change",
+    );
+    await user.type(
       screen.getByLabelText("References (one per line)"),
       "src/footer.tsx\ndocs/spec.md",
     );
@@ -166,6 +172,7 @@ describe("DashboardApp", () => {
     await waitFor(() =>
       expect(client.submitBrief).toHaveBeenCalledWith({
         brief: {
+          acceptanceCriteria: ["The footer shows the current year", "No code files change"],
           assets: ["src/footer.tsx", "docs/spec.md"],
           body: "The footer should show the current year automatically.",
           title: "Make the footer year dynamic",
@@ -174,6 +181,27 @@ describe("DashboardApp", () => {
         repo: "pando",
       }),
     );
+  });
+
+  it("surfaces an inline brief API rejection instead of failing silently", async () => {
+    const client = createMockClient();
+    client.submitBrief.mockRejectedValue(
+      new PandoApiClientError(400, "invalid_brief", "inline brief schema validation failed"),
+    );
+    const user = userEvent.setup();
+    render(<DashboardApp client={client} />);
+
+    await screen.findByRole("button", { name: /open DEMO-5001/i });
+    await user.type(screen.getByLabelText("Task repo"), "pando");
+    await user.type(screen.getByLabelText("Task ID"), "footer-year");
+    await user.type(screen.getByLabelText("What to build"), "Make the footer year dynamic.");
+    await user.type(
+      screen.getByLabelText("Acceptance criteria (one per line)"),
+      "The footer shows the current year",
+    );
+    await user.click(screen.getByRole("button", { name: "Describe task" }));
+
+    expect(await screen.findByText(/inline brief schema validation failed/i)).toBeVisible();
   });
 
   // AC-4a: context strip renders above action row with current stage and branch

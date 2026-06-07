@@ -36,7 +36,9 @@ export function createPlanArtifactGate(files: TextFileReader): Gate {
         return fail("PLAN.md not found", path);
       }
 
-      const validation = validatePlanArtifact(markdown);
+      const validation = validatePlanArtifact(markdown, {
+        requireTicketKey: ctx.item.source === "jira",
+      });
       if (!validation.valid) {
         return fail("PLAN.md schema validation failed", validation.errors.join("\n"));
       }

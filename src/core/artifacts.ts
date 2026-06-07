@@ -73,14 +73,23 @@ export function parsePlanArtifact(markdown: string): PlanArtifact {
   };
 }
 
-export function validatePlanArtifact(markdown: string): PlanArtifactValidation {
+export interface ValidatePlanArtifactOptions {
+  /** Jira-source plans must carry a ticket key; brief/github_issue sources do not. */
+  requireTicketKey?: boolean;
+}
+
+export function validatePlanArtifact(
+  markdown: string,
+  options: ValidatePlanArtifactOptions = {},
+): PlanArtifactValidation {
+  const requireTicketKey = options.requireTicketKey ?? true;
   const plan = parsePlanArtifact(markdown);
   const errors: string[] = [];
 
   if (plan.title.length === 0) {
     errors.push("PLAN.md must start with an H1 title");
   }
-  if (plan.ticketKey === undefined) {
+  if (requireTicketKey && plan.ticketKey === undefined) {
     errors.push("PLAN.md title must include a ticket key like [AP-1234]");
   }
   if (!hasContent(plan.sections.requirements)) {
