@@ -14,11 +14,13 @@
 - Docker image는 opt-in worker CLI install layer, CA bundle, git/ssh runtime, auth/git credential readiness evidence를 갖췄다(PR #45, #55, 이번 follow-up). Docker live worker smoke는 실제로 시도했고, post-CA rerun에서 Codex는 exit `0`까지 확인했다. 이 환경에서 Claude Code managed connector는 container로 상속되지 않아 실제 Docker Claude call은 API-key mode 또는 container-local `claude /login` credential이 필요하다는 blocker를 구조화 evidence로 남겼다.
 - worker readiness/live smoke evidence는 structured JSON으로 남긴다.
 
-아직 roadmap 항목으로 남은 것은 아래 하나다.
+Stacked PR Roadmap의 PR 1~10이 모두 닫혔다. 마지막 항목이던 npm 배포 경로(PR 10)는 아래처럼 정리됐다.
 
-- npm 배포 경로가 없다. CLI는 `pandoctl`로 점유했지만(ADR-010), 사용자가 `npm i -g pandoctl`로 설치해 `pandoctl start`/`pandoctl list`를 쓰는 경로는 미구현이다. 명령 표면도 `pando`/`pandoctl`/`agentctl`로 갈려 있고, 빌드 단계와 `better-sqlite3` native 의존성 처리가 남아 있다. → PR 10.
+- 배포되는 CLI는 `pandoctl` 하나로 통합됐다(ADR-010). `pandoctl start`(= `pando start`)와 `pandoctl submit/list/show/retry/cancel/cleanup/watch/smoke`가 한 바이너리의 서브커맨드다.
+- `packages/pandoctl`는 esbuild로 번들된 JS + shebang bin(`dist/pandoctl.mjs`)과 `schema.sql`을 담은 실제 publish 후보(`pandoctl@0.1.0`)다. placeholder `0.0.1`/stub은 교체됐다.
+- `better-sqlite3`만 native dependency로 external 유지하고, `npm i -g pandoctl`이 임시 `--prefix`로 검증됐다(prebuilt 바이너리 해결, node-gyp 빌드 불필요). 글로벌 bin symlink에서도 통합 진입점이 실행되도록 `isDirectRun`이 realpath를 해석한다.
 
-따라서 다음 목표는 **published `pandoctl` 하나로 local start + operations CLI를 배포 가능한 상태로 만드는 것**이다.
+따라서 남은 작업은 실사용 전환의 운영 확장(W6)으로 넘어간다.
 
 ## 요구사항 요약
 
@@ -247,9 +249,10 @@ Follow-up:
 - Commit:
   - `chore(docker): document worker readiness path`
 
-### PR 10: pandoctl npm distribution
+### Done: PR 10 — pandoctl npm distribution
 
 - Focus: Distribution
+- Status: ✅ 완료 (이번 작업). 통합 `pandoctl` 진입점, esbuild 번들 빌드, 실제 `pandoctl@0.1.0` 패키지, npm pack/global-install smoke까지 검증.
 - Depends on: PR 7 one-command local run(#41, `pando start` 머지됨), CLI name 결정(ADR-010 / #46)
 - Files:
   - `packages/pandoctl/package.json`
@@ -322,7 +325,7 @@ README는 아래 순서가 좋다.
 
 ### 지금 당장 가능한 방식
 
-PR #36~#38 이후에는 작은 문서/운영 UX 작업을 pando self-dogfood batch로 끝까지 돌릴 수 있다. PR #41과 PR #54 이후에는 `pando start`로 local daemon/dashboard/API를 켜고, dashboard/API의 인라인 자연어 brief intake로 canonical brief를 만들 수 있다. 남은 큰 제품화 작업은 npm에 배포 가능한 `pandoctl` 하나로 start/list/show/retry/cancel/cleanup/watch/smoke 흐름을 제공하는 것이다.
+PR #36~#38 이후에는 작은 문서/운영 UX 작업을 pando self-dogfood batch로 끝까지 돌릴 수 있다. PR #41과 PR #54 이후에는 `pando start`/`pandoctl start`로 local daemon/dashboard/API를 켜고, dashboard/API의 인라인 자연어 brief intake로 canonical brief를 만들 수 있다. PR 10 이후 운영 CLI는 `pandoctl` 하나로 start/list/show/retry/cancel/cleanup/watch/smoke 흐름을 제공하며, 빌드된 npm 패키지로 배포할 수 있다.
 
 1. 새 Codex/Claude 세션을 연다.
 2. `docs/next-session-prompt.md`를 그대로 붙여 넣는다.
@@ -364,4 +367,4 @@ PANDO_API_URL=http://127.0.0.1:3210 \
 
 ## 다음 결정
 
-다음 작업은 **PR 10: pandoctl npm distribution**이다. PR 10 이후 W6 후보는 Docker live worker smoke를 API-key/container-local credential로 재실행, 3~5 job soak, notifications, failure analytics, provider backoff, GitHub/Jira write-back, auth hardening이다.
+Stacked PR Roadmap(PR 1~10)은 모두 닫혔다. 다음 작업은 **W6 운영 확장**이다. W6 후보는 Docker live worker smoke를 API-key/container-local credential로 재실행, 3~5 job soak/nightly run, notifications, failure analytics, provider backoff, GitHub/Jira write-back, auth hardening, `pandoctl@0.1.0` 실제 npm publish다.

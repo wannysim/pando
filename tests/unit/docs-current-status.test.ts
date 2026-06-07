@@ -19,35 +19,36 @@ describe("current status docs", () => {
     expect(koreanReadme).not.toContain("brief 입력은 아직 파일 경로 기반");
   });
 
-  it("marks roadmap PR 7 through PR 9 done and leaves PR 10 as the next milestone", async () => {
+  it("marks roadmap PR 7 through PR 10 done and points the next step at W6", async () => {
     const roadmap = await readDoc("docs/practical-adoption-roadmap.md");
 
     expect(roadmap).toContain("### Done: PR 7 — one-command local run");
     expect(roadmap).toContain("### Done: PR 8 — web inline brief intake");
     expect(roadmap).toContain("### Done: PR 9 — Docker worker readiness hardening");
-    expect(roadmap).toContain("다음 작업은 **PR 10: pandoctl npm distribution**");
-    expect(roadmap).not.toContain("다음 작업은 **PR 7: one-command local run**");
+    expect(roadmap).toContain("### Done: PR 10 — pandoctl npm distribution");
+    expect(roadmap).toContain("다음 작업은 **W6 운영 확장**");
+    expect(roadmap).not.toContain("다음 작업은 **PR 10: pandoctl npm distribution**");
   });
 
-  it("handoff says PR10 is the only remaining roadmap item", async () => {
+  it("handoff marks PR10 done and names W6 as the next step", async () => {
     const handoff = await readDoc("docs/handoff.md");
 
     expect(handoff).toContain("PR #52");
     expect(handoff).toContain("PR #53");
     expect(handoff).toContain("PR #54");
     expect(handoff).toContain("PR #55");
-    expect(handoff).toContain("남은 roadmap 항목은 **pandoctl npm distribution(PR 10)**");
-    expect(handoff).not.toContain("Release branch routing** — Jira `fixVersion` 기반");
+    expect(handoff).toContain("✅ **pandoctl npm distribution** (roadmap PR 10)");
+    expect(handoff).toContain("다음은 **W6 운영 확장**");
     expect(handoff).not.toContain(
-      "Gate adapter 연결** — checksum/diff/workspace scoping의 순수 계약은 완료됐지만",
+      "남은 roadmap 항목은 **pandoctl npm distribution(PR 10)** 하나다",
     );
   });
 
-  it("next-session prompt points at PR10 rather than productization follow-ups", async () => {
+  it("next-session prompt points at W6 rather than PR10", async () => {
     const prompt = await readDoc("docs/next-session-prompt.md");
 
-    expect(prompt).toContain("다음 세션 목표는 PR 10: pandoctl npm distribution");
-    expect(prompt).not.toContain("one-command local run, web inline brief intake");
+    expect(prompt).toContain("W6 운영 확장");
+    expect(prompt).not.toContain("다음 세션 목표는 PR 10: pandoctl npm distribution");
   });
 
   it("two-job smoke runbook no longer says production server daemon wiring is absent", async () => {

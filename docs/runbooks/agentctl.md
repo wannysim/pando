@@ -6,8 +6,10 @@ modes. Pick the mode deliberately: they read and write the same job state but
 through different boundaries.
 
 > Naming: the published CLI is `pandoctl` (ADR-010 — the bare `pando` name is
-> taken on npm). `bin/pandoctl.mjs` resolves the operational CLI, whose internal
-> module is still `src/cli/agentctl.ts`. These are equivalent:
+> taken on npm). `pandoctl` is one binary: `pandoctl start` boots the local
+> daemon/dashboard and the other subcommands operate the job store. `bin/pandoctl.mjs`
+> resolves the unified entry `src/cli/pandoctl.ts`, which dispatches operational
+> commands to the module still named `src/cli/agentctl.ts`. These are equivalent:
 >
 > ```bash
 > pandoctl <command> [args]                       # global bin after `pnpm link --global` / `npm i -g .`

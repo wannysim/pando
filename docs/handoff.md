@@ -84,6 +84,7 @@
 - `src/daemon/worktree-provisioner.ts` — W4 완료. `RepoProfile` + `worktreeRoot`를 `ensureWorktree` 옵션으로 변환하고 setup command를 PM-agnostic action에서 생성. setup command에 job isolation env를 주입
 - `src/worktree/manager.ts` — W4에서 setup command 실행 시 `setupEnv`를 process env에 병합하도록 확장
 - `src/cli/agentctl.ts` — W3 완료. `submit jira`, `submit brief`, `show`, `retry`. W5 PR 2에서 직접 store 기반 `cancel <jobId>`와 `cleanup <jobId>`를 추가. cleanup은 worktree cleaner port를 통해 실행하고 request/completed/failed event를 남김. W5 PR 3에서 `show`가 event payload의 cost/duration/failure reason/evidence를 key=value 형식으로 출력. `submit brief`는 brief 파일을 읽어 schema 검증 후 title/assets를 WorkItem으로 정규화하고, `--brief-path` 생략 시 `briefs/{id}/brief.md`를 사용
+- `src/cli/pandoctl.ts`, `packages/pandoctl/` — PR 10 완료. `routePandoctl`/`runPandoctl`이 `start`는 `runPandoStartCli`(데몬 부트스트랩), 나머지는 agentctl ops로 라우팅하는 통합 진입점이다. 번들 시 모든 모듈이 같은 `import.meta.url`을 공유해 `isDirectRun` 가드가 동시에 발화하는 문제를 막기 위해 pandoctl이 `globalThis.__PANDOCTL_EMBEDDED__`를 세팅하고 `src/cli/pando.ts`/`src/cli/agentctl.ts`/`src/server.ts`의 auto-run 가드가 이를 확인한다. `packages/pandoctl/build.mjs`(esbuild)가 `better-sqlite3`만 external로 두고 단일 ESM bin(`dist/pandoctl.mjs`, shebang + createRequire shim) + `schema.sql` 복사본을 만든다. `packages/pandoctl/package.json`은 `pandoctl@0.1.0` 실제 publish 후보(bin→dist, files=[dist, README.md], deps=better-sqlite3, build script). `scripts/pandoctl-pack-smoke.mjs`가 build→`npm pack --dry-run`→compiled bin/schema 포함·shebang·native sqlite 로드를 검증하고 `/tmp`에 evidence를 남긴다. 글로벌 bin은 symlink라 `pandoctl.ts`의 `isDirectRun`이 realpath를 해석한다.
 - `src/api/app.ts`, `src/server.ts` — W5 PR 7에서 production static dashboard serving을 `/dashboard` 아래로 고정하고, Hono API/SQLite store/static dashboard를 같은 Node server entrypoint로 묶었다. `/health`, `/jobs`, `/briefs` 같은 API route는 JSON route로 유지되어 SPA fallback과 충돌하지 않는다
 - `deploy/`, `config/orchestrator.docker.yaml` — W5 PR 7에서 single-container Dockerfile/compose skeleton을 추가했다. mount contract는 SQLite `/data/pando.sqlite`, repos `/repos`, worktrees `/worktrees`, config `/config`, skills `/skills`, HTTP `3210`, dashboard root `/app/dashboard/dist`
 - `smoke/two-job-smoke.contract.json`, `scripts/two-job-smoke.mjs`, `docs/runbooks/two-job-smoke.md` — W5 PR 7에서 2-job smoke의 global cap 2~3, worktree collision check, provider cap check, gate evidence check, deterministic fake fallback reason 기록을 테스트 가능한 계약으로 고정했다. 2026-06-07에 `pnpm smoke:full-daemon` host contract + live dogfood runbook을 추가했다
@@ -113,9 +114,9 @@
 - concurrency 3 self-dogfood batch 결과: `PANDO-3701` dashboard UX, `PANDO-3702` agentctl UX, `PANDO-3703` README/getting-started 모두 `DONE`. Evidence: `/tmp/pando-multi-run-20260607-024505/pando-multi-success-evidence.json`.
 - 해당 batch에서 pando가 만든 PR #36, #37, #38은 develop에 merge됐다.
 
-**다음 세션 시작점 — pandoctl npm distribution.**
+**다음 세션 시작점 — W6 운영 확장.**
 
-W5의 최소 운영 준비와 첫 3-job self-dogfood batch는 닫혔다. 이후 운영 표면 다듬기에서 **pando start 단일 명령(#41), dashboard operations follow-up(#42), agentctl watch/smoke readiness(#40), draft PR gate(#44), pandoctl bin rename + README/docs parity(#51), real git checksum/diff gate adapter(#52), release/* base-branch routing(#53), web inline brief intake(#54), Docker worker readiness hardening(#55 + 이번 follow-up)** 이 닫혔다. 남은 roadmap 항목은 **pandoctl npm distribution(PR 10)** 하나다.
+W5의 최소 운영 준비와 첫 3-job self-dogfood batch는 닫혔다. 이후 운영 표면 다듬기에서 **pando start 단일 명령(#41), dashboard operations follow-up(#42), agentctl watch/smoke readiness(#40), draft PR gate(#44), pandoctl bin rename + README/docs parity(#51), real git checksum/diff gate adapter(#52), release/* base-branch routing(#53), web inline brief intake(#54), Docker worker readiness hardening(#55 + follow-up)** 이 닫혔다. 마지막 roadmap 항목이던 **pandoctl npm distribution(PR 10)** 도 이번 작업으로 닫혔다 — 통합 `pandoctl` 진입점 + esbuild 번들 빌드 + 실제 `pandoctl@0.1.0` 패키지. Stacked PR Roadmap(PR 1~10)은 전부 닫혔고, 다음은 **W6 운영 확장**(Docker live worker smoke 재실행, soak/nightly, notifications, failure analytics, `pandoctl@0.1.0` 실제 npm publish)이다.
 
 ## 남아있는 작업
 
@@ -128,8 +129,8 @@ W5의 최소 운영 준비와 첫 3-job self-dogfood batch는 닫혔다. 이후 
 7. ✅ **Gate adapter 연결** (PR #52) — checksum/diff/workspace scoping의 순수 계약을 실제 git inspector adapter에 연결했다. local runtime IMPL gate가 real git diff 수집을 사용한다.
 8. ✅ **Release branch routing** (PR #53) — Jira `fixVersion` 기반 `release/*` base branch 매핑과 `WorkItem.baseBranch` override를 ADR-011과 코드/테스트로 고정했다.
 9. ✅ **Docker worker readiness** (PR #55 + 이번 follow-up) — opt-in Linux worker CLI install layer, CA bundle, git/ssh runtime, auth/git credential readiness evidence를 갖췄다. Docker live worker smoke는 실제 실행했고 post-CA rerun에서 Codex는 exit `0`, Claude는 auth blocker로 exit `1`이었다. 이 환경에서 Claude Code managed connector는 container로 상속되지 않아 실제 Docker Claude call은 `ANTHROPIC_API_KEY` 또는 container-local `claude /login` credential이 필요하다는 blocker를 evidence로 남겼다.
-10. **pandoctl npm distribution** (roadmap PR 10) — bin 이름은 `pandoctl`로 통일했지만, 빌드/번들된 npm 패키지 publish(`npm i -g pandoctl`), `better-sqlite3` native 의존성 처리, `pando start`+ops를 한 바이너리 서브커맨드로 합치는 명령 표면 통합은 아직 남아 있다.
-11. **W6 운영 확장 후보** — Docker live worker smoke를 API-key/container-local credential로 재실행, 3~5 job soak/nightly run, notifications, failure analytics, provider backoff, GitHub Issue/Jira write-back, auth hardening, Docker egress policy, split containers는 PR 10 이후 범위다.
+10. ✅ **pandoctl npm distribution** (roadmap PR 10) — 통합 진입점 `src/cli/pandoctl.ts`가 `start`(= `pando start`)와 ops 서브커맨드를 한 바이너리로 합친다. `packages/pandoctl`는 esbuild로 번들된 `dist/pandoctl.mjs`(shebang) + `schema.sql`을 담은 실제 publish 후보(`pandoctl@0.1.0`)다. `better-sqlite3`만 native external로 두고 `npm i -g pandoctl`을 임시 `--prefix`로 검증했다(prebuilt 해결, node-gyp 불필요). 실제 npm publish는 W6 항목으로 남긴다.
+11. **W6 운영 확장 후보** — Docker live worker smoke를 API-key/container-local credential로 재실행, 3~5 job soak/nightly run, notifications, failure analytics, provider backoff, GitHub Issue/Jira write-back, auth hardening, Docker egress policy, split containers, `pandoctl@0.1.0` 실제 npm publish는 PR 10 이후 범위다.
 
 새 세션에 그대로 전달할 상세 프롬프트는 `docs/next-session-prompt.md`에 있다.
 
