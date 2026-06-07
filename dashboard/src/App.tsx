@@ -8,6 +8,33 @@ import type {
   ApiJobSummary,
 } from "../../src/api/schema";
 import type { JobStatus, StageName } from "../../src/core/types";
+import { Alert } from "./components/ui/alert";
+import { Badge } from "./components/ui/badge";
+import { Button } from "./components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "./components/ui/card";
+import { CodeBlock } from "./components/ui/code-block";
+import {
+  DescriptionDetails,
+  DescriptionItem,
+  DescriptionList,
+  DescriptionTerm,
+} from "./components/ui/description-list";
+import { Input } from "./components/ui/input";
+import { Label } from "./components/ui/label";
+import { Select } from "./components/ui/select";
+import { Skeleton } from "./components/ui/skeleton";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "./components/ui/table";
+import { TabsList, TabsTrigger } from "./components/ui/tabs";
+import { Textarea } from "./components/ui/textarea";
+import { Timeline, TimelineItem } from "./components/ui/timeline";
+import { Text } from "./components/ui/typography";
 import "./styles.css";
 
 interface DashboardAppProps {
@@ -112,23 +139,31 @@ export function DashboardApp({ client }: DashboardAppProps) {
   return (
     <main className="dashboard-shell">
       <HealthStrip health={health} onRefresh={() => void refresh()} />
-      {error === null ? null : <div className="error-banner">{error}</div>}
+      {error === null ? null : (
+        <Alert className="error-banner" variant="destructive">
+          {error}
+        </Alert>
+      )}
 
-      <section className="dashboard-grid">
-        <section className="jobs-panel" aria-labelledby="jobs-heading">
-          <div className="panel-header">
+      <section className="dashboard-workspace">
+        <Card className="jobs-panel" aria-labelledby="jobs-heading">
+          <CardHeader className="panel-header">
             <div>
-              <p className="eyebrow">Operations</p>
-              <h1 id="jobs-heading">Jobs</h1>
+              <Text variant="eyebrow">Operations</Text>
+              <CardTitle id="jobs-heading" level={1}>
+                Jobs
+              </CardTitle>
             </div>
-            <button className="icon-button" type="button" onClick={() => void refresh()}>
+            <Button variant="outline" type="button" onClick={() => void refresh()}>
               <RefreshCw size={16} aria-hidden="true" />
               Refresh
-            </button>
-          </div>
-          <StatusTabs value={filter} onChange={setFilter} />
-          <JobsTable jobs={jobs} loading={listState === "loading"} onOpen={loadDetail} />
-        </section>
+            </Button>
+          </CardHeader>
+          <CardContent>
+            <StatusTabs value={filter} onChange={setFilter} />
+            <JobsTable jobs={jobs} loading={listState === "loading"} onOpen={loadDetail} />
+          </CardContent>
+        </Card>
 
         <JobDetailPanel
           actionBusy={actionBusy}
@@ -145,10 +180,12 @@ export function DashboardApp({ client }: DashboardAppProps) {
           selectedJobId={selectedJobId}
           setRetryStage={setRetryStage}
         />
-      </section>
 
-      <InlineBriefPanel client={client} onSubmitted={() => void refresh()} />
-      <BriefSubmitPanel client={client} onSubmitted={() => void refresh()} />
+        <div className="intake-grid">
+          <InlineBriefPanel client={client} onSubmitted={() => void refresh()} />
+          <BriefSubmitPanel client={client} onSubmitted={() => void refresh()} />
+        </div>
+      </section>
     </main>
   );
 }
@@ -197,76 +234,88 @@ function InlineBriefPanel({
   }
 
   return (
-    <section className="submit-panel" aria-labelledby="inline-heading">
-      <div className="panel-header">
+    <Card className="submit-panel" aria-labelledby="inline-heading">
+      <CardHeader className="panel-header">
         <div>
-          <p className="eyebrow">Intake</p>
-          <h2 id="inline-heading">Describe a task</h2>
+          <Text variant="eyebrow">Intake</Text>
+          <CardTitle id="inline-heading">Describe a task</CardTitle>
         </div>
-      </div>
-      <form className="brief-form" onSubmit={(event) => void submit(event)}>
-        <label>
-          <span>Task repo</span>
-          <input value={repo} onChange={(event) => setRepo(event.target.value)} />
-        </label>
-        <label>
-          <span>Task ID</span>
-          <input value={id} onChange={(event) => setId(event.target.value)} />
-        </label>
-        <label>
-          <span>Task title</span>
-          <input value={title} onChange={(event) => setTitle(event.target.value)} />
-        </label>
-        <label>
-          <span>What to build</span>
-          <textarea
-            rows={4}
-            value={body}
-            onChange={(event) => setBody(event.target.value)}
-            placeholder="Describe the change in plain language."
-          />
-        </label>
-        <label>
-          <span>References (one per line)</span>
-          <textarea
-            rows={3}
-            value={references}
-            onChange={(event) => setReferences(event.target.value)}
-            placeholder="spec/docs/asset paths, one per line"
-          />
-        </label>
-        <button type="submit">
-          <Send size={16} aria-hidden="true" />
-          Describe task
-        </button>
-      </form>
-      {errors.length === 0 ? null : (
-        <ul className="form-errors">
-          {errors.map((formError) => (
-            <li key={formError}>{formError}</li>
-          ))}
-        </ul>
-      )}
-      {submitted === null ? null : <p className="success-note">{submitted}</p>}
-    </section>
+      </CardHeader>
+      <CardContent>
+        <form className="brief-form inline-brief-form" onSubmit={(event) => void submit(event)}>
+          <Label>
+            <span>Task repo</span>
+            <Input value={repo} onChange={(event) => setRepo(event.target.value)} />
+          </Label>
+          <Label>
+            <span>Task ID</span>
+            <Input value={id} onChange={(event) => setId(event.target.value)} />
+          </Label>
+          <Label>
+            <span>Task title</span>
+            <Input value={title} onChange={(event) => setTitle(event.target.value)} />
+          </Label>
+          <Label className="brief-form-wide">
+            <span>What to build</span>
+            <Textarea
+              rows={4}
+              value={body}
+              onChange={(event) => setBody(event.target.value)}
+              placeholder="Describe the change in plain language."
+            />
+          </Label>
+          <Label className="brief-form-wide">
+            <span>References (one per line)</span>
+            <Textarea
+              rows={3}
+              value={references}
+              onChange={(event) => setReferences(event.target.value)}
+              placeholder="spec/docs/asset paths, one per line"
+            />
+          </Label>
+          <Button type="submit">
+            <Send size={16} aria-hidden="true" />
+            Describe task
+          </Button>
+        </form>
+        {errors.length === 0 ? null : (
+          <Alert className="form-errors" variant="destructive">
+            <ul>
+              {errors.map((formError) => (
+                <li key={formError}>{formError}</li>
+              ))}
+            </ul>
+          </Alert>
+        )}
+        {submitted === null ? null : (
+          <Alert className="success-note" variant="success">
+            {submitted}
+          </Alert>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 
 function HealthStrip({ health, onRefresh }: { health: ApiHealth | null; onRefresh: () => void }) {
   return (
-    <section className="health-strip" aria-label="Daemon health">
+    <Card className="health-strip" aria-label="Daemon health">
       <div className="health-main">
         <ShieldCheck size={18} aria-hidden="true" />
         <span>{health === null ? "pando loading" : `${health.service} ${health.status}`}</span>
       </div>
-      <span>{health === null ? "jobCount=-" : `jobCount=${health.store.jobCount}`}</span>
-      <span>{health === null ? "auth=-" : `auth=${health.auth.mode}`}</span>
-      <span className="auth-note">Private network boundary; no built-in auth</span>
-      <button className="ghost-button" type="button" onClick={onRefresh}>
+      <Badge variant="secondary">
+        {health === null ? "jobCount=-" : `jobCount=${health.store.jobCount}`}
+      </Badge>
+      <Badge variant="outline">{health === null ? "auth=-" : `auth=${health.auth.mode}`}</Badge>
+      <Badge className="auth-note" variant="warning">
+        Private network boundary; no built-in auth
+      </Badge>
+      <Button className="health-refresh" variant="ghost" type="button" onClick={onRefresh}>
         <RefreshCw size={15} aria-hidden="true" />
         Refresh
-      </button>
-    </section>
+      </Button>
+    </Card>
   );
 }
 
@@ -278,20 +327,20 @@ function StatusTabs({
   value: StatusFilter;
 }) {
   return (
-    <div className="tabs" role="tablist" aria-label="Job status">
+    <TabsList role="tablist" aria-label="Job status">
       {STATUS_TABS.map((tab) => (
-        <button
+        <TabsTrigger
+          active={value === tab.value}
           aria-selected={value === tab.value}
-          className={value === tab.value ? "tab active" : "tab"}
           key={tab.value}
           onClick={() => onChange(tab.value)}
           role="tab"
           type="button"
         >
           {tab.label}
-        </button>
+        </TabsTrigger>
       ))}
-    </div>
+    </TabsList>
   );
 }
 
@@ -304,45 +353,43 @@ function JobsTable({
   loading: boolean;
   onOpen: (jobId: string) => Promise<void>;
 }) {
-  if (loading && jobs.length === 0) return <div className="skeleton">Loading jobs</div>;
+  if (loading && jobs.length === 0) return <Skeleton>Loading jobs</Skeleton>;
 
   return (
     <div className="table-wrap">
-      <table>
-        <thead>
-          <tr>
-            <th>Job</th>
-            <th>Status</th>
-            <th>Repo</th>
-            <th>Source</th>
-            <th>Attempts</th>
-            <th>Updated</th>
-          </tr>
-        </thead>
-        <tbody>
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>Job</TableHead>
+            <TableHead>Status</TableHead>
+            <TableHead>Repo</TableHead>
+            <TableHead>Source</TableHead>
+            <TableHead>Attempts</TableHead>
+            <TableHead>Updated</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
           {jobs.map((job) => (
-            <tr key={job.jobId}>
-              <td>
-                <button
-                  className="link-button"
-                  type="button"
-                  onClick={() => void onOpen(job.jobId)}
-                >
+            <TableRow key={job.jobId}>
+              <TableCell>
+                <Button variant="link" type="button" onClick={() => void onOpen(job.jobId)}>
                   Open {job.jobId}
-                </button>
-                <div className="muted">{job.title}</div>
-              </td>
-              <td>
+                </Button>
+                <Text className="job-title" variant="description">
+                  {job.title}
+                </Text>
+              </TableCell>
+              <TableCell>
                 <StatusBadge status={job.status} />
-              </td>
-              <td>{job.repo}</td>
-              <td>{job.source}</td>
-              <td>{job.attemptsLeft}</td>
-              <td>{formatTime(job.updatedAt)}</td>
-            </tr>
+              </TableCell>
+              <TableCell>{job.repo}</TableCell>
+              <TableCell>{job.source}</TableCell>
+              <TableCell>{job.attemptsLeft}</TableCell>
+              <TableCell>{formatTime(job.updatedAt)}</TableCell>
+            </TableRow>
           ))}
-        </tbody>
-      </table>
+        </TableBody>
+      </Table>
     </div>
   );
 }
@@ -370,18 +417,18 @@ function JobDetailPanel({
 }) {
   if (loading) {
     return (
-      <section className="detail-panel" aria-label="Job detail">
-        <div className="skeleton">Loading detail</div>
-      </section>
+      <Card className="detail-panel" aria-label="Job detail">
+        <Skeleton>Loading detail</Skeleton>
+      </Card>
     );
   }
 
   if (detail === null || selectedJobId === null) {
     return (
-      <section className="detail-panel empty" aria-label="Job detail">
+      <Card className="detail-panel empty" aria-label="Job detail">
         <Activity size={22} aria-hidden="true" />
-        <h2>Job detail</h2>
-      </section>
+        <CardTitle>Job detail</CardTitle>
+      </Card>
     );
   }
 
@@ -389,105 +436,125 @@ function JobDetailPanel({
   const now = new Date();
 
   return (
-    <section className="detail-panel" aria-label="Job detail">
-      <div className="panel-header detail-header">
+    <Card className="detail-panel" aria-label="Job detail">
+      <CardHeader className="panel-header detail-header">
         <div>
-          <p className="eyebrow">{job.repo}</p>
-          <h2>{job.jobId}</h2>
-          <p className="detail-title">{job.title}</p>
+          <Text variant="eyebrow">{job.repo}</Text>
+          <CardTitle>{job.jobId}</CardTitle>
+          <Text variant="description">{job.title}</Text>
         </div>
         <StatusBadge status={job.status} />
-      </div>
+      </CardHeader>
 
-      <dl className="meta-grid context-strip" data-testid="context-strip">
-        <div>
-          <dt>Stage</dt>
-          <dd>{currentStage(detail.recentEvents)}</dd>
-        </div>
-        <div>
-          <dt>Branch</dt>
-          <dd>{job.branch ?? "-"}</dd>
-        </div>
-        <div>
-          <dt>Started</dt>
-          <dd>{job.startedAt ? formatTime(job.startedAt) : "-"}</dd>
-        </div>
-        <div>
-          <dt>Elapsed</dt>
-          <dd>{formatElapsed(job.startedAt, job.finishedAt ? new Date(job.finishedAt) : now)}</dd>
-        </div>
-      </dl>
+      <CardContent>
+        <DescriptionList className="context-strip" data-testid="context-strip">
+          <DescriptionItem>
+            <DescriptionTerm>Stage</DescriptionTerm>
+            <DescriptionDetails>{currentStage(detail.recentEvents)}</DescriptionDetails>
+          </DescriptionItem>
+          <DescriptionItem>
+            <DescriptionTerm>Branch</DescriptionTerm>
+            <DescriptionDetails>{job.branch ?? "-"}</DescriptionDetails>
+          </DescriptionItem>
+          <DescriptionItem>
+            <DescriptionTerm>Started</DescriptionTerm>
+            <DescriptionDetails>
+              {job.startedAt ? formatTime(job.startedAt) : "-"}
+            </DescriptionDetails>
+          </DescriptionItem>
+          <DescriptionItem>
+            <DescriptionTerm>Elapsed</DescriptionTerm>
+            <DescriptionDetails>
+              {formatElapsed(job.startedAt, job.finishedAt ? new Date(job.finishedAt) : now)}
+            </DescriptionDetails>
+          </DescriptionItem>
+        </DescriptionList>
 
-      <div className="action-row">
-        <label className="compact-field">
-          <span>Retry stage</span>
-          <select
-            value={retryStage}
-            onChange={(event) => setRetryStage(event.target.value as StageName)}
+        <div className="action-row">
+          <Label className="compact-field">
+            <span>Retry stage</span>
+            <Select
+              value={retryStage}
+              onChange={(event) => setRetryStage(event.target.value as StageName)}
+            >
+              {RETRY_STAGES.map((stage) => (
+                <option key={stage} value={stage}>
+                  {stage}
+                </option>
+              ))}
+            </Select>
+          </Label>
+          <Button disabled={actionBusy !== null} type="button" onClick={() => onRetry(job.jobId)}>
+            <RotateCcw size={16} aria-hidden="true" />
+            Retry from {retryStage}
+          </Button>
+          <Button
+            disabled={actionBusy !== null}
+            variant="outline"
+            type="button"
+            onClick={() => onCancel(job.jobId)}
           >
-            {RETRY_STAGES.map((stage) => (
-              <option key={stage} value={stage}>
-                {stage}
-              </option>
+            <Ban size={16} aria-hidden="true" />
+            Cancel job
+          </Button>
+          <Button
+            disabled={actionBusy !== null}
+            variant="secondary"
+            type="button"
+            onClick={() => onCleanup(job.jobId)}
+          >
+            <Trash2 size={16} aria-hidden="true" />
+            Cleanup worktree
+          </Button>
+        </div>
+
+        <DescriptionList>
+          <DescriptionItem>
+            <DescriptionTerm>Source</DescriptionTerm>
+            <DescriptionDetails>{job.source}</DescriptionDetails>
+          </DescriptionItem>
+          <DescriptionItem>
+            <DescriptionTerm>Attempts left</DescriptionTerm>
+            <DescriptionDetails>{job.attemptsLeft}</DescriptionDetails>
+          </DescriptionItem>
+          <DescriptionItem>
+            <DescriptionTerm>Worktree</DescriptionTerm>
+            <DescriptionDetails>{job.worktreePath ?? "-"}</DescriptionDetails>
+          </DescriptionItem>
+        </DescriptionList>
+
+        <section>
+          <CardTitle className="section-title" level={3}>
+            Work item
+          </CardTitle>
+          <DescriptionList>
+            <DescriptionItem>
+              <DescriptionTerm>ID</DescriptionTerm>
+              <DescriptionDetails>{job.workItem.id}</DescriptionDetails>
+            </DescriptionItem>
+            <DescriptionItem>
+              <DescriptionTerm>Title</DescriptionTerm>
+              <DescriptionDetails>{job.workItem.title}</DescriptionDetails>
+            </DescriptionItem>
+            <DescriptionItem>
+              <DescriptionTerm>Payload</DescriptionTerm>
+              <DescriptionDetails>{JSON.stringify(job.workItem.payload)}</DescriptionDetails>
+            </DescriptionItem>
+          </DescriptionList>
+        </section>
+
+        <section>
+          <CardTitle className="section-title" level={3}>
+            Timeline
+          </CardTitle>
+          <Timeline>
+            {detail.recentEvents.map((event) => (
+              <EventRow event={event} key={event.sequence} now={now} />
             ))}
-          </select>
-        </label>
-        <button disabled={actionBusy !== null} type="button" onClick={() => onRetry(job.jobId)}>
-          <RotateCcw size={16} aria-hidden="true" />
-          Retry from {retryStage}
-        </button>
-        <button disabled={actionBusy !== null} type="button" onClick={() => onCancel(job.jobId)}>
-          <Ban size={16} aria-hidden="true" />
-          Cancel job
-        </button>
-        <button disabled={actionBusy !== null} type="button" onClick={() => onCleanup(job.jobId)}>
-          <Trash2 size={16} aria-hidden="true" />
-          Cleanup worktree
-        </button>
-      </div>
-
-      <dl className="meta-grid">
-        <div>
-          <dt>Source</dt>
-          <dd>{job.source}</dd>
-        </div>
-        <div>
-          <dt>Attempts left</dt>
-          <dd>{job.attemptsLeft}</dd>
-        </div>
-        <div>
-          <dt>Worktree</dt>
-          <dd>{job.worktreePath ?? "-"}</dd>
-        </div>
-      </dl>
-
-      <section>
-        <h3>Work item</h3>
-        <dl className="meta-grid">
-          <div>
-            <dt>ID</dt>
-            <dd>{job.workItem.id}</dd>
-          </div>
-          <div>
-            <dt>Title</dt>
-            <dd>{job.workItem.title}</dd>
-          </div>
-          <div>
-            <dt>Payload</dt>
-            <dd>{JSON.stringify(job.workItem.payload)}</dd>
-          </div>
-        </dl>
-      </section>
-
-      <section>
-        <h3>Timeline</h3>
-        <ol className="event-list">
-          {detail.recentEvents.map((event) => (
-            <EventRow event={event} key={event.sequence} now={now} />
-          ))}
-        </ol>
-      </section>
-    </section>
+          </Timeline>
+        </section>
+      </CardContent>
+    </Card>
   );
 }
 
@@ -495,26 +562,28 @@ function EventRow({ event, now }: { event: ApiJobEvent; now: Date }) {
   const duration = formatDurationMs(event.payload.durationMs);
   const cost = formatCostUsd(event.payload.costUsd);
   return (
-    <li>
+    <TimelineItem>
       <div className="event-head">
         <span>#{event.sequence}</span>
         <strong>{event.type}</strong>
         <span>{event.stage ?? "-"}</span>
-        <span className={`event-status${event.status ? ` ${event.status.toLowerCase()}` : ""}`}>
-          {event.status ?? "-"}
-        </span>
+        {event.status === null ? (
+          <Badge variant="secondary">-</Badge>
+        ) : (
+          <StatusBadge status={event.status} />
+        )}
         <span>{event.gateName ?? "-"}</span>
         <time title={event.createdAt}>{formatAge(event.createdAt, now)}</time>
       </div>
       {duration === null && cost === null ? null : (
         <div className="event-metrics">
-          {duration === null ? null : <span className="event-metric">{duration}</span>}
-          {cost === null ? null : <span className="event-metric">{cost}</span>}
+          {duration === null ? null : <Badge variant="secondary">{duration}</Badge>}
+          {cost === null ? null : <Badge variant="secondary">{cost}</Badge>}
         </div>
       )}
-      {event.reason === null ? null : <p className="event-reason">{event.reason}</p>}
+      {event.reason === null ? null : <Text className="event-reason">{event.reason}</Text>}
       {event.evidence === null ? null : <EvidenceBlock evidence={event.evidence} />}
-    </li>
+    </TimelineItem>
   );
 }
 
@@ -525,17 +594,19 @@ function EvidenceBlock({ evidence }: { evidence: string }) {
   const shown = truncated ? `${evidence.slice(0, EVIDENCE_MAX)}…` : evidence;
   return (
     <div className="event-evidence-block">
-      <code className="event-evidence" data-testid="event-evidence">
+      <CodeBlock className="event-evidence" data-testid="event-evidence">
         {shown}
-      </code>
-      <button
-        className="ghost-button copy-button"
+      </CodeBlock>
+      <Button
+        className="copy-button"
+        size="sm"
+        variant="ghost"
         type="button"
         onClick={() => void copyToClipboard(evidence)}
       >
         <Copy size={13} aria-hidden="true" />
         Copy evidence
-      </button>
+      </Button>
     </div>
   );
 }
@@ -578,49 +649,57 @@ function BriefSubmitPanel({
   }
 
   return (
-    <section className="submit-panel" aria-labelledby="submit-heading">
-      <div className="panel-header">
+    <Card className="submit-panel" aria-labelledby="submit-heading">
+      <CardHeader className="panel-header">
         <div>
-          <p className="eyebrow">Intake</p>
-          <h2 id="submit-heading">Submit Brief</h2>
+          <Text variant="eyebrow">Intake</Text>
+          <CardTitle id="submit-heading">Submit Brief</CardTitle>
         </div>
-      </div>
-      <form className="brief-form" onSubmit={(event) => void submit(event)}>
-        <label>
-          <span>Repo</span>
-          <input value={repo} onChange={(event) => setRepo(event.target.value)} />
-        </label>
-        <label>
-          <span>ID</span>
-          <input value={id} onChange={(event) => setId(event.target.value)} />
-        </label>
-        <label>
-          <span>Title</span>
-          <input value={title} onChange={(event) => setTitle(event.target.value)} />
-        </label>
-        <label>
-          <span>Brief path</span>
-          <input value={briefPath} onChange={(event) => setBriefPath(event.target.value)} />
-        </label>
-        <button type="submit">
-          <Send size={16} aria-hidden="true" />
-          Submit brief
-        </button>
-      </form>
-      {errors.length === 0 ? null : (
-        <ul className="form-errors">
-          {errors.map((formError) => (
-            <li key={formError}>{formError}</li>
-          ))}
-        </ul>
-      )}
-      {submitted === null ? null : <p className="success-note">{submitted}</p>}
-    </section>
+      </CardHeader>
+      <CardContent>
+        <form className="brief-form" onSubmit={(event) => void submit(event)}>
+          <Label>
+            <span>Repo</span>
+            <Input value={repo} onChange={(event) => setRepo(event.target.value)} />
+          </Label>
+          <Label>
+            <span>ID</span>
+            <Input value={id} onChange={(event) => setId(event.target.value)} />
+          </Label>
+          <Label>
+            <span>Title</span>
+            <Input value={title} onChange={(event) => setTitle(event.target.value)} />
+          </Label>
+          <Label>
+            <span>Brief path</span>
+            <Input value={briefPath} onChange={(event) => setBriefPath(event.target.value)} />
+          </Label>
+          <Button type="submit">
+            <Send size={16} aria-hidden="true" />
+            Submit brief
+          </Button>
+        </form>
+        {errors.length === 0 ? null : (
+          <Alert className="form-errors" variant="destructive">
+            <ul>
+              {errors.map((formError) => (
+                <li key={formError}>{formError}</li>
+              ))}
+            </ul>
+          </Alert>
+        )}
+        {submitted === null ? null : (
+          <Alert className="success-note" variant="success">
+            {submitted}
+          </Alert>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 
 function StatusBadge({ status }: { status: JobStatus }) {
-  return <span className={`status-badge ${status.toLowerCase()}`}>{status}</span>;
+  return <Badge className={`status-badge ${status.toLowerCase()}`}>{status}</Badge>;
 }
 
 function optionalField(value: string): string | undefined {

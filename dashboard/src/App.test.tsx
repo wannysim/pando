@@ -81,6 +81,18 @@ describe("DashboardApp", () => {
     expect(screen.getByText(/Private network boundary/i)).toBeVisible();
   });
 
+  it("renders dashboard chrome through shadcn-style primitives", async () => {
+    const client = createMockClient();
+
+    render(<DashboardApp client={client} />);
+
+    expect(await screen.findByLabelText("Daemon health")).toHaveAttribute("data-slot", "card");
+    expect(screen.getAllByRole("button", { name: "Refresh" })[0]).toHaveAttribute(
+      "data-slot",
+      "button",
+    );
+  });
+
   it("validates and submits a brief form through the API client", async () => {
     const client = createMockClient();
     const user = userEvent.setup();
