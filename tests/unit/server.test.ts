@@ -59,7 +59,7 @@ describe("Pando HTTP server", () => {
         tickMs: 1_000,
         worktreeRoot: undefined,
       },
-      dbPath: "./pando.sqlite",
+      dbPath: "/tmp/pando.sqlite",
       host: "127.0.0.1",
       port: 3210,
     });

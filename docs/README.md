@@ -13,6 +13,8 @@ then use the architecture and history sections when you need deeper context.
   Docker, live, and deterministic fallback smoke paths.
 - [Soak failure analytics](./runbooks/soak-failure-analytics.md): 3-5 job
   soak/nightly runs and terminal failure summary evidence.
+- [pandoctl release](./runbooks/pandoctl-release.md): manual package dry-run and
+  npm publish workflow for the distributed command.
 
 ## Architecture
 

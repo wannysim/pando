@@ -15,6 +15,12 @@ npm i -g pandoctl
 npx pandoctl <command>
 ```
 
+Update an existing global install with:
+
+```bash
+npm update -g pandoctl
+```
+
 The package bundles its own JavaScript; only `better-sqlite3` is a native
 dependency and is resolved from its prebuilt binaries at install time. If a
 prebuilt binary is unavailable for your platform, npm falls back to building it,
@@ -41,6 +47,9 @@ job store, either directly (local DB mode) or through the running daemon's HTTP
 API when `PANDO_API_URL` is set. See the
 [runbooks](https://github.com/wannysim/pando/tree/main/docs/runbooks) for the two
 execution modes and configuration details.
+
+Local DB mode uses `PANDO_DB` when set; otherwise it falls back to
+`/tmp/pando.sqlite` instead of creating `pando.sqlite` in the current directory.
 
 ## Current limitations
 

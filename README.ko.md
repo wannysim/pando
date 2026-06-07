@@ -52,6 +52,12 @@ npm package가 이 checkout보다 늦을 수 있으므로, 설치된 `pandoctl` 
 문서와 일치한다는 것을 알고 있을 때만 사용하고 기본은 checkout command를
 사용하세요.
 
+배포된 global command를 사용 중이라면 아래처럼 업데이트합니다.
+
+```bash
+npm update -g pandoctl
+```
+
 ## 로컬 실행
 
 local daemon/API를 시작합니다.

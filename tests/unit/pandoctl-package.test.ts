@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 
 const root = resolve(new URL(".", import.meta.url).pathname, "../..");
 const packageDir = resolve(root, "packages/pandoctl");
+const releaseWorkflowPath = resolve(root, ".github/workflows/pandoctl-release.yml");
 
 function readJson(relPath: string): Record<string, unknown> {
   return JSON.parse(readFileSync(resolve(packageDir, relPath), "utf8")) as Record<string, unknown>;
@@ -43,5 +44,16 @@ describe("pandoctl npm package contract", () => {
     const readme = readFileSync(resolve(packageDir, "README.md"), "utf8").toLowerCase();
     expect(readme).not.toContain("placeholder release");
     expect(readme).toContain("pandoctl start");
+  });
+
+  it("keeps a manual release workflow for publishing the command package", () => {
+    const workflow = readFileSync(releaseWorkflowPath, "utf8");
+
+    expect(workflow).toContain("workflow_dispatch:");
+    expect(workflow).toContain("pnpm verify");
+    expect(workflow).toContain("pnpm build:pandoctl");
+    expect(workflow).toContain("pnpm smoke:pandoctl-pack");
+    expect(workflow).toContain("npm publish --provenance --access public");
+    expect(workflow).toContain("NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}");
   });
 });

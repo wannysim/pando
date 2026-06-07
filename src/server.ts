@@ -9,6 +9,7 @@ import { createSqliteJobStore } from "./db/index";
 import { createFsBriefWriter } from "./intake/brief-materializer";
 
 const DEFAULT_PORT = 3210;
+const DEFAULT_DB_PATH = "/tmp/pando.sqlite";
 
 export interface PandoServerOptions {
   briefInboxRoot: string;
@@ -86,7 +87,7 @@ export function serverOptionsFromEnv(env: NodeJS.ProcessEnv = process.env): Pand
       worktreeRoot: emptyToUndefined(env.PANDO_WORKTREE_ROOT),
     },
     dashboardRoot: emptyToUndefined(env.PANDO_STATIC_DASHBOARD_ROOT),
-    dbPath: env.PANDO_DB ?? "./pando.sqlite",
+    dbPath: emptyToUndefined(env.PANDO_DB) ?? DEFAULT_DB_PATH,
     host: env.PANDO_HOST ?? "127.0.0.1",
     port: parsePositiveInteger(env.PANDO_PORT, DEFAULT_PORT, "PANDO_PORT"),
   };

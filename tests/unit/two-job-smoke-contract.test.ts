@@ -1,11 +1,24 @@
 import { execFileSync } from "node:child_process";
-import { chmodSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
 describe("two-job smoke contract", () => {
+  it("defaults evidence to tmp instead of writing smoke artifacts into the cwd", () => {
+    const cwd = mkdtempSync(join(tmpdir(), "pando-smoke-cwd-"));
+    const scriptPath = resolve("scripts/two-job-smoke.mjs");
+
+    const output = execFileSync(process.execPath, [scriptPath, "--mode", "fake"], {
+      cwd,
+      encoding: "utf8",
+    });
+
+    expect(output).toContain("/tmp/pando-two-job-smoke/two-job-smoke.json");
+    expect(existsSync(join(cwd, "smoke"))).toBe(false);
+  });
+
   it("documents the live-smoke limits and deterministic fallback requirements", () => {
     const contract = JSON.parse(readFileSync("smoke/two-job-smoke.contract.json", "utf8")) as {
       checks: Array<{ id: string }>;

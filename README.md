@@ -51,6 +51,12 @@ The repo also contains a buildable `packages/pandoctl` distribution. The public
 npm package may lag this checkout, so prefer the checkout commands unless you
 know the installed `pandoctl` version matches these docs.
 
+If you are using the published global command, update it with:
+
+```bash
+npm update -g pandoctl
+```
+
 ## Local run
 
 Start the local daemon/API:
