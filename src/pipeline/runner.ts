@@ -16,6 +16,12 @@ import type {
 } from "../core/types";
 import type { StageConfig, WorkerEngineName, WorkerStageKey } from "../core/stage-config";
 import { resolveStageAllowedTools } from "../core/stage-config";
+import {
+  classifyProviderFailure,
+  decideRetry,
+  type ProviderFailureKind,
+  type ProviderRetryPolicies,
+} from "../scheduler/retry-policy";
 
 export interface PipelineRunnerOptions {
   item: WorkItem;
@@ -30,6 +36,7 @@ export interface PipelineRunnerOptions {
   onEvent?: (event: PipelineRunEvent) => MaybePromise<void>;
   onStateChange?: (change: PipelineStateChange) => MaybePromise<void>;
   clock?: PipelineClock;
+  retryPolicies?: ProviderRetryPolicies;
 }
 
 export interface PromptBuildContext {
@@ -96,11 +103,13 @@ interface StageFailureTelemetry {
   failureKind: "engine-fail" | "gate-fail" | "blocking-questions";
   gateName?: string;
   reason: string;
+  providerKind?: ProviderFailureKind;
+  backoffMs?: number;
 }
 
 type StageRunResult =
   | { outcome: "pass" }
-  | { outcome: "fail" | "blocking"; failure: StageFailureTelemetry };
+  | { outcome: "fail" | "blocking" | "escalate"; failure: StageFailureTelemetry };
 
 type GateRunResult =
   | { outcome: "pass" }
@@ -134,7 +143,8 @@ export async function runPipeline(opts: PipelineRunnerOptions): Promise<Pipeline
 
   while (isStageStatus(state.status)) {
     const stage = state.status;
-    const stageResult = await runStage(stage, opts, emit, clock);
+    const attempt = budget - state.attemptsLeft + 1;
+    const stageResult = await runStage(stage, attempt, budget, opts, emit, clock);
 
     if (stageResult.outcome === "pass") {
       state = await applyTransition(state, { type: "GATE_PASS" }, budget, opts, stage);
@@ -147,6 +157,11 @@ export async function runPipeline(opts: PipelineRunnerOptions): Promise<Pipeline
       continue;
     }
 
+    if (stageResult.outcome === "escalate") {
+      state = await applyTransition(state, { type: "NON_RETRYABLE" }, budget, opts, stage);
+      continue;
+    }
+
     state = await applyTransition(state, { type: "GATE_FAIL" }, budget, opts, stage);
   }
 
@@ -155,6 +170,8 @@ export async function runPipeline(opts: PipelineRunnerOptions): Promise<Pipeline
 
 async function runStage(
   stage: StageName,
+  attempt: number,
+  maxAttempts: number,
   opts: PipelineRunnerOptions,
   emit: EmitPipelineEvent,
   clock: PipelineClock,
@@ -190,10 +207,24 @@ async function runStage(
     }
 
     if (!result.ok) {
+      const providerKind = classifyProviderFailure({
+        errorCode: result.errorCode,
+        exitCode: result.exitCode,
+        timedOut: result.timedOut,
+      });
+      const decision = decideRetry({
+        attempt,
+        kind: providerKind,
+        maxAttempts,
+        policies: opts.retryPolicies,
+        provider: config.engine,
+      });
       const failure: StageFailureTelemetry = {
+        backoffMs: decision.delayMs,
         evidence: result.output,
         failureKind: "engine-fail",
-        reason: `${config.engine} returned ok=false`,
+        providerKind,
+        reason: `${config.engine} returned ok=false (${providerKind})`,
       };
       await emit({
         evidence: result.output,
@@ -203,7 +234,7 @@ async function runStage(
         type: "engine-fail",
       });
       await emitFailedStage(stage, failure, stageStartedAtMs, stageWorkerPayload, emit, clock);
-      return { failure, outcome: "fail" };
+      return { failure, outcome: decision.escalate ? "escalate" : "fail" };
     }
 
     await emit({ payload: stageWorkerPayload, stage, type: "engine-pass" });
@@ -323,9 +354,11 @@ function gateFailureTelemetry(gateName: string, result: GateResult): StageFailur
 
 function failurePayload(failure: StageFailureTelemetry): Record<string, unknown> {
   return removeUndefined({
+    backoffMs: failure.backoffMs,
     evidence: failure.evidence,
     failureKind: failure.failureKind,
     gateName: failure.gateName,
+    providerKind: failure.providerKind,
     reason: failure.reason,
   });
 }

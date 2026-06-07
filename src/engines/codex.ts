@@ -11,6 +11,7 @@ export interface CommandResult {
   exitCode: number;
   stdout: string;
   stderr: string;
+  timedOut?: boolean;
 }
 
 export interface CodexStreamSummary {
@@ -90,10 +91,12 @@ export class CodexEngine implements WorkerEngine {
     const parsed = parseCodexJsonStream(result.stdout);
 
     return {
+      costUsd: parsed.costUsd,
+      exitCode: result.exitCode,
       ok: result.exitCode === 0,
       output: combineOutput(parsed.output, result.stderr),
       sessionId: parsed.sessionId,
-      costUsd: parsed.costUsd,
+      timedOut: result.timedOut ?? false,
     };
   }
 }
@@ -112,8 +115,10 @@ async function spawnRunner(
     let stderr = "";
     let stdout = "";
     let settled = false;
+    let timedOut = false;
     const maxBuffer = 10 * 1024 * 1024;
     const timer = setTimeout(() => {
+      timedOut = true;
       child.kill("SIGTERM");
     }, opts.timeoutMs);
 
@@ -133,7 +138,7 @@ async function spawnRunner(
       if (settled) return;
       settled = true;
       clearTimeout(timer);
-      resolve({ exitCode: typeof code === "number" ? code : 1, stderr, stdout });
+      resolve({ exitCode: typeof code === "number" ? code : 1, stderr, stdout, timedOut });
     });
   });
 }
