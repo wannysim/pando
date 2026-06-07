@@ -358,6 +358,7 @@ describe("DashboardApp", () => {
 function createMockClient(): Mocked<PandoApiClient> {
   return {
     analytics: vi.fn(async () => analytics()),
+    listRepos: vi.fn(async () => ({ repos: [{ name: "pando" }, { name: "web" }] })),
     cancelJob: vi.fn(async () => actionResponse("cancel", "cancel_requested")),
     cleanupJob: vi.fn(async () => cleanupResponse()),
     getJob: vi.fn(async () => jobDetail()),
