@@ -110,6 +110,14 @@ export interface ApiBriefSubmitResponse {
   job: ApiJobSummary;
 }
 
+export interface ApiRepoSummary {
+  name: string;
+}
+
+export interface ApiRepoList {
+  repos: ApiRepoSummary[];
+}
+
 export type ApiFailureAnalytics = FailureAnalytics;
 
 export interface ApiReadinessCheck {

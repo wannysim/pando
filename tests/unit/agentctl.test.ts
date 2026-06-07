@@ -829,6 +829,11 @@ class AgentctlApiClient implements PandoApiClient {
     return this.healthResponse;
   }
 
+  async listRepos() {
+    this.throwIfConfigured();
+    return { repos: [] };
+  }
+
   async analytics(): Promise<ApiAnalyticsResponse> {
     this.throwIfConfigured();
     return {

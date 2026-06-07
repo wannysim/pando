@@ -4,6 +4,7 @@ import type {
   ApiError,
   ApiBriefSubmitResponse,
   ApiHealth,
+  ApiRepoList,
   ApiJobActionResponse,
   ApiJobCleanupResponse,
   ApiJobDetailResponse,
@@ -56,6 +57,7 @@ export interface SubmitBriefRequest {
 export interface PandoApiClient {
   health(): Promise<ApiHealth>;
   analytics(): Promise<ApiAnalyticsResponse>;
+  listRepos(): Promise<ApiRepoList>;
   listJobs(input?: ListJobsRequest): Promise<ApiJobList>;
   getJob(jobId: string): Promise<ApiJobDetailResponse>;
   listEvents(jobId: string): Promise<ApiJobEventsResponse>;
@@ -85,6 +87,9 @@ export function createPandoApiClient(opts: PandoApiClientOptions): PandoApiClien
     },
     async analytics() {
       return await request<ApiAnalyticsResponse>(fetcher, baseUrl, "/analytics");
+    },
+    async listRepos() {
+      return await request<ApiRepoList>(fetcher, baseUrl, "/repos");
     },
     async listJobs(input) {
       const query =

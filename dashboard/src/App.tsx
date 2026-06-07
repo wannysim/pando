@@ -1,4 +1,14 @@
-import { Activity, Ban, Copy, RefreshCw, RotateCcw, Send, ShieldCheck, Trash2 } from "lucide-react";
+import {
+  Activity,
+  Ban,
+  Copy,
+  Loader2,
+  RefreshCw,
+  RotateCcw,
+  Send,
+  ShieldCheck,
+  Trash2,
+} from "lucide-react";
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 import type { PandoApiClient } from "../../src/api/client";
 import type {
@@ -7,8 +17,10 @@ import type {
   ApiJobDetailResponse,
   ApiJobEvent,
   ApiJobSummary,
+  ApiRepoSummary,
 } from "../../src/api/schema";
 import type { JobStatus, StageName } from "../../src/core/types";
+import { groupEventsByStage, type StageTimelineEntry } from "./lib/timeline";
 import { Alert } from "./components/ui/alert";
 import { Badge } from "./components/ui/badge";
 import { Button } from "./components/ui/button";
@@ -56,9 +68,17 @@ const STATUS_TABS: Array<{ label: string; value: StatusFilter }> = [
 
 const RETRY_STAGES: readonly StageName[] = ["SPEC", "PLAN", "TEST", "IMPL", "REVIEW", "PR"];
 
+const POLL_INTERVAL_MS = 4000;
+const TERMINAL_STATUSES = new Set<JobStatus>(["DONE", "FAILED", "ESCALATED", "CANCELED"]);
+
+function isActiveStatus(status: JobStatus): boolean {
+  return !TERMINAL_STATUSES.has(status);
+}
+
 export function DashboardApp({ client }: DashboardAppProps) {
   const [health, setHealth] = useState<ApiHealth | null>(null);
   const [analytics, setAnalytics] = useState<ApiAnalyticsResponse | null>(null);
+  const [repos, setRepos] = useState<ApiRepoSummary[]>([]);
   const [jobs, setJobs] = useState<ApiJobSummary[]>([]);
   const [filter, setFilter] = useState<StatusFilter>("ALL");
   const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
@@ -81,32 +101,42 @@ export function DashboardApp({ client }: DashboardAppProps) {
     setAnalytics(next);
   }, [client]);
 
-  const loadJobs = useCallback(async () => {
-    setListState("loading");
-    setError(null);
-    try {
-      const next = await client.listJobs(listInput);
-      setJobs(next.jobs);
-      setListState("ready");
-      return next.jobs;
-    } catch (loadError) {
-      setListState("error");
-      setError(errorMessage(loadError));
-      return [];
-    }
-  }, [client, listInput]);
+  const loadRepos = useCallback(async () => {
+    const next = await client.listRepos();
+    setRepos(next.repos);
+  }, [client]);
+
+  const loadJobs = useCallback(
+    async ({ silent = false }: { silent?: boolean } = {}) => {
+      if (!silent) setListState("loading");
+      setError(null);
+      try {
+        const next = await client.listJobs(listInput);
+        setJobs(next.jobs);
+        setListState("ready");
+        return next.jobs;
+      } catch (loadError) {
+        setListState("error");
+        setError(errorMessage(loadError));
+        return [];
+      }
+    },
+    [client, listInput],
+  );
 
   const loadDetail = useCallback(
-    async (jobId: string) => {
+    async (jobId: string, { silent = false }: { silent?: boolean } = {}) => {
       setSelectedJobId(jobId);
-      setDetailState("loading");
+      // A background poll must never flip to the loading skeleton: that unmounts
+      // the detail panel, collapsing expanded timelines and resetting scroll.
+      if (!silent) setDetailState("loading");
       setError(null);
       try {
         const next = await client.getJob(jobId);
         setDetail(next);
         setDetailState("ready");
       } catch (loadError) {
-        setDetailState("error");
+        if (!silent) setDetailState("error");
         setError(errorMessage(loadError));
       }
     },
@@ -116,7 +146,8 @@ export function DashboardApp({ client }: DashboardAppProps) {
   useEffect(() => {
     void loadHealth().catch((loadError: unknown) => setError(errorMessage(loadError)));
     void loadAnalytics().catch((loadError: unknown) => setError(errorMessage(loadError)));
-  }, [loadAnalytics, loadHealth]);
+    void loadRepos().catch(() => setRepos([]));
+  }, [loadAnalytics, loadHealth, loadRepos]);
 
   useEffect(() => {
     void loadJobs();
@@ -125,9 +156,17 @@ export function DashboardApp({ client }: DashboardAppProps) {
   const refresh = useCallback(async () => {
     await loadHealth();
     await loadAnalytics();
-    await loadJobs();
-    if (selectedJobId !== null) await loadDetail(selectedJobId);
+    await loadJobs({ silent: true });
+    if (selectedJobId !== null) await loadDetail(selectedJobId, { silent: true });
   }, [loadAnalytics, loadDetail, loadHealth, loadJobs, selectedJobId]);
+
+  const hasActiveJobs = useMemo(() => jobs.some((job) => isActiveStatus(job.status)), [jobs]);
+
+  useEffect(() => {
+    if (!hasActiveJobs) return;
+    const handle = setInterval(() => void refresh(), POLL_INTERVAL_MS);
+    return () => clearInterval(handle);
+  }, [hasActiveJobs, refresh]);
 
   const runAction = useCallback(
     async (label: string, action: () => Promise<unknown>) => {
@@ -163,10 +202,18 @@ export function DashboardApp({ client }: DashboardAppProps) {
                 Jobs
               </CardTitle>
             </div>
-            <Button variant="outline" type="button" onClick={() => void refresh()}>
-              <RefreshCw size={16} aria-hidden="true" />
-              Refresh
-            </Button>
+            <div className="jobs-actions">
+              {hasActiveJobs ? (
+                <Badge className="live-badge" variant="secondary">
+                  <Loader2 className="spin" size={13} aria-hidden="true" />
+                  Live · auto-refresh
+                </Badge>
+              ) : null}
+              <Button variant="outline" type="button" onClick={() => void refresh()}>
+                <RefreshCw size={16} aria-hidden="true" />
+                Refresh
+              </Button>
+            </div>
           </CardHeader>
           <CardContent>
             <StatusTabs value={filter} onChange={setFilter} />
@@ -193,19 +240,51 @@ export function DashboardApp({ client }: DashboardAppProps) {
         />
 
         <div className="intake-grid">
-          <InlineBriefPanel client={client} onSubmitted={() => void refresh()} />
-          <BriefSubmitPanel client={client} onSubmitted={() => void refresh()} />
+          <InlineBriefPanel client={client} repos={repos} onSubmitted={() => void refresh()} />
+          <BriefSubmitPanel client={client} repos={repos} onSubmitted={() => void refresh()} />
         </div>
       </section>
     </main>
   );
 }
 
+function RepoField({
+  label,
+  repos,
+  value,
+  onChange,
+}: {
+  label: string;
+  repos: ApiRepoSummary[];
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <Label>
+      <span>{label}</span>
+      {repos.length === 0 ? (
+        <Input value={value} onChange={(event) => onChange(event.target.value)} />
+      ) : (
+        <Select value={value} onChange={(event) => onChange(event.target.value)}>
+          <option value="">Select a repo…</option>
+          {repos.map((repo) => (
+            <option key={repo.name} value={repo.name}>
+              {repo.name}
+            </option>
+          ))}
+        </Select>
+      )}
+    </Label>
+  );
+}
+
 function InlineBriefPanel({
   client,
+  repos,
   onSubmitted,
 }: {
   client: PandoApiClient;
+  repos: ApiRepoSummary[];
   onSubmitted: () => void;
 }) {
   const [repo, setRepo] = useState("");
@@ -260,10 +339,7 @@ function InlineBriefPanel({
       </CardHeader>
       <CardContent>
         <form className="brief-form inline-brief-form" onSubmit={(event) => void submit(event)}>
-          <Label>
-            <span>Task repo</span>
-            <Input value={repo} onChange={(event) => setRepo(event.target.value)} />
-          </Label>
+          <RepoField label="Task repo" repos={repos} value={repo} onChange={setRepo} />
           <Label>
             <span>Task ID</span>
             <Input value={id} onChange={(event) => setId(event.target.value)} />
@@ -544,7 +620,12 @@ function JobsTable({
                 </Text>
               </TableCell>
               <TableCell>
-                <StatusBadge status={job.status} />
+                <span className="status-cell">
+                  {isActiveStatus(job.status) ? (
+                    <Loader2 className="spin" size={13} aria-label="in progress" />
+                  ) : null}
+                  <StatusBadge status={job.status} />
+                </span>
               </TableCell>
               <TableCell>{job.repo}</TableCell>
               <TableCell>{job.source}</TableCell>
@@ -598,6 +679,7 @@ function JobDetailPanel({
 
   const job = detail.job;
   const now = new Date();
+  const cancelPending = job.cancelRequestedAt !== null && isActiveStatus(job.status);
 
   return (
     <Card className="detail-panel" aria-label="Job detail">
@@ -607,10 +689,24 @@ function JobDetailPanel({
           <CardTitle>{job.jobId}</CardTitle>
           <Text variant="description">{job.title}</Text>
         </div>
-        <StatusBadge status={job.status} />
+        <div className="detail-status">
+          <StatusBadge status={job.status} />
+          {cancelPending ? (
+            <Badge className="live-badge" variant="warning">
+              <Loader2 className="spin" size={12} aria-hidden="true" />
+              Canceling…
+            </Badge>
+          ) : null}
+        </div>
       </CardHeader>
 
       <CardContent>
+        {stoppedReason(job.status, detail.recentEvents) === null ? null : (
+          <Alert className="stop-reason" variant="destructive" data-testid="stop-reason">
+            <strong>{job.status}</strong> · {stoppedReason(job.status, detail.recentEvents)}
+          </Alert>
+        )}
+
         <DescriptionList className="context-strip" data-testid="context-strip">
           <DescriptionItem>
             <DescriptionTerm>Stage</DescriptionTerm>
@@ -653,13 +749,13 @@ function JobDetailPanel({
             Retry from {retryStage}
           </Button>
           <Button
-            disabled={actionBusy !== null}
+            disabled={actionBusy !== null || cancelPending}
             variant="outline"
             type="button"
             onClick={() => onCancel(job.jobId)}
           >
             <Ban size={16} aria-hidden="true" />
-            Cancel job
+            {cancelPending ? "Cancel requested" : "Cancel job"}
           </Button>
           <Button
             disabled={actionBusy !== null}
@@ -709,45 +805,77 @@ function JobDetailPanel({
 
         <section>
           <CardTitle className="section-title" level={3}>
-            Timeline
+            Stage timeline
           </CardTitle>
-          <Timeline>
-            {detail.recentEvents.map((event) => (
-              <EventRow event={event} key={event.sequence} now={now} />
-            ))}
-          </Timeline>
+          <StageTimeline events={detail.recentEvents} now={now} />
         </section>
       </CardContent>
     </Card>
   );
 }
 
-function EventRow({ event, now }: { event: ApiJobEvent; now: Date }) {
-  const duration = formatDurationMs(event.payload.durationMs);
-  const cost = formatCostUsd(event.payload.costUsd);
+function StageTimeline({ events, now }: { events: ApiJobEvent[]; now: Date }) {
+  const entries = groupEventsByStage(events);
+  if (entries.length === 0) {
+    return <Text variant="description">No stage activity yet.</Text>;
+  }
+  return (
+    <Timeline>
+      {entries.map((entry) => (
+        <StageEntryRow entry={entry} key={entry.key} now={now} />
+      ))}
+    </Timeline>
+  );
+}
+
+const STAGE_OUTCOME_VARIANT = {
+  failed: "destructive",
+  passed: "success",
+  running: "secondary",
+} as const;
+
+function StageEntryRow({ entry, now }: { entry: StageTimelineEntry; now: Date }) {
+  const duration = formatDurationMs(entry.durationMs);
+  const cost = formatCostUsd(entry.costUsd);
   return (
     <TimelineItem>
-      <div className="event-head">
-        <span>#{event.sequence}</span>
-        <strong>{event.type}</strong>
-        <span>{event.stage ?? "-"}</span>
-        {event.status === null ? (
-          <Badge variant="secondary">-</Badge>
-        ) : (
-          <StatusBadge status={event.status} />
-        )}
-        <span>{event.gateName ?? "-"}</span>
-        <time title={event.createdAt}>{formatAge(event.createdAt, now)}</time>
+      <div className="stage-head">
+        <strong className="stage-name">{entry.stage ?? "step"}</strong>
+        {entry.attempt > 1 ? <Badge variant="outline">attempt {entry.attempt}</Badge> : null}
+        <Badge variant={STAGE_OUTCOME_VARIANT[entry.outcome]}>{entry.outcome}</Badge>
+        {entry.gateName === null ? null : <span className="stage-gate">{entry.gateName}</span>}
       </div>
-      {duration === null && cost === null ? null : (
-        <div className="event-metrics">
-          {duration === null ? null : <Badge variant="secondary">{duration}</Badge>}
-          {cost === null ? null : <Badge variant="secondary">{cost}</Badge>}
-        </div>
-      )}
-      {event.reason === null ? null : <Text className="event-reason">{event.reason}</Text>}
-      {event.evidence === null ? null : <EvidenceBlock evidence={event.evidence} />}
+      <div className="stage-times">
+        <span>start {formatClock(entry.startedAt)}</span>
+        {duration === null ? null : <span className="stage-duration">{duration}</span>}
+        {entry.endedAt === null ? (
+          <span>running · {formatAge(entry.startedAt, now)}</span>
+        ) : (
+          <span>end {formatClock(entry.endedAt)}</span>
+        )}
+        {cost === null ? null : <span className="stage-cost">{cost}</span>}
+      </div>
+      {entry.reason === null ? null : <Text className="event-reason">{entry.reason}</Text>}
+      {entry.evidence === null ? null : <EvidenceBlock evidence={entry.evidence} />}
+      <RawEvents events={entry.events} />
     </TimelineItem>
+  );
+}
+
+function RawEvents({ events }: { events: ApiJobEvent[] }) {
+  return (
+    <details className="raw-events">
+      <summary>Raw events ({events.length})</summary>
+      <div className="raw-event-list">
+        {events.map((event) => (
+          <div className="raw-event" key={event.sequence}>
+            <span className="raw-event-seq">#{event.sequence}</span>
+            <span className="raw-event-type">{event.type}</span>
+            <time title={event.createdAt}>{formatClock(event.createdAt)}</time>
+          </div>
+        ))}
+      </div>
+    </details>
   );
 }
 
@@ -781,9 +909,11 @@ async function copyToClipboard(value: string): Promise<void> {
 
 function BriefSubmitPanel({
   client,
+  repos,
   onSubmitted,
 }: {
   client: PandoApiClient;
+  repos: ApiRepoSummary[];
   onSubmitted: () => void;
 }) {
   const [repo, setRepo] = useState("");
@@ -822,10 +952,7 @@ function BriefSubmitPanel({
       </CardHeader>
       <CardContent>
         <form className="brief-form" onSubmit={(event) => void submit(event)}>
-          <Label>
-            <span>Repo</span>
-            <Input value={repo} onChange={(event) => setRepo(event.target.value)} />
-          </Label>
+          <RepoField label="Repo" repos={repos} value={repo} onChange={setRepo} />
           <Label>
             <span>ID</span>
             <Input value={id} onChange={(event) => setId(event.target.value)} />
@@ -876,6 +1003,30 @@ function splitLines(value: string): string[] {
     .split("\n")
     .map((line) => line.trim())
     .filter((line) => line.length > 0);
+}
+
+const FAILURE_EVENT_TYPES = new Set([
+  "stage-failed",
+  "gate-fail",
+  "gate-blocking",
+  "engine-fail",
+  "daemon-error",
+]);
+
+function stoppedReason(status: JobStatus, events: ApiJobEvent[]): string | null {
+  if (status !== "FAILED" && status !== "ESCALATED") return null;
+  for (let i = events.length - 1; i >= 0; i--) {
+    const event = events[i];
+    if (event !== undefined && event.reason !== null && FAILURE_EVENT_TYPES.has(event.type)) {
+      return event.reason;
+    }
+  }
+  return status === "ESCALATED" ? "escalated for human input" : "job failed";
+}
+
+function formatClock(value: string): string {
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? value : parsed.toISOString().slice(11, 19);
 }
 
 function currentStage(events: ApiJobEvent[]): string {
