@@ -2,102 +2,225 @@
 
 English | [한국어](./README.ko.md)
 
-> Multi-repo background coding agent orchestrator — **one root system, many trunks.**
+pando runs coding-agent jobs for one or more Git repositories from a local
+daemon. It creates isolated git worktrees, drives each job through a staged
+pipeline, exposes an API/dashboard for operations, and stores queue state in
+SQLite.
 
-[Pando](https://en.wikipedia.org/wiki/Pando_(tree)) is the largest known single organism on Earth: a quaking-aspen clone of ~47,000 stems sharing one root system. This project mirrors that — one orchestrator (the root) grows git worktrees (stems) across many repos, and coding agents implement tickets on each stem.
-
-## What it does
-
-Feed it a Jira ticket (or a brief drafted from chat) and it runs:
-
-```
-SPEC → PLAN → TEST → IMPL ⇄ REVIEW → PR (draft)
+```text
+SPEC -> PLAN -> TEST -> IMPL <-> REVIEW -> PR (draft)
 ```
 
-Each stage runs inside an isolated git worktree, executed by a coding-agent CLI (Claude Code / Codex). Gates between stages are judged **only by deterministic signals** — exit codes, file artifacts, checksums. An agent claiming "done" is never trusted.
+Gate decisions use deterministic evidence such as exit codes, files, checksums,
+and structured JSON. LLM output text is not used as a pass/fail signal.
 
-It processes many repos × many tickets in flight, distinguishing company repos (Jira/Confluence/Figma) from personal repos (brief-based) through per-repo profiles.
+## Requirements
 
-## Status
+- Node.js `>=22.13.0`.
+- `pnpm@11.5.2`, the pinned package manager in `package.json`.
+- `git`.
+- Claude Code CLI (`claude`) with auth configured. The default pipeline uses
+  Claude Code for all stages.
+- GitHub CLI (`gh`) with `gh auth status` passing. The PR stage uses `gh`.
+- Optional: Docker for container checks, and Codex CLI for optional worker
+  smoke/adapter paths.
 
-Early implementation. A one-command local run (`pandoctl start`, also `pando start`) boots the daemon and dashboard, inline natural-language brief intake is available in the dashboard/API, and brief-based self-dogfood against the pando repo works. Host worker smoke and host full-daemon dogfood have passed; Docker worker readiness is narrowed to explicit CLI/auth/git evidence. The operational CLI now ships as a buildable `pandoctl` npm package that unifies local start and job operations under one binary. See the design docs under [docs/](./docs) (written in Korean):
-
-- [research-v1.md](./docs/research-v1.md) — tooling & pattern research
-- [design-v2-multi-repo.md](./docs/design-v2-multi-repo.md) — n×n design built on reusable agent-skill assets
-- [repo-structure.md](./docs/repo-structure.md) — repo layout & core interfaces
-- [engineering-standards.md](./docs/engineering-standards.md) — development methodology
-- [adr/](./docs/adr) — architecture decision records
+Temporary DBs, worktrees, and smoke evidence should stay under `/tmp`; the
+default local runner does this.
 
 ## Install
 
-The operational CLI is published as **`pandoctl`** — one binary that both boots a local pando instance (`pandoctl start`) and operates the job queue (`pandoctl list/show/submit/...`).
+Use the checkout scripts for this repository snapshot.
 
 ```bash
-npm i -g pandoctl     # or: npx pandoctl <command>
-pandoctl start        # boot local daemon + dashboard + API
-pandoctl help
+git clone https://github.com/wannysim/pando.git
+cd pando
+corepack enable
+corepack prepare pnpm@11.5.2 --activate
+pnpm install
 ```
 
-The package bundles its own JavaScript; only `better-sqlite3` is native and is resolved from prebuilt binaries at install time. The package does not bundle the dashboard SPA assets — `pandoctl start` serves the API/daemon, and the dashboard is served only when a built dashboard root is provided via `PANDO_STATIC_DASHBOARD_ROOT` (the Docker image, or a repo checkout that has built the dashboard). Do not expose the daemon/API outside a private local network; public auth is intentionally not implemented.
+Optional global commands from the checkout:
 
-To build and pack the distribution from a checkout: `pnpm build:pandoctl` then `pnpm smoke:pandoctl-pack` (the smoke writes structured evidence under `/tmp`).
+```bash
+pnpm link --global
+pandoctl start
+```
+
+The repo also contains a buildable `packages/pandoctl` distribution. The public
+npm package may lag this checkout, so prefer the checkout commands unless you
+know the installed `pandoctl` version matches these docs.
 
 ## Local run
 
-> Full env-var and command reference: [docs/runbooks/local-pando-runner.md](./docs/runbooks/local-pando-runner.md)
-
-**Worker expectations (post-PR #33):** Claude Code is required for all pipeline stages. `gh` is required for the PR creation stage. Evidence files and the temporary DB are written under `/tmp`, not inside the repo.
-
-### Prerequisites
+Start the local daemon/API:
 
 ```bash
-pnpm install
+pnpm pando start
 ```
 
-CLIs required: `claude` (Claude Code), `gh`, `git`. Ensure `gh auth status` passes and Claude auth is configured.
+Startup output includes:
 
-### Start the daemon and open the dashboard
+- API health URL, normally `http://127.0.0.1:3210/health`.
+- Dashboard URL, normally `http://127.0.0.1:3210/dashboard`.
+- SQLite DB path under `/tmp/pando-local-<timestamp>/pando.sqlite`.
+- Worktree root under `/tmp/pando-local-<timestamp>/worktrees`.
+- Stop and cleanup instructions.
 
-One command boots a local DB, worktree root, config, dashboard, and daemon under a `/tmp` run root:
+If port `3210` is busy, pando tries the next free port and prints the URL it
+actually used.
+
+Full runner details: [docs/runbooks/local-pando-runner.md](./docs/runbooks/local-pando-runner.md).
+
+## Dashboard Usage
+
+The dashboard works when dashboard assets are served by the pando server, such
+as in the Docker image or when `PANDO_STATIC_DASHBOARD_ROOT` points at a built
+dashboard directory.
+
+From a source checkout, the most direct dashboard workflow is:
 
 ```bash
-pnpm pando start            # or `pando start` after `pnpm link --global`
+pnpm pando start
+VITE_PANDO_API_URL=http://127.0.0.1:3210 pnpm --filter @pando/dashboard dev
 ```
 
-It prints the dashboard URL (`http://127.0.0.1:3210/dashboard`), the DB path, the worktree root, and how to stop and clean up. For the manual env-var path, see the [runbook](./docs/runbooks/local-pando-runner.md) "Start local pando (manual env path)" section.
+Open the Vite dashboard URL ending in `/dashboard/`.
 
-### Submit a brief job
+The primary intake path is the inline natural-language brief form in the
+dashboard.
 
-Use the dashboard inline brief form for the normal path: write the natural-language request and optional spec/doc/asset references, and pando materializes the canonical `brief.md` outside the repo before enqueueing. The file-path brief submit flow still exists as an advanced/operator path; see the [runbook](./docs/runbooks/local-pando-runner.md) "Submit a brief" section.
+To submit work from the dashboard:
 
-### Check status and stop
+1. Use the "Describe a task" form.
+2. Set `Task repo`, for example `pando`.
+3. Set a unique `Task ID`, for example `readme-demo`.
+4. Describe what to build and add spec/doc/asset references one per line.
+5. Submit the form. pando materializes a canonical `brief.md` outside the repo
+   and enqueues the job.
 
-The CLI is **`pandoctl`** (published on [npm](https://www.npmjs.com/package/pandoctl); the bare `pando` name was taken — see [ADR-010](./docs/adr/010-cli-name-pandoctl.md)). It is one binary: `pandoctl start` boots the daemon (the `pando start` command above is the same bootstrap), and the other subcommands operate the job queue. Run any of these equivalents:
+Use the job list and detail view to inspect status, stage events, worktree path,
+duration, and deterministic evidence.
+
+## CLI Usage
+
+`pandoctl` is the operator CLI. From the checkout, run it with `pnpm pandoctl`.
+
+List or watch jobs through the running API:
 
 ```bash
-pnpm pandoctl list          # package script (prefix with PANDO_API_URL=... to reach a running daemon)
-pandoctl list               # global bin (npm i -g pandoctl, or `pnpm link --global` from a checkout)
-pnpm pandoctl show <id>
+PANDO_API_URL=http://127.0.0.1:3210 pnpm pandoctl list
+PANDO_API_URL=http://127.0.0.1:3210 pnpm pandoctl watch readme-demo
+PANDO_API_URL=http://127.0.0.1:3210 pnpm pandoctl daemon status
 ```
 
-See the runbook for the full env-var prefixes. Stop: **Ctrl-C** the `pandoctl start` (or `pnpm start`) process. Temporary artifacts live under `/tmp` and can be removed afterwards.
-
-## Development
+For detailed event history, use the DB path printed by `pando start`:
 
 ```bash
-pnpm install
-pnpm verify   # coverage + lint + types — required before every commit
+PANDO_DB=/tmp/pando-local-<timestamp>/pando.sqlite pnpm pandoctl show readme-demo
 ```
 
-Discipline: no implementation code without a failing test first (RED-GREEN-REFACTOR) · atomic commits (~100 lines) · architecture decisions go in an ADR. See [CLAUDE.md](./CLAUDE.md).
+File-backed brief submission is available for terminal workflows:
 
-## Branching and releases
+```bash
+mkdir -p briefs/readme-demo
+cat > briefs/readme-demo/brief.md <<'EOF'
+# README Demo
 
-This repository uses Git Flow:
+## Goal
 
-- `main`: protected release branch
-- `develop`: integration branch
-- `feature/*`, `release/*`, `hotfix/*`: working branches
-- release tags do not use a `v` prefix, for example `0.1`
+Make a small documentation-only change.
 
-Commit messages are written in English. Run `pnpm verify` before every commit.
+## User Story
+
+As an operator, I want a clear local run check so that I can verify pando quickly.
+
+## Acceptance Criteria
+
+- [ ] The change is documented.
+
+## Screens or Behavior
+
+No UI change.
+
+## Non-Goals
+
+- Do not change source code.
+
+## Assets
+
+- None
+
+## Open Questions
+
+- None
+EOF
+
+PANDO_DB=/tmp/pando-local-<timestamp>/pando.sqlite \
+  pnpm pandoctl submit brief \
+  --repo pando \
+  --id readme-demo \
+  --branch chore/readme-demo \
+  --brief-path briefs/readme-demo/brief.md
+```
+
+Prefer `PANDO_API_URL` for live daemon reads and actions. Use `PANDO_DB` for
+offline/local DB operations such as file-backed submit, `show`, and worktree
+cleanup.
+
+## Stop And Cleanup
+
+- Stop the daemon with `Ctrl-C` in the terminal running `pnpm pando start`.
+- Remove the run root printed at startup, for example:
+
+```bash
+rm -rf /tmp/pando-local-<timestamp>
+```
+
+- To clean a single job worktree through pando, use the same DB path:
+
+```bash
+PANDO_DB=/tmp/pando-local-<timestamp>/pando.sqlite pnpm pandoctl cleanup readme-demo
+```
+
+## Smoke And Readiness Checks
+
+Host readiness smoke checks worker CLI availability, auth signals, mount/path
+readiness, and concurrency cap without printing secrets:
+
+```bash
+pnpm pandoctl smoke readiness --target host \
+  --evidence /tmp/pando-readiness-smoke/host.json
+```
+
+For deterministic no-credential smoke evidence:
+
+```bash
+PANDO_GLOBAL_CONCURRENCY=2 \
+  pnpm smoke:two-job -- --mode fake \
+  --evidence /tmp/pando-two-job-fake.json
+```
+
+Live worker and Docker smoke paths require valid local/container auth. Details:
+[docs/runbooks/two-job-smoke.md](./docs/runbooks/two-job-smoke.md).
+
+## Limitations
+
+- pando is a local/private-network tool. Public API auth is not implemented.
+- The default pipeline expects Claude Code auth and can spend model credits.
+- The PR stage can create commits, push branches, and open draft PRs through
+  `gh`.
+- Docker live workers need container-visible CLI auth or API keys; host-managed
+  auth may not transfer into the container.
+- The checkout `pando start` path starts the daemon/API. Dashboard serving needs
+  built dashboard assets or the Vite dev server described above.
+
+## Security Note
+
+Do not expose the daemon/API to the public internet. Keep secrets out of briefs,
+logs, docs, and committed files. Smoke evidence should stay under `/tmp` and
+record only boolean auth signals or structured non-secret details.
+
+## More Docs
+
+Start with the docs map: [docs/README.md](./docs/README.md).
