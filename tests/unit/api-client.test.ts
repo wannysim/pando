@@ -30,6 +30,28 @@ describe("Pando API client", () => {
     });
   });
 
+  it("reads failure analytics through the shared client", async () => {
+    const app = createPandoApiApp({
+      now: () => "2026-06-07T00:00:00.000Z",
+      store: new ClientMemoryStore([
+        jobRecord(workItem("DEMO-4010"), {
+          createdAt: "2026-06-06T00:00:00.000Z",
+          status: "FAILED",
+          updatedAt: "2026-06-06T00:01:00.000Z",
+        }),
+      ]),
+    });
+    const client = createPandoApiClient({
+      baseUrl: "http://pando.local",
+      fetch: appFetch(app),
+    });
+
+    const analytics = await client.analytics();
+    expect(analytics.generatedAt).toBe("2026-06-07T00:00:00.000Z");
+    expect(analytics.failures.totalJobs).toBe(1);
+    expect(analytics.readiness).toBeNull();
+  });
+
   it("sends cleanup and brief submit mutations through the shared client", async () => {
     const app = createPandoApiApp({
       store: new ClientMemoryStore([

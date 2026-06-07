@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { createPandoApiApp } from "../../src/api/app";
 import type {
+  ApiAnalyticsResponse,
   ApiBriefSubmitResponse,
   ApiJobActionResponse,
   ApiJobCleanupResponse,
@@ -557,6 +558,89 @@ describe("Pando Hono API", () => {
       ok: false,
     });
     expect(JSON.stringify(body)).not.toContain("stack");
+  });
+
+  it("derives DB-only failure analytics and readiness from structured evidence", async () => {
+    const store = new ApiMemoryStore(
+      [
+        jobRecord(workItem("DEMO-5001"), {
+          createdAt: "2026-06-06T00:00:00.000Z",
+          finishedAt: "2026-06-06T00:01:00.000Z",
+          startedAt: "2026-06-06T00:00:00.000Z",
+          status: "DONE",
+          updatedAt: "2026-06-06T00:01:00.000Z",
+        }),
+        jobRecord(workItem("DEMO-5002"), {
+          createdAt: "2026-06-06T00:00:00.000Z",
+          status: "FAILED",
+          updatedAt: "2026-06-06T00:02:00.000Z",
+        }),
+      ],
+      [
+        eventRecord("DEMO-5001", 1, {
+          payload: { durationMs: 300 },
+          stage: "PR",
+          type: "stage-completed",
+        }),
+        eventRecord("DEMO-5002", 1, {
+          evidence: '{"command":"pnpm test","exitCode":1}',
+          gateName: "test-exit-code",
+          payload: { failureKind: "gate-fail" },
+          reason: "test gate failed with exit code 1",
+          stage: "TEST",
+          type: "stage-failed",
+        }),
+      ],
+    );
+    const app = createPandoApiApp({
+      now: () => "2026-06-07T00:00:00.000Z",
+      readinessSource: () => ({
+        blockers: ["claude not logged in"],
+        checks: { auth: { pass: false }, mounts: { pass: true } },
+        mode: "live",
+        target: "docker",
+      }),
+      store,
+    });
+
+    const response = await app.request("/analytics");
+    const body = (await response.json()) as ApiResponse<ApiAnalyticsResponse>;
+
+    expect(response.status).toBe(200);
+    if (!body.ok) throw new Error("expected analytics ok response");
+    expect(body.data.generatedAt).toBe("2026-06-07T00:00:00.000Z");
+    expect(body.data.failures.totalJobs).toBe(2);
+    expect(body.data.failures.passRate).toBe(0.5);
+    expect(body.data.failures.failureReasons).toEqual([
+      { count: 1, reason: "test gate failed with exit code 1", terminalStatus: "failure" },
+    ]);
+    expect(body.data.readiness).toEqual({
+      blockers: ["claude not logged in"],
+      checks: [
+        { name: "auth", pass: false },
+        { name: "mounts", pass: true },
+      ],
+      mode: "live",
+      ok: false,
+      target: "docker",
+    });
+    expect(JSON.stringify(body)).not.toContain("stack");
+  });
+
+  it("returns null readiness when no readiness source is configured", async () => {
+    const app = createPandoApiApp({
+      now: () => "2026-06-07T00:00:00.000Z",
+      store: new ApiMemoryStore([]),
+    });
+
+    const response = await app.request("/analytics");
+    const body = (await response.json()) as ApiResponse<ApiAnalyticsResponse>;
+
+    expect(response.status).toBe(200);
+    if (!body.ok) throw new Error("expected analytics ok response");
+    expect(body.data.readiness).toBeNull();
+    expect(body.data.failures.totalJobs).toBe(0);
+    expect(body.data.failures.passRate).toBe(0);
   });
 
   it("returns stable JSON for unknown routes", async () => {

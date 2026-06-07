@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { agentctlDbPathFromEnv, runAgentctl } from "../../src/cli/agentctl";
 import type { PandoApiClient } from "../../src/api/client";
-import type { ApiHealth, ApiJobSummary } from "../../src/api/schema";
+import type { ApiAnalyticsResponse, ApiHealth, ApiJobSummary } from "../../src/api/schema";
 import type { JobEventRecord, JobRecord, JobStore, RetryJobInput } from "../../src/db/index";
 import type { JobStatus, RepoProfile, WorkItem } from "../../src/core/types";
 
@@ -827,6 +827,28 @@ class AgentctlApiClient implements PandoApiClient {
   async health() {
     this.throwIfConfigured();
     return this.healthResponse;
+  }
+
+  async analytics(): Promise<ApiAnalyticsResponse> {
+    this.throwIfConfigured();
+    return {
+      failures: {
+        failureReasons: [],
+        passRate: 0,
+        totalJobs: 0,
+        totals: {
+          cancel: 0,
+          escalated: 0,
+          failure: 0,
+          retried: 0,
+          running: 0,
+          success: 0,
+          timeout: 0,
+        },
+      },
+      generatedAt: "2026-06-07T00:00:00.000Z",
+      readiness: null,
+    };
   }
 
   async listJobs(input?: { status?: JobStatus }) {

@@ -62,6 +62,19 @@ export interface SummarizeTerminalJobsInput {
   evidenceRoot: string;
 }
 
+export interface FailureReasonCount {
+  terminalStatus: TerminalStatusLabel;
+  reason: string;
+  count: number;
+}
+
+export interface FailureAnalytics {
+  totals: TerminalRunSummary["totals"];
+  totalJobs: number;
+  passRate: number;
+  failureReasons: FailureReasonCount[];
+}
+
 const FALLBACK_EVENT_TYPE = "job-record";
 const SENSITIVE_PAYLOAD_KEYS = new Set([
   "content",
@@ -84,6 +97,43 @@ export function summarizeTerminalJobs(input: SummarizeTerminalJobsInput): Termin
     schemaVersion: 1,
     totals: summarizeTotals(jobs),
   };
+}
+
+export function buildFailureAnalytics(summary: TerminalRunSummary): FailureAnalytics {
+  const totalJobs = summary.jobs.length;
+  return {
+    failureReasons: aggregateFailureReasons(summary.jobs),
+    passRate: rate(summary.totals.success, totalJobs),
+    totalJobs,
+    totals: summary.totals,
+  };
+}
+
+export function aggregateFailureReasons(jobs: readonly TerminalJobSummary[]): FailureReasonCount[] {
+  const counts = new Map<string, FailureReasonCount>();
+  for (const job of jobs) {
+    if (job.terminalStatus === "success" || job.terminalStatus === "running") continue;
+    const key = `${job.terminalStatus} ${job.reason}`;
+    const existing = counts.get(key);
+    if (existing === undefined) {
+      counts.set(key, { count: 1, reason: job.reason, terminalStatus: job.terminalStatus });
+      continue;
+    }
+    existing.count += 1;
+  }
+
+  return [...counts.values()].sort((a, b) => {
+    if (b.count !== a.count) return b.count - a.count;
+    if (a.terminalStatus !== b.terminalStatus) {
+      return a.terminalStatus.localeCompare(b.terminalStatus);
+    }
+    return a.reason.localeCompare(b.reason);
+  });
+}
+
+function rate(success: number, total: number): number {
+  if (total <= 0) return 0;
+  return Math.round((success / total) * 10_000) / 10_000;
 }
 
 function summarizeJob(

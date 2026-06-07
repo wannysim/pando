@@ -97,6 +97,7 @@ ul {
   display: grid;
   grid-template-areas:
     "jobs detail"
+    "analytics detail"
     "intake detail";
   grid-template-columns: minmax(0, 1.12fr) minmax(420px, 0.88fr);
   align-items: start;
@@ -500,6 +501,33 @@ h3.ui-card-title {
   grid-area: intake;
 }
 
+.analytics-panel {
+  grid-area: analytics;
+  min-width: 0;
+}
+
+.analytics-totals,
+.readiness-checks {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.readiness-head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.readiness-blockers {
+  display: grid;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+
+.readiness-blocker {
+  color: var(--destructive, #b42318);
+}
+
 .detail-panel.empty {
   display: grid;
   place-items: center;
@@ -673,6 +701,7 @@ h3.ui-card-title {
     grid-template-areas:
       "jobs"
       "detail"
+      "analytics"
       "intake";
     grid-template-columns: 1fr;
   }

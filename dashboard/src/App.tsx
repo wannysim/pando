@@ -2,6 +2,7 @@ import { Activity, Ban, Copy, RefreshCw, RotateCcw, Send, ShieldCheck, Trash2 } 
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 import type { PandoApiClient } from "../../src/api/client";
 import type {
+  ApiAnalyticsResponse,
   ApiHealth,
   ApiJobDetailResponse,
   ApiJobEvent,
@@ -57,6 +58,7 @@ const RETRY_STAGES: readonly StageName[] = ["SPEC", "PLAN", "TEST", "IMPL", "REV
 
 export function DashboardApp({ client }: DashboardAppProps) {
   const [health, setHealth] = useState<ApiHealth | null>(null);
+  const [analytics, setAnalytics] = useState<ApiAnalyticsResponse | null>(null);
   const [jobs, setJobs] = useState<ApiJobSummary[]>([]);
   const [filter, setFilter] = useState<StatusFilter>("ALL");
   const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
@@ -72,6 +74,11 @@ export function DashboardApp({ client }: DashboardAppProps) {
   const loadHealth = useCallback(async () => {
     const next = await client.health();
     setHealth(next);
+  }, [client]);
+
+  const loadAnalytics = useCallback(async () => {
+    const next = await client.analytics();
+    setAnalytics(next);
   }, [client]);
 
   const loadJobs = useCallback(async () => {
@@ -108,7 +115,8 @@ export function DashboardApp({ client }: DashboardAppProps) {
 
   useEffect(() => {
     void loadHealth().catch((loadError: unknown) => setError(errorMessage(loadError)));
-  }, [loadHealth]);
+    void loadAnalytics().catch((loadError: unknown) => setError(errorMessage(loadError)));
+  }, [loadAnalytics, loadHealth]);
 
   useEffect(() => {
     void loadJobs();
@@ -116,9 +124,10 @@ export function DashboardApp({ client }: DashboardAppProps) {
 
   const refresh = useCallback(async () => {
     await loadHealth();
+    await loadAnalytics();
     await loadJobs();
     if (selectedJobId !== null) await loadDetail(selectedJobId);
-  }, [loadDetail, loadHealth, loadJobs, selectedJobId]);
+  }, [loadAnalytics, loadDetail, loadHealth, loadJobs, selectedJobId]);
 
   const runAction = useCallback(
     async (label: string, action: () => Promise<unknown>) => {
@@ -164,6 +173,8 @@ export function DashboardApp({ client }: DashboardAppProps) {
             <JobsTable jobs={jobs} loading={listState === "loading"} onOpen={loadDetail} />
           </CardContent>
         </Card>
+
+        <AnalyticsPanel analytics={analytics} />
 
         <JobDetailPanel
           actionBusy={actionBusy}
@@ -294,6 +305,133 @@ function InlineBriefPanel({
         )}
       </CardContent>
     </Card>
+  );
+}
+
+function AnalyticsPanel({ analytics }: { analytics: ApiAnalyticsResponse | null }) {
+  if (analytics === null) {
+    return (
+      <Card
+        className="analytics-panel"
+        aria-label="Failure analytics"
+        data-testid="analytics-panel"
+      >
+        <Skeleton>Loading analytics</Skeleton>
+      </Card>
+    );
+  }
+
+  const { failures, readiness } = analytics;
+  const passPercent = Math.round(failures.passRate * 100);
+
+  return (
+    <Card
+      className="analytics-panel"
+      aria-labelledby="analytics-heading"
+      data-testid="analytics-panel"
+    >
+      <CardHeader className="panel-header">
+        <div>
+          <Text variant="eyebrow">Reliability</Text>
+          <CardTitle id="analytics-heading">Failure analytics</CardTitle>
+        </div>
+        <Badge variant={failures.totals.success === failures.totalJobs ? "success" : "warning"}>
+          pass {passPercent}% ({failures.totals.success}/{failures.totalJobs})
+        </Badge>
+      </CardHeader>
+      <CardContent>
+        <DescriptionList className="analytics-totals">
+          <DescriptionItem>
+            <DescriptionTerm>Failure</DescriptionTerm>
+            <DescriptionDetails>{failures.totals.failure}</DescriptionDetails>
+          </DescriptionItem>
+          <DescriptionItem>
+            <DescriptionTerm>Timeout</DescriptionTerm>
+            <DescriptionDetails>{failures.totals.timeout}</DescriptionDetails>
+          </DescriptionItem>
+          <DescriptionItem>
+            <DescriptionTerm>Escalated</DescriptionTerm>
+            <DescriptionDetails>{failures.totals.escalated}</DescriptionDetails>
+          </DescriptionItem>
+          <DescriptionItem>
+            <DescriptionTerm>Running</DescriptionTerm>
+            <DescriptionDetails>{failures.totals.running}</DescriptionDetails>
+          </DescriptionItem>
+        </DescriptionList>
+
+        <section>
+          <CardTitle className="section-title" level={3}>
+            Failure reasons
+          </CardTitle>
+          {failures.failureReasons.length === 0 ? (
+            <Text variant="description">No terminal failures recorded.</Text>
+          ) : (
+            <div className="table-wrap">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Reason</TableHead>
+                    <TableHead>Count</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {failures.failureReasons.map((reason) => (
+                    <TableRow key={`${reason.terminalStatus} ${reason.reason}`}>
+                      <TableCell>{reason.terminalStatus}</TableCell>
+                      <TableCell>{reason.reason}</TableCell>
+                      <TableCell>{reason.count}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+        </section>
+
+        <ReadinessSection readiness={readiness} />
+      </CardContent>
+    </Card>
+  );
+}
+
+function ReadinessSection({ readiness }: { readiness: ApiAnalyticsResponse["readiness"] }) {
+  return (
+    <section data-testid="readiness-section">
+      <CardTitle className="section-title" level={3}>
+        Worker readiness
+      </CardTitle>
+      {readiness === null ? (
+        <Text variant="description">No readiness evidence configured.</Text>
+      ) : (
+        <>
+          <div className="readiness-head">
+            <Badge variant="outline">target={readiness.target}</Badge>
+            <Badge variant="outline">mode={readiness.mode}</Badge>
+            <Badge variant={readiness.ok ? "success" : "destructive"}>
+              {readiness.ok ? "ready" : "blocked"}
+            </Badge>
+          </div>
+          {readiness.blockers.length > 0 ? (
+            <div className="readiness-blockers">
+              {readiness.blockers.map((blocker) => (
+                <Text className="readiness-blocker" key={blocker} variant="description">
+                  {blocker}
+                </Text>
+              ))}
+            </div>
+          ) : null}
+          <DescriptionList className="readiness-checks">
+            {readiness.checks.map((check) => (
+              <DescriptionItem key={check.name}>
+                <DescriptionTerm>{check.name}</DescriptionTerm>
+                <DescriptionDetails>{check.pass ? "pass" : "fail"}</DescriptionDetails>
+              </DescriptionItem>
+            ))}
+          </DescriptionList>
+        </>
+      )}
+    </section>
   );
 }
 
