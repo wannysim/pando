@@ -8,6 +8,13 @@
 
 긴 env block 없이 로컬 pando를 한 번에 띄운다.
 
+같은 pando server에서 dashboard까지 열려면 source checkout에서 dashboard를 한
+번 build한다.
+
+```bash
+pnpm --filter @pando/dashboard build
+```
+
 ```bash
 pnpm pando start
 ```
@@ -16,10 +23,19 @@ pnpm pando start
 
 - DB/worktree는 `/tmp/pando-local-<timestamp>` 아래에 생성된다 (run root와 `worktrees/` 디렉터리는 자동으로 만든다).
 - config dir은 repo의 `config/`다.
-- dashboard는 `http://127.0.0.1:3210/dashboard`다.
+- dashboard는 `http://127.0.0.1:3210/dashboard`다. Source checkout에서는
+  `dashboard/dist`가 있으면 이 asset을 같은 server에서 서빙한다.
 - daemon은 enabled, global concurrency 1이다.
 
 시작 로그가 dashboard URL, API health URL, DB path, worktree root, stop 방법(Ctrl+C), cleanup 명령(`rm -rf /tmp/pando-local-<timestamp>`)을 출력한다. secret 값은 출력하지 않는다.
+
+`dashboard/dist`가 없으면 API/daemon은 그대로 뜨지만 `/dashboard` asset은 없을
+수 있다. 이 경우 위 build를 실행하거나, frontend 개발 중에는 별도 Vite dev
+server를 띄운다.
+
+```bash
+VITE_PANDO_API_URL=http://127.0.0.1:3210 pnpm --filter @pando/dashboard dev
+```
 
 플래그로 기본값을 바꿀 수 있다.
 
@@ -50,6 +66,12 @@ pandoctl help
 ```
 
 패키지는 자체 JS를 esbuild로 번들하고, native 모듈은 `better-sqlite3` 하나만 dependency로 두어 설치 시 prebuilt 바이너리로 해결한다. dashboard SPA 자산은 번들에 포함하지 않으므로, dashboard는 `PANDO_STATIC_DASHBOARD_ROOT`로 빌드된 dashboard root가 주어질 때만(Docker 이미지 또는 dashboard를 빌드한 repo 체크아웃) 서빙된다.
+
+이미 설치한 global package는 새 publish 이후 아래 명령으로 갱신한다.
+
+```bash
+npm update -g pandoctl
+```
 
 체크아웃에서 배포본을 빌드/검증하려면:
 

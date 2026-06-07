@@ -59,6 +59,13 @@ npm update -g pandoctl
 
 ## Local run
 
+If you want the dashboard served by the same local pando server, build the
+dashboard assets once:
+
+```bash
+pnpm --filter @pando/dashboard build
+```
+
 Start the local daemon/API:
 
 ```bash
@@ -68,7 +75,8 @@ pnpm pando start
 Startup output includes:
 
 - API health URL, normally `http://127.0.0.1:3210/health`.
-- Dashboard URL, normally `http://127.0.0.1:3210/dashboard`.
+- Dashboard URL, normally `http://127.0.0.1:3210/dashboard`. In a source
+  checkout, this uses `dashboard/dist` when that directory exists.
 - SQLite DB path under `/tmp/pando-local-<timestamp>/pando.sqlite`.
 - Worktree root under `/tmp/pando-local-<timestamp>/worktrees`.
 - Stop and cleanup instructions.
@@ -84,7 +92,17 @@ The dashboard works when dashboard assets are served by the pando server, such
 as in the Docker image or when `PANDO_STATIC_DASHBOARD_ROOT` points at a built
 dashboard directory.
 
-From a source checkout, the most direct dashboard workflow is:
+From a source checkout, the integrated dashboard path is:
+
+```bash
+pnpm --filter @pando/dashboard build
+pnpm pando start
+```
+
+Open the dashboard URL printed by `pnpm pando start`.
+
+For dashboard frontend development, run the Vite dev server against the local
+API:
 
 ```bash
 pnpm pando start
@@ -218,8 +236,9 @@ Live worker and Docker smoke paths require valid local/container auth. Details:
   `gh`.
 - Docker live workers need container-visible CLI auth or API keys; host-managed
   auth may not transfer into the container.
-- The checkout `pando start` path starts the daemon/API. Dashboard serving needs
-  built dashboard assets or the Vite dev server described above.
+- The checkout `pando start` path starts the daemon/API and serves
+  `dashboard/dist` when built. Without built assets, use the Vite dev server
+  described above.
 
 ## Security Note
 
