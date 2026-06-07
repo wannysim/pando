@@ -212,36 +212,42 @@ function InlineBriefPanel({
   const [id, setId] = useState("");
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
+  const [acceptance, setAcceptance] = useState("");
   const [references, setReferences] = useState("");
   const [errors, setErrors] = useState<string[]>([]);
   const [submitted, setSubmitted] = useState<string | null>(null);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    const acceptanceCriteria = splitLines(acceptance);
     const nextErrors = [
       repo.trim().length === 0 ? "Repo is required" : null,
       id.trim().length === 0 ? "ID is required" : null,
       body.trim().length === 0 ? "Describe what to build" : null,
+      acceptanceCriteria.length === 0 ? "Add at least one acceptance criterion" : null,
     ].filter((value): value is string => value !== null);
     setErrors(nextErrors);
+    setSubmitted(null);
     if (nextErrors.length > 0) return;
 
-    const assets = references
-      .split("\n")
-      .map((line) => line.trim())
-      .filter((line) => line.length > 0);
+    const assets = splitLines(references);
 
-    const response = await client.submitBrief({
-      brief: {
-        assets: assets.length > 0 ? assets : undefined,
-        body: body.trim(),
-        title: optionalField(title),
-      },
-      id: id.trim(),
-      repo: repo.trim(),
-    });
-    setSubmitted(`queued ${response.job.jobId}`);
-    onSubmitted();
+    try {
+      const response = await client.submitBrief({
+        brief: {
+          acceptanceCriteria,
+          assets: assets.length > 0 ? assets : undefined,
+          body: body.trim(),
+          title: optionalField(title),
+        },
+        id: id.trim(),
+        repo: repo.trim(),
+      });
+      setSubmitted(`queued ${response.job.jobId}`);
+      onSubmitted();
+    } catch (submitError) {
+      setErrors([errorMessage(submitError)]);
+    }
   }
 
   return (
@@ -273,6 +279,15 @@ function InlineBriefPanel({
               value={body}
               onChange={(event) => setBody(event.target.value)}
               placeholder="Describe the change in plain language."
+            />
+          </Label>
+          <Label className="brief-form-wide">
+            <span>Acceptance criteria (one per line)</span>
+            <Textarea
+              rows={3}
+              value={acceptance}
+              onChange={(event) => setAcceptance(event.target.value)}
+              placeholder="One checkable outcome per line (required)."
             />
           </Label>
           <Label className="brief-form-wide">
@@ -843,6 +858,13 @@ function StatusBadge({ status }: { status: JobStatus }) {
 function optionalField(value: string): string | undefined {
   const trimmed = value.trim();
   return trimmed.length === 0 ? undefined : trimmed;
+}
+
+function splitLines(value: string): string[] {
+  return value
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
 }
 
 function currentStage(events: ApiJobEvent[]): string {
