@@ -151,7 +151,7 @@ export interface RepoProfile {
   conventions: string;                 // 스킬 이름 or "repo-local"
   packageManager?: PackageManager;      // lockfile 감지 실패 시 fallback
   setup: PackageAction;
-  gates: { test: PackageAction; lint?: PackageAction; types?: PackageAction };
+  gates: { test?: PackageAction; lint?: PackageAction; types?: PackageAction };
   concurrency: number;
   portRange: [number, number];
   envFiles?: string[];

@@ -203,7 +203,7 @@ function expandHome(value: string, homeDir: string): string {
 function parseGates(value: unknown, repo: string): RepoProfile["gates"] {
   const gates = asRecord(value, `${repo}.gates`);
   return {
-    test: requiredEnum(gates.test, PACKAGE_ACTIONS, repo, "gates.test"),
+    test: optionalEnum(gates.test, PACKAGE_ACTIONS, repo, "gates.test"),
     lint: optionalEnum(gates.lint, PACKAGE_ACTIONS, repo, "gates.lint"),
     types: optionalEnum(gates.types, PACKAGE_ACTIONS, repo, "gates.types"),
   };

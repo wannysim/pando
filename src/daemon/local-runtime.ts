@@ -4,7 +4,11 @@ import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import { promisify } from "node:util";
-import { loadOrchestratorConfigFromYaml, loadRepoProfilesFromYaml } from "../core/config";
+import {
+  loadOrchestratorConfigFromYaml,
+  loadRepoProfilesFromYaml,
+  packageCommand,
+} from "../core/config";
 import type { RepoProfile, StageName, WorkItem } from "../core/types";
 import { loadStageConfigFromYaml } from "../core/stage-config";
 import { createSqliteJobStore } from "../db/index";
@@ -49,6 +53,7 @@ export interface LocalDaemonRuntimeOptions {
 }
 
 const execAsync = promisify(exec);
+const PR_GATE_ORDER = ["test", "lint", "types"] as const;
 
 export function createDaemonLoopController(
   opts: DaemonLoopControllerOptions,
@@ -214,6 +219,10 @@ Record blockers as [Blocker] open questions only when work cannot continue.`;
     return `${header}
 
 Read PLAN.md and add focused regression tests for the requested behavior.
+Use the repository's existing test framework when one exists.
+If this repository has no configured test gate, do not introduce a new test
+framework unless PLAN.md explicitly calls for it; add the smallest deterministic
+validation artifact that fits the repo.
 Edit files directly in this worktree; do not spawn subagents.
 Before exiting, make sure git diff contains at least one relevant test change.
 Keep the change scoped to this job.`;
@@ -236,14 +245,32 @@ Review the current diff for correctness, scope, deterministic gates, and secrets
 Fix concrete issues only. Do not rely on LLM output text for pass/fail decisions.`;
   }
 
+  const verificationCommands = buildPrVerificationCommands(context.profile);
+  const verificationInstructions =
+    verificationCommands.length === 0
+      ? "No package verification gates are configured for this repo. Inspect repo-local docs before choosing any extra verification command, and mention the missing configured gates in the PR description."
+      : `Run the configured verification commands:
+${verificationCommands.map((command, index) => `${index + 1}. ${command}`).join("\n")}`;
+
   return `${header}
 
 Prepare the result for human review:
-1. Run pnpm verify.
-2. Commit with an English message.
-3. Push the branch.
-4. Create a Draft PR against the repo base branch with gh pr create.
+${verificationInstructions}
+Then:
+1. Commit with an English message.
+2. Push the branch.
+3. Create a Draft PR against the repo base branch with gh pr create.
 Do not print secrets. Do not merge the PR.`;
+}
+
+function buildPrVerificationCommands(profile: RepoProfile): string[] {
+  const manager = profile.packageManager;
+  if (manager === undefined) return [];
+
+  return PR_GATE_ORDER.flatMap((gateName) => {
+    const action = profile.gates[gateName];
+    return action === undefined ? [] : [packageCommand(manager, action)];
+  });
 }
 
 export async function shellGateRunner(command: string, opts: { cwd: string }) {
