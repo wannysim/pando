@@ -23,6 +23,11 @@ describe("routePandoctl", () => {
     }
   });
 
+  it("routes gc to the dedicated reaper surface", () => {
+    expect(routePandoctl(["gc"])).toBe("gc");
+    expect(routePandoctl(["gc", "--force"])).toBe("gc");
+  });
+
   it("routes empty args and help tokens to help", () => {
     for (const argv of [[], ["help"], ["--help"], ["-h"]]) {
       expect(routePandoctl(argv)).toBe("help");
@@ -42,14 +47,22 @@ describe("pandoctlUsage", () => {
     expect(text).toContain("pandoctl cleanup");
     expect(text).toContain("pandoctl watch");
     expect(text).toContain("pandoctl smoke");
+    expect(text).toContain("pandoctl gc");
   });
 });
 
 describe("runPandoctl", () => {
   function handlers(overrides: Partial<Parameters<typeof runPandoctl>[1]> = {}) {
-    const calls: { start: string[][]; ops: string[][]; out: string[]; err: string[] } = {
+    const calls: {
+      start: string[][];
+      ops: string[][];
+      gc: string[][];
+      out: string[];
+      err: string[];
+    } = {
       start: [],
       ops: [],
+      gc: [],
       out: [],
       err: [],
     };
@@ -60,6 +73,10 @@ describe("runPandoctl", () => {
       },
       async runOps(argv: readonly string[]) {
         calls.ops.push([...argv]);
+        return 0;
+      },
+      async runGc(argv: readonly string[]) {
+        calls.gc.push([...argv]);
         return 0;
       },
       out: (line: string) => calls.out.push(line),
@@ -82,6 +99,14 @@ describe("runPandoctl", () => {
     expect(code).toBe(0);
     expect(calls.ops).toEqual([["list", "--status", "IMPL"]]);
     expect(calls.start).toEqual([]);
+  });
+
+  it("delegates gc to the reaper entrypoint with the full argv", async () => {
+    const { calls, handlers: h } = handlers();
+    const code = await runPandoctl(["gc", "--force"], h);
+    expect(code).toBe(0);
+    expect(calls.gc).toEqual([["gc", "--force"]]);
+    expect(calls.ops).toEqual([]);
   });
 
   it("returns the delegated exit code", async () => {
