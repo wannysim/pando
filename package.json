@@ -20,7 +20,7 @@
   "scripts": {
     "start": "tsx src/server.ts",
     "pando": "tsx src/cli/pando.ts",
-    "pandoctl": "tsx src/cli/agentctl.ts",
+    "pandoctl": "tsx src/cli/pandoctl.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "coverage": "vitest run --coverage",
@@ -31,6 +31,8 @@
     "types": "tsc --noEmit",
     "verify:core": "pnpm coverage && pnpm lint && pnpm types",
     "verify": "pnpm verify:core && pnpm --filter @pando/dashboard verify",
+    "build:pandoctl": "node packages/pandoctl/build.mjs",
+    "smoke:pandoctl-pack": "node scripts/pandoctl-pack-smoke.mjs",
     "smoke:full-daemon": "tsx scripts/full-daemon-smoke.ts",
     "smoke:two-job": "node scripts/two-job-smoke.mjs",
     "prepare": "husky"
@@ -45,6 +47,7 @@
     "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^22.19.19",
     "@vitest/coverage-v8": "^4.1.8",
+    "esbuild": "^0.28.0",
     "husky": "^9.1.7",
     "lint-staged": "^17.0.7",
     "oxfmt": "^0.53.0",

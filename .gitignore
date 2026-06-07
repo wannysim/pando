@@ -6,6 +6,7 @@ dist/
 .DS_Store
 pando.sqlite*
 smoke/evidence/
+*.tgz
 dashboard/test-results/
 dashboard/playwright-report/
 .claude/
