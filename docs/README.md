@@ -11,6 +11,8 @@ then use the architecture and history sections when you need deeper context.
   retry/cancel/cleanup, and readiness smoke.
 - [Two-job smoke runbook](./runbooks/two-job-smoke.md): host, full-daemon,
   Docker, live, and deterministic fallback smoke paths.
+- [Soak failure analytics](./runbooks/soak-failure-analytics.md): 3-5 job
+  soak/nightly runs and terminal failure summary evidence.
 
 ## Architecture
 
