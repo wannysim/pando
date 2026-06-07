@@ -39,6 +39,8 @@ export interface PipelineRunnerOptions {
   retryPolicies?: ProviderRetryPolicies;
   /** Cooperative cancellation: checked at each stage boundary. */
   shouldCancel?: () => boolean;
+  /** Aborting this signal stops the in-flight worker mid-stage. */
+  signal?: AbortSignal;
 }
 
 export interface PromptBuildContext {
@@ -145,12 +147,18 @@ export async function runPipeline(opts: PipelineRunnerOptions): Promise<Pipeline
   }
 
   while (isStageStatus(state.status)) {
-    if (opts.shouldCancel?.() === true) {
+    if (isCanceled(opts)) {
       return { canceled: true, events, final: state };
     }
     const stage = state.status;
     const attempt = budget - state.attemptsLeft + 1;
     const stageResult = await runStage(stage, attempt, budget, opts, emit, clock);
+
+    // A cancel/abort during the stage stops the job instead of retrying a worker
+    // that was killed mid-run.
+    if (isCanceled(opts)) {
+      return { canceled: true, events, final: state };
+    }
 
     if (stageResult.outcome === "pass") {
       state = await applyTransition(state, { type: "GATE_PASS" }, budget, opts, stage);
@@ -201,6 +209,7 @@ async function runStage(
           profile: opts.profile,
           worktree: opts.worktree,
         }) ?? `Run ${stage}`,
+      signal: opts.signal,
       timeoutMs: opts.stageConfig.defaults.timeoutMinutes * 60_000,
     });
 
@@ -371,6 +380,10 @@ function failurePayload(failure: StageFailureTelemetry): Record<string, unknown>
 
 function durationMs(startedAtMs: number, endedAtMs: number): number {
   return Math.max(0, endedAtMs - startedAtMs);
+}
+
+function isCanceled(opts: PipelineRunnerOptions): boolean {
+  return opts.shouldCancel?.() === true || opts.signal?.aborted === true;
 }
 
 function isStageStatus(status: JobStatus): status is StageName {

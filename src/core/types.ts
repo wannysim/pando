@@ -67,6 +67,7 @@ export interface WorkerRunOptions {
   outputSchema?: object;
   timeoutMs: number;
   env?: Record<string, string>; // IMPLEMENT_JIRA_BATCH=1 등
+  signal?: AbortSignal; // 취소 시 워커 프로세스를 중단하기 위한 신호
 }
 
 export interface WorkerResult {

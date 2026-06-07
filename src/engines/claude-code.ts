@@ -18,6 +18,7 @@ export interface CommandRunnerOptions {
   cwd: string;
   env: NodeJS.ProcessEnv;
   timeoutMs: number;
+  signal?: AbortSignal;
 }
 
 export interface CommandResult {
@@ -70,6 +71,7 @@ export class ClaudeCodeEngine implements WorkerEngine {
     const result = await this.runner(this.command, buildClaudeCodeArgs(opts), {
       cwd: opts.cwd,
       env: { ...process.env, ...opts.env },
+      signal: opts.signal,
       timeoutMs: opts.timeoutMs,
     });
 
@@ -91,6 +93,7 @@ async function execFileRunner(
     const { stdout, stderr } = await execFileAsync(command, args, {
       cwd: opts.cwd,
       env: opts.env,
+      signal: opts.signal,
       timeout: opts.timeoutMs,
     });
     return { exitCode: 0, stdout: asText(stdout), stderr: asText(stderr) };
