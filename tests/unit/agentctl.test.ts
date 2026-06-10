@@ -994,6 +994,16 @@ class AgentctlMemoryStore implements JobStore {
     return updated;
   }
 
+  deferJob(input: Parameters<JobStore["deferJob"]>[0]): JobRecord {
+    const job = this.requiredJob(input.jobId);
+    const deferred = {
+      ...job,
+      deferredUntil: new Date(Date.parse(this.now) + input.delayMs).toISOString(),
+    };
+    this.jobs.set(input.jobId, deferred);
+    return deferred;
+  }
+
   retryJob(input: RetryJobInput): JobRecord {
     this.retries.push(input);
     return this.updateJobStatus({

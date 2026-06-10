@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import type { JobEventRecord, JobRecord, JobStore, UpdateJobStatusInput } from "../../src/db/index";
+import type {
+  DeferJobInput,
+  JobEventRecord,
+  JobRecord,
+  JobStore,
+  UpdateJobStatusInput,
+} from "../../src/db/index";
 import { branchForItem, runDaemonOnce } from "../../src/daemon/loop";
 import { createRunScheduler } from "../../src/scheduler/scheduler";
 import type {
@@ -93,6 +99,54 @@ describe("runDaemonOnce", () => {
           payload: { costUsd: 0.35, engine: "codex", model: "impl-model" },
           stage: "IMPL",
           type: "worker-cost",
+        }),
+      ]),
+    );
+  });
+
+  it("persists retryable provider backoff as a scheduler deferral", async () => {
+    const item = workItem("DEMO-2006");
+    const store = new MemoryJobStore(jobRecord(item, "SPEC", 2));
+
+    const result = await runDaemonOnce({
+      engines: {
+        "claude-code": failingEngine("claude-code", { exitCode: 1 }),
+        codex: engine("codex"),
+      },
+      profiles: { web: repoProfile() },
+      stageConfig: { ...stageConfig(), defaults: { retryBudget: 2, timeoutMinutes: 30 } },
+      store,
+      worktrees: {
+        async ensure(input) {
+          return { branch: input.branch, path: "/worktrees/web/feat-DEMO-2006" };
+        },
+      },
+    });
+
+    expect(result).toEqual({
+      finalStatus: "SPEC",
+      jobId: "DEMO-2006",
+      status: "ran",
+    });
+    expect(store.job).toMatchObject({ attemptsLeft: 1, status: "SPEC" });
+    expect(store.deferments).toEqual([
+      {
+        delayMs: 2_000,
+        jobId: "DEMO-2006",
+        reason: "claude-code returned ok=false (transient)",
+        stage: "SPEC",
+      },
+    ]);
+    expect(store.events).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          payload: expect.objectContaining({
+            backoffMs: 2_000,
+            deferredUntil: "2026-06-06T00:00:02.000Z",
+          }),
+          stage: "SPEC",
+          status: "SPEC",
+          type: "state-change",
         }),
       ]),
     );
@@ -479,6 +533,7 @@ describe("runDaemonOnce", () => {
 class MemoryJobStore implements JobStore {
   readonly events: JobEventRecord[] = [];
   readonly updates: UpdateJobStatusInput[] = [];
+  readonly deferments: DeferJobInput[] = [];
 
   constructor(public job: JobRecord | undefined) {}
 
@@ -509,6 +564,16 @@ class MemoryJobStore implements JobStore {
       attemptsLeft: input.attemptsLeft,
       status: input.status,
       worktreePath: input.worktreePath ?? this.job.worktreePath,
+    };
+    return this.job;
+  }
+
+  deferJob(input: DeferJobInput): JobRecord {
+    if (this.job === undefined) throw new Error("job not found");
+    this.deferments.push(input);
+    this.job = {
+      ...this.job,
+      deferredUntil: new Date(Date.parse("2026-06-06T00:00:00.000Z") + input.delayMs).toISOString(),
     };
     return this.job;
   }
@@ -582,6 +647,7 @@ class MemoryJobStore implements JobStore {
 class QueueJobStore implements JobStore {
   readonly events: JobEventRecord[] = [];
   readonly updates: UpdateJobStatusInput[] = [];
+  readonly deferments: DeferJobInput[] = [];
   private readonly jobs = new Map<string, JobRecord>();
 
   constructor(jobs: readonly JobRecord[]) {
@@ -631,6 +697,18 @@ class QueueJobStore implements JobStore {
       attemptsLeft: input.attemptsLeft,
       status: input.status,
       worktreePath: input.worktreePath ?? job.worktreePath,
+    };
+    this.jobs.set(input.jobId, next);
+    return next;
+  }
+
+  deferJob(input: DeferJobInput): JobRecord {
+    const job = this.jobs.get(input.jobId);
+    if (job === undefined) throw new Error("job not found");
+    this.deferments.push(input);
+    const next = {
+      ...job,
+      deferredUntil: new Date(Date.parse("2026-06-06T00:00:00.000Z") + input.delayMs).toISOString(),
     };
     this.jobs.set(input.jobId, next);
     return next;
@@ -709,6 +787,18 @@ function engine(name: WorkerEngine["name"]): WorkerEngine {
     name,
     async run(): Promise<WorkerResult> {
       return { ok: true, output: "ok" };
+    },
+  };
+}
+
+function failingEngine(
+  name: WorkerEngine["name"],
+  failure: Pick<WorkerResult, "errorCode" | "exitCode" | "timedOut">,
+): WorkerEngine {
+  return {
+    name,
+    async run(): Promise<WorkerResult> {
+      return { ok: false, output: "worker failed", ...failure };
     },
   };
 }

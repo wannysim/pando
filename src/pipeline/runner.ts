@@ -60,6 +60,9 @@ export interface PipelineStateChange {
   next: MachineState;
   event: PipelineEvent["type"];
   stage?: StageName;
+  backoffMs?: number;
+  deferredUntilMs?: number;
+  reason?: string;
 }
 
 export interface PipelineClock {
@@ -176,7 +179,24 @@ export async function runPipeline(opts: PipelineRunnerOptions): Promise<Pipeline
       continue;
     }
 
-    state = await applyTransition(state, { type: "GATE_FAIL" }, budget, opts, stage);
+    const backoffMs = stageResult.failure.backoffMs ?? 0;
+    state = await applyTransition(
+      state,
+      { type: "GATE_FAIL" },
+      budget,
+      opts,
+      stage,
+      backoffMs > 0
+        ? {
+            backoffMs,
+            deferredUntilMs: clock.nowMs() + backoffMs,
+            reason: stageResult.failure.reason,
+          }
+        : undefined,
+    );
+    if (backoffMs > 0 && isStageStatus(state.status)) {
+      break;
+    }
   }
 
   return { events, final: state };
@@ -414,12 +434,16 @@ async function applyTransition(
   budget: number,
   opts: PipelineRunnerOptions,
   stage?: StageName,
+  metadata?: Pick<PipelineStateChange, "backoffMs" | "deferredUntilMs" | "reason">,
 ): Promise<MachineState> {
   const next = transition(previous, event, budget);
   await opts.onStateChange?.({
+    backoffMs: metadata?.backoffMs,
+    deferredUntilMs: metadata?.deferredUntilMs,
     event: event.type,
     next,
     previous,
+    reason: metadata?.reason,
     stage,
   });
   return next;

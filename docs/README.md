@@ -34,8 +34,9 @@ document.
 - [x] Provider failure classification/backoff telemetry:
       `src/scheduler/retry-policy.ts` classifies deterministic provider failure
       kinds and records advisory `backoffMs`.
-- [ ] Scheduler-enforced provider backoff deferral: advisory `backoffMs` is not
-      yet a scheduler delay.
+- [x] Scheduler-enforced provider backoff deferral: retryable provider
+      `backoffMs` now persists `deferredUntil`, and runnable claims skip the job
+      until that timestamp.
 - [ ] Docker/OpenAI live worker smoke: re-verify the default Codex/OpenAI
       pipeline in Docker/host. Claude live smoke is only for legacy/custom
       `claude-code` profiles and needs `ANTHROPIC_API_KEY` or container-local

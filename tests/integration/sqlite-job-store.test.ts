@@ -39,6 +39,52 @@ describe("SqliteJobStore", () => {
     store.close();
   });
 
+  it("skips deferred active jobs until their retry backoff is due", () => {
+    const store = createSqliteJobStore({
+      path: ":memory:",
+      now: fixedClock([
+        "2026-06-06T00:00:00.000Z",
+        "2026-06-06T00:00:01.000Z",
+        "2026-06-06T00:00:02.000Z",
+        "2026-06-06T00:00:03.000Z",
+        "2026-06-06T00:00:03.500Z",
+        "2026-06-06T00:00:04.000Z",
+        "2026-06-06T00:00:04.500Z",
+        "2026-06-06T00:00:04.900Z",
+        "2026-06-06T00:00:05.000Z",
+        "2026-06-06T00:00:05.500Z",
+      ]),
+    });
+
+    store.enqueueJob({ item: workItem("DEMO-1001"), retryBudget: 3 });
+    store.enqueueJob({ item: workItem("DEMO-1002"), retryBudget: 3 });
+    store.updateJobStatus({ attemptsLeft: 2, jobId: "DEMO-1001", status: "SPEC" });
+    store.deferJob({
+      delayMs: 2_000,
+      jobId: "DEMO-1001",
+      reason: "transient provider failure",
+      stage: "SPEC",
+    });
+
+    expect(store.getJob("DEMO-1001")?.deferredUntil).toBe("2026-06-06T00:00:05.000Z");
+    expect(store.claimNextRunnable()?.item.id).toBe("DEMO-1002");
+    expect(store.claimNextRunnable({ excludeJobIds: ["DEMO-1002"] })).toBeUndefined();
+    expect(store.claimNextRunnable({ excludeJobIds: ["DEMO-1002"] })?.item.id).toBe("DEMO-1001");
+    expect(store.getJob("DEMO-1001")?.deferredUntil).toBeUndefined();
+    expect(store.listEvents("DEMO-1001").at(-1)).toMatchObject({
+      payload: {
+        backoffMs: 2_000,
+        deferredUntil: "2026-06-06T00:00:05.000Z",
+        reason: "transient provider failure",
+      },
+      stage: "SPEC",
+      status: "SPEC",
+      type: "retry-deferred",
+    });
+
+    store.close();
+  });
+
   it("returns undefined when no queued or active jobs exist", () => {
     const store = createSqliteJobStore({
       path: ":memory:",
