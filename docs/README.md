@@ -1,51 +1,95 @@
 # pando docs
 
-Most project docs are written in Korean. Start with the runbooks for operation,
-then use the architecture and history sections when you need deeper context.
+This file is the only docs entrypoint for agent work. Its job is to tell you
+which one or two documents to read next, not to preserve every project record.
 
-## Start Here
+Do not start from `handoff.md`, `practical-adoption-roadmap.md`, or
+`next-session-prompt.md`. Those files are historical context or compatibility
+stubs. Current decisions live in ADRs; current work routing lives here.
 
-- [Local pando runner](./runbooks/local-pando-runner.md): local daemon/API,
-  dashboard serving options, DB/worktree paths, and cleanup.
-- [pandoctl runbook](./runbooks/agentctl.md): operator CLI modes, watch/list,
-  retry/cancel/cleanup, and readiness smoke.
-- [Two-job smoke runbook](./runbooks/two-job-smoke.md): host, full-daemon,
-  Docker, live, and deterministic fallback smoke paths.
-- [Soak failure analytics](./runbooks/soak-failure-analytics.md): 3-5 job
-  soak/nightly runs and terminal failure summary evidence.
-- [pandoctl release](./runbooks/pandoctl-release.md): manual package dry-run and
-  npm publish workflow for the distributed command.
+## Read Every Time
 
-## Architecture
+1. Read `CLAUDE.md` for non-negotiable engineering rules.
+2. Read this file.
+3. Pick exactly one task route below.
+4. Read the relevant ADR only if the task changes a recorded decision.
 
-- [Repository structure](./repo-structure.md): directories, core interfaces, and
-  module boundaries.
-- [Multi-repo design](./design-v2-multi-repo.md): n-by-n orchestration design,
-  repo profiles, worker stages, gates, and scheduling.
-- [Operational readiness](./w5-operational-readiness.md): W5 dashboard/API,
-  Docker shape, and readiness scenario matrix.
+For ordinary implementation work, do not read the whole `docs/` tree. If a
+historical document conflicts with an ADR, code, or this file, treat the
+historical document as stale.
+
+## Active W6 Queue
+
+Use the first unchecked item that matches the requested work. When closing an
+item, update this list and the relevant runbook; do not create another handoff
+document.
+
+- [x] Docs/current-state sync: this README is now the source of truth for docs
+      routing.
+- [x] 3-5 job soak/nightly routine: `pnpm soak:nightly` writes aggregate
+      structured evidence under `/tmp`.
+- [x] Dashboard failure/readiness analytics: `GET /analytics` and the dashboard
+      surface terminal failure reasons and readiness blockers from structured
+      evidence.
+- [x] Provider failure classification/backoff telemetry:
+      `src/scheduler/retry-policy.ts` classifies deterministic provider failure
+      kinds and records advisory `backoffMs`.
+- [ ] Scheduler-enforced provider backoff deferral: advisory `backoffMs` is not
+      yet a scheduler delay.
+- [ ] Docker/OpenAI live worker smoke: re-verify the default Codex/OpenAI
+      pipeline in Docker/host. Claude live smoke is only for legacy/custom
+      `claude-code` profiles and needs `ANTHROPIC_API_KEY` or container-local
+      `claude /login`.
+- [ ] `pandoctl@0.1.0` npm publish: run release workflow dry-run, publish, then
+      global install/update smoke.
+
+Deferred until the queue above is closed: notifications, GitHub Issue/Jira
+write-back, public auth hardening, Docker egress policy, split containers, TUI.
+
+## Task Routes
+
+- Local run or dashboard boot:
+  [runbooks/local-pando-runner.md](./runbooks/local-pando-runner.md)
+- Operator CLI behavior:
+  [runbooks/agentctl.md](./runbooks/agentctl.md)
+- Two-job, full-daemon, Docker, readiness, or live smoke:
+  [runbooks/two-job-smoke.md](./runbooks/two-job-smoke.md)
+- Soak/nightly evidence or failure summary:
+  [runbooks/soak-failure-analytics.md](./runbooks/soak-failure-analytics.md)
+- Provider retry/backoff work:
+  [runbooks/provider-retry-policy.md](./runbooks/provider-retry-policy.md)
+- `pandoctl` release or npm publish:
+  [runbooks/pandoctl-release.md](./runbooks/pandoctl-release.md)
+- Core architecture, module boundaries, or type contracts:
+  [repo-structure.md](./repo-structure.md)
+- Development discipline, test shape, or verification:
+  [engineering-standards.md](./engineering-standards.md)
 
 ## Decisions
 
-- [Architecture decision records](./adr/): accepted technical decisions. Read
-  these before changing storage, worker engine, dashboard, MCP, context source,
-  CLI naming, or release-branch behavior.
+ADRs are the only durable record for binding decisions. Before changing storage,
+worker engines, dashboard/API shape, MCP behavior, context sources, CLI naming,
+or release branch routing, read the matching ADR under [adr/](./adr/).
 
-## Development
+If a historical note still matters as policy, promote it to a new ADR. Otherwise
+leave it out of the active route.
 
-- [Engineering standards](./engineering-standards.md): TDD, verification,
-  layering, deterministic gates, and repository discipline.
-- [Current handoff](./handoff.md): current status, completed work, and next
-  operational priorities.
-- [Next session prompt](./next-session-prompt.md): ready-to-use prompt for
-  continuing W6 operational expansion.
+## Archive / Records
 
-## Roadmap And History
+These files are kept only to explain how the project got here. Do not use them
+as the first source for new work:
 
-- [Practical adoption roadmap](./practical-adoption-roadmap.md): current product
-  boundary and remaining operational expansion work.
-- [Initial research](./research-v1.md): early tooling and pattern research.
-- [W1 runbook](./w1-runbook.md): first headless/worktree validation log.
+- [handoff.md](./handoff.md): old session handoff and accumulated status log.
+- [practical-adoption-roadmap.md](./practical-adoption-roadmap.md): roadmap log
+  through the W5/W6 transition.
+- [next-session-prompt.md](./next-session-prompt.md): compatibility pointer only.
+- [research-v1.md](./research-v1.md): initial research; re-check any volatile
+  tool/model/pricing facts before use.
+- [design-v2-multi-repo.md](./design-v2-multi-repo.md): design history; ADRs and
+  current code win on conflict.
+- [w1-runbook.md](./w1-runbook.md): first validation log.
+- [w5-operational-readiness.md](./w5-operational-readiness.md): W5 plan and
+  scenario matrix; many live-smoke notes are superseded by current runbooks.
 
 ## Other Entrypoints
 

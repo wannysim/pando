@@ -1,5 +1,9 @@
 # W5 운영 준비 계획 — 실제로 맡길 수 있는 최소 제품
 
+> Archive note: 현재 작업 큐와 문서 라우팅은 `docs/README.md`를 따른다. 이
+> 문서는 W5 계획과 시나리오를 보존하기 위한 참고 자료다. 지속되는 결정은
+> `docs/adr/`에만 남긴다.
+
 > 작성일: 2026-06-06 · 전제: W4 n×n 병렬 완료(PR #13), W4 문서 정리 완료(PR #14), release history 복구 완료(PR #15)
 
 ## 목표
@@ -16,7 +20,7 @@ W5 완료 조건과 현재 상태:
 - ✅ 비용과 duration이 stage/event 단위로 기록된다.
 - ✅ 최소 웹 대시보드에서 list/detail/action/brief submit/health가 동작한다.
 - ✅ single-container Docker image build, compose 기동, health/API/static dashboard smoke를 로컬 Docker Desktop에서 확인했다.
-- ⬜ 실제 Claude/Codex worker smoke는 global 2~3으로 낮춰 2개 job만 돌려 worktree/provider cap/게이트 기록을 확인해야 한다. Docker HTTP smoke와 deterministic fake smoke는 완료됐지만, live worker smoke는 인증/CLI/비용 준비 후 별도로 수행한다.
+- ✅ 실제 worker smoke는 이후 host와 Docker 경로에서 별도 follow-up으로 진행됐다. 현재 남은 live smoke/publish 작업은 `docs/README.md`의 Active W6 Queue와 `docs/runbooks/two-job-smoke.md`를 따른다.
 
 ## W5에서 하지 않는 것
 

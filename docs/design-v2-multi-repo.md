@@ -1,5 +1,9 @@
 # 설계안 v2 — 기존 `.ai-skills` 자산 위에 n×n 멀티레포 오케스트레이터 얹기
 
+> Archive note: 현재 작업 큐와 문서 라우팅은 `docs/README.md`를 따른다. 이
+> 문서는 설계 발전 기록이다. 지속되는 결정은 `docs/adr/`에만 남기고, 현재
+> 코드/ADR과 충돌하면 현재 코드/ADR을 우선한다.
+
 > 작성일: 2026-06-06 · 전제: [리서치 리포트 v1](./research-v1.md)
 > 분석 대상: `~/.ai-skills` (implement-jira, repo-scope, dispatch/dispatch-batch, worktree-dispatch, verifier, test-writer 등 33개 스킬 + 7개 에이전트)
 
