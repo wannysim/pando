@@ -516,6 +516,56 @@ describe("runPipeline", () => {
     expect(failed?.payload).toMatchObject({ providerKind: "timeout" });
   });
 
+  it("stops cooperatively once shouldCancel turns true after a stage runs", async () => {
+    const calls: string[] = [];
+    const result = await runPipeline({
+      engines: {
+        "claude-code": engine("claude-code", calls),
+        codex: engine("codex", calls),
+      },
+      gates: {
+        PLAN: [gate("plan-gate", () => ({ pass: true }))],
+        SPEC: [gate("spec-gate", () => ({ pass: true }))],
+      },
+      item: workItem(),
+      profile: repoProfile(),
+      shouldCancel: () => calls.length >= 1, // cancel as soon as SPEC has run
+      stageConfig: stageConfig(),
+      worktree: "/worktree",
+    });
+
+    expect(result.canceled).toBe(true);
+    expect(result.final.status).toBe("SPEC");
+    expect(calls).toEqual(["claude-code:Run SPEC"]);
+  });
+
+  it("treats a mid-stage abort as cancellation, not a stage failure", async () => {
+    const controller = new AbortController();
+    let receivedSignal = false;
+    const result = await runPipeline({
+      engines: {
+        "claude-code": {
+          name: "claude-code",
+          async run(opts) {
+            receivedSignal = opts.signal === controller.signal;
+            controller.abort(); // simulate the worker being killed mid-stage
+            return { exitCode: 1, ok: false, output: "aborted" };
+          },
+        },
+        codex: engine("codex", []),
+      },
+      item: workItem(),
+      profile: repoProfile(),
+      signal: controller.signal,
+      stageConfig: stageConfig(),
+      worktree: "/worktree",
+    });
+
+    expect(receivedSignal).toBe(true);
+    expect(result.canceled).toBe(true);
+    expect(result.final.status).not.toBe("FAILED");
+  });
+
   it("resumes from a persisted stage without rerunning earlier stages", async () => {
     const calls: string[] = [];
 

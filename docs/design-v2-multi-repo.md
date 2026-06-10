@@ -198,7 +198,7 @@ dispatch-batch 설계노트 §6의 "티켓 독립성 전제"를 유지하되, Wo
 | **SPEC** | jira: `jira-context-gatherer`(+`figma-spec-extractor`) / brief: intake 산출물 | `_spec.md` 존재 + 필수 섹션(수용 기준 등) 스키마 검사 |
 | **PLAN** | `implement-jira` batch mode (`stacked-pr-planning`은 net 1000줄 초과 시에만 — ADR-007, scope=acme면 `acme-conventions`) | `PLAN.md` 존재 + **커밋 분해 단위** 검사. Open Questions에 blocking 항목 있으면 → 사람 에스컬레이션 |
 | **TEST** | `test-writer`, `scenario-test-design` | 새 테스트가 **실패**하는지 실행 확인 + 테스트 파일 체크섬 기록 |
-| **IMPL** | PLAN.md + `react-best-practices` 류 repo 스킬 | `gates.test && gates.lint && gates.types` exit 0 + **체크섬 불변** + diff 규칙 |
+| **IMPL** | PLAN.md + `react-best-practices` 류 repo 스킬 | configured package gates exit 0 + **체크섬 불변** + diff 규칙 |
 | **REVIEW** | `verifier` + `review-heuristics` (구현과 **다른 모델**) | 구조화 판정 JSON. CHANGES_REQUESTED → IMPL 회귀 (budget 차감) |
 | **PR** | `create-pr` + `ci-preflight`, scope별 컨벤션 | draft PR 생성 + (jira면) remotelink + 상태 전이 |
 

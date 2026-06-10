@@ -19,11 +19,12 @@ and structured JSON. LLM output text is not used as a pass/fail signal.
 - Node.js `>=22.13.0`.
 - `pnpm@11.5.2`, the pinned package manager in `package.json`.
 - `git`.
-- Claude Code CLI (`claude`) with auth configured. The default pipeline uses
-  Claude Code for all stages.
+- Codex CLI (`codex`) with OpenAI auth configured. The default pipeline uses
+  Codex for all stages with `gpt-5.5`; use `OPENAI_API_KEY` or persisted Codex
+  auth.
 - GitHub CLI (`gh`) with `gh auth status` passing. The PR stage uses `gh`.
-- Optional: Docker for container checks, and Codex CLI for optional worker
-  smoke/adapter paths.
+- Optional: Docker for container checks, and Claude Code CLI (`claude`) only for
+  legacy/custom stage profiles that still select `claude-code`.
 
 Temporary DBs, worktrees, and smoke evidence should stay under `/tmp`; the
 default local runner does this.
@@ -231,7 +232,8 @@ Live worker and Docker smoke paths require valid local/container auth. Details:
 ## Limitations
 
 - pando is a local/private-network tool. Public API auth is not implemented.
-- The default pipeline expects Claude Code auth and can spend model credits.
+- The default pipeline expects Codex/OpenAI auth and can spend OpenAI model
+  credits.
 - The PR stage can create commits, push branches, and open draft PRs through
   `gh`.
 - Docker live workers need container-visible CLI auth or API keys; host-managed

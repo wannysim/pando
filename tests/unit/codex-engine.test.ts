@@ -16,7 +16,7 @@ afterEach(async () => {
 });
 
 describe("buildCodexArgs", () => {
-  it("forces codex exec JSON stream mode and the workspace-write sandbox", () => {
+  it("forces codex exec JSON stream mode with headless-safe execution", () => {
     expect(
       buildCodexArgs({
         cwd: "/worktree",
@@ -26,6 +26,11 @@ describe("buildCodexArgs", () => {
       }),
     ).toEqual([
       "exec",
+      "--ephemeral",
+      "--cd",
+      "/worktree",
+      "--config",
+      'approval_policy="never"',
       "--json",
       "--sandbox",
       "workspace-write",

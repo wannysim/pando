@@ -4,9 +4,9 @@ W5 PR 7 kept live validation intentionally small: exactly two jobs, with global 
 
 There are now three live scopes:
 
-- **Host worker probe**: one Claude Code worker job and one Codex worker job run in isolated directories and record deterministic exit-code evidence.
+- **Host worker probe**: two Codex worker jobs run in isolated directories and record deterministic exit-code evidence.
 - **Host full daemon live dogfood**: two `pando` self-profile jobs run through `runDaemonOnce`, then a follow-up single pando dogfood job runs through the same host path.
-- **Docker live worker smoke**: the same two worker probes run inside the single-container runtime image. This verifies the Linux worker CLI layer, auth signal, CA bundle, and mount contract without running the full PR pipeline.
+- **Docker live worker smoke**: the same two Codex worker probes run inside the single-container runtime image. This verifies the Linux worker CLI layer, auth signal, CA bundle, and mount contract without running the full PR pipeline.
 
 ## Preconditions
 
@@ -16,7 +16,7 @@ There are now three live scopes:
 - Worktrees are mounted under `/worktrees`.
 - Runtime config is mounted at `/config`.
 - Skills are mounted read-only at `/skills`.
-- Claude and Codex authentication are available through API keys or runtime-writable CLI auth volumes. For Docker, Claude Code managed connector inheritance may not cross the container boundary; use `ANTHROPIC_API_KEY` or a container-local `claude /login` credential when host-file inheritance fails.
+- Codex/OpenAI authentication is available through `OPENAI_API_KEY` or a runtime-writable `CODEX_HOME`. Claude auth is only needed for legacy/custom profiles that select `claude-code`.
 
 ## Host worker readiness
 
@@ -31,8 +31,8 @@ PANDO_GLOBAL_CONCURRENCY=2 \
 The readiness evidence records:
 
 - `globalConcurrency.value` and `withinLiveCap`
-- `workerCli.commands.claude/codex.available`
-- auth signals as booleans only (`ANTHROPIC_API_KEY`, `CLAUDE_CONFIG_DIR`, `CLAUDE_CONFIG_FILE`, Claude config file presence/non-empty status, `OPENAI_API_KEY`, `CODEX_HOME`, Codex config dir writable)
+- `workerCli.commands.codex.available`
+- auth signals as booleans only (`ANTHROPIC_API_KEY`, `CLAUDE_CONFIG_DIR`, `CLAUDE_CONFIG_FILE`, Claude config file presence/non-empty status, `OPENAI_API_KEY`, `CODEX_HOME`, Codex config dir writable). Only Codex/OpenAI auth blocks the default smoke.
 - `gitCreds.signals` git push / PR credential presence as booleans only (deploy key, known_hosts, credential store, gitconfig, `GH_TOKEN` / `GITHUB_TOKEN`). Recorded, not a hard blocker; key/token values are never recorded
 - host path readiness for SQLite parent, repos, worktrees, config, and skills
 
@@ -56,7 +56,7 @@ PANDO_SMOKE_RUN_ID="$(date +%Y%m%d-%H%M%S)" \
 Success criteria:
 
 - `mode` is `live`.
-- `jobs` contains exactly `SMOKE-LIVE-CLAUDE` and `SMOKE-LIVE-CODEX`.
+- `jobs` contains exactly `SMOKE-LIVE-CODEX-1` and `SMOKE-LIVE-CODEX-2`.
 - both workers have `exitCode: 0` and `timedOut: false`.
 - `checks.globalConcurrency.withinLiveCap` is `true`.
 - `checks.worktreeCollision.pass` is `true`.
@@ -65,7 +65,7 @@ Success criteria:
 
 The smoke script records deterministic worker evidence (`exitCode`, `timedOut`, optional signal, stdout/stderr byte counts). It must not use LLM output text for pass/fail.
 
-2026-06-06 host result: passed with global cap `2`. Claude Code and Codex both exited `0`, worktree paths were distinct, provider usage stayed within cap, and gate evidence was deterministic exit-code JSON.
+2026-06-06 host result: passed with global cap `2`. The old mixed Claude/Codex probe exited `0` for both workers. The current default probe is Codex-only and keeps the same deterministic exit-code evidence contract.
 
 ## Host full daemon contract smoke
 
@@ -131,7 +131,7 @@ Success criteria:
 - Live resume evidence: `/tmp/pando-full-daemon-smoke-live-20260607-003749/live-resume-evidence.json`.
 - Follow-up dogfood evidence: `/tmp/pando-full-daemon-dogfood-20260607-010122/dogfood-evidence.json`.
 
-The initial live run used exactly two jobs with global concurrency `2` and exposed a Codex TEST-stage stdin wait: both Codex workers reported `Reading additional input from stdin...` after termination. The fix is to run Codex through `spawn(..., { stdio: ["ignore", "pipe", "pipe"] })` so stdin is closed. After that runner fix, the same two DB jobs resumed to `DONE` without enqueueing more live smoke jobs.
+The initial live run used exactly two jobs with global concurrency `2` and exposed a Codex TEST-stage stdin wait: both Codex workers reported `Reading additional input from stdin...` after termination. The first fix was to run Codex through `spawn(..., { stdio: ["ignore", "pipe", "pipe"] })` so process stdin is closed. A later self-benchmark exposed a separate noninteractive `write_stdin` failure inside Codex tool execution, so live workers and the default adapter now also run `codex exec --ephemeral --cd <worktree> --config 'approval_policy="never"' ...`. The same smoke contract should keep those flags aligned with `src/engines/codex.ts`.
 
 ## Docker worker readiness
 
@@ -217,10 +217,8 @@ The optional SSH deploy-key mount above lets the `gitCreds` probe report
 
 ### Interpreting the evidence
 
-- `checks.workerCli.commands.{claude,codex}.available` -> CLI blocker.
-- `checks.auth.signals.claude.configFilePresent`,
-  `checks.auth.signals.claude.configFileNonEmpty`, and
-  `checks.auth.signals.codex.configDirWritable` (booleans only) -> auth blocker.
+- `checks.workerCli.commands.codex.available` -> CLI blocker.
+- `checks.auth.signals.codex.configDirWritable` and `OPENAI_API_KEY` presence (booleans only) -> auth blocker. Claude auth signals are recorded for legacy/custom profiles but do not block the default Codex smoke.
 - `checks.gitCreds.signals` (booleans + deploy-key path only) -> git push / PR
   credential presence. Recorded, not a hard blocker.
 - `checks.mounts.paths.*.ready` -> mount blocker.
@@ -230,8 +228,8 @@ The optional SSH deploy-key mount above lets the `gitCreds` probe report
 
 - **Baseline** (`/tmp/pando-docker-readiness/evidence/docker-readiness.json`):
   mount contract `pass` and global cap `withinLiveCap: true`, but
-  `blockers` = `[claude CLI not available, codex CLI not available, Claude auth not
-  configured, Codex auth not configured]`. So the open blocker is **CLI + auth**, not
+  `blockers` = `[codex CLI not available, Codex auth not configured]` under the
+  current Codex-only default. So the open blocker is **Codex CLI + auth**, not
   mounts.
 - **Auth volume mounted** (`docker-readiness-mounted.json`): mounting only
   `~/.claude` / `~/.codex` at `/root/.claude` / `/root/.codex` is not enough for a
@@ -257,7 +255,7 @@ Evidence root: `/tmp/pando-docker-live-worker-smoke-20260607/evidence`.
   - readiness records `claude.configFilePresent`, `claude.configFileNonEmpty`,
     and `codex.configDirWritable`;
   - read-only Codex auth dirs are blockers instead of false positives.
-- Post-CA rerun (`docker-live-worker-smoke-post-ca.json`): readiness blockers were `[]`; Codex exited `0` (`timedOut=false`), confirming the CA layer fixed the image blocker. Claude still exited `1` with mounted host/copy config, confirming the remaining blocker is Docker Claude auth. Next successful Docker live worker smoke requires `ANTHROPIC_API_KEY` or a container-local `claude /login` credential.
+- Post-CA rerun (`docker-live-worker-smoke-post-ca.json`): readiness blockers were `[]`; Codex exited `0` (`timedOut=false`), confirming the CA layer fixed the image blocker. Claude still exited `1` with mounted host/copy config, confirming the remaining blocker is Docker Claude auth for legacy/custom `claude-code` profiles. The default pipeline is now Codex/OpenAI, so Claude live re-verification is optional unless a profile selects `claude-code`.
 
 Task 3 rerun (`/tmp/pando-docker-live-worker-smoke-auth-20260607-120217/evidence`):
 with the CLI image, CA bundle, writable Codex auth, SSH credential signal, and
@@ -266,7 +264,7 @@ top-level `/root/.claude.json` mounted, readiness blockers were `[]`, Codex exit
 matched the login blocker. The remaining action is to rerun with
 `ANTHROPIC_API_KEY` or container-local `claude /login` credentials.
 
-### Next Docker Claude auth commands
+### Legacy Docker Claude auth commands
 
 API-key mode:
 
@@ -360,7 +358,7 @@ pnpm smoke:two-job -- --mode fake --evidence smoke/evidence/two-job-smoke-fake.j
 
 Use fallback when live credentials, repo mounts, provider access, or cost approval are missing. The evidence file must include the fallback reason and the same four checks as the live smoke.
 
-## Docker Claude credential mode (W6 #5)
+## Docker Claude credential mode (legacy/custom profiles)
 
 In Docker, the Claude Code managed connector does not reliably inherit into the
 container, so a read-only host-file mount is only a readiness signal — a live

@@ -105,9 +105,10 @@ pandoctl list
 ## Preconditions
 
 - `pnpm install` 완료
-- `claude`, `gh`, `git` CLI 사용 가능 (`codex` optional — all-Claude profile에서는 불필요)
+- `codex`, `gh`, `git` CLI 사용 가능
 - `gh auth status` 통과
-- Claude auth는 로컬 auth dir 또는 API key로 준비
+- OpenAI auth는 `OPENAI_API_KEY` 또는 저장된 Codex auth로 준비
+- `claude`는 legacy/custom stage profile이 `claude-code`를 선택할 때만 optional로 필요
 - evidence나 임시 DB는 repo 밖(`/tmp` 등)에 둔다
 
 ### Boot with env vars
@@ -151,7 +152,7 @@ PANDO_DB="$ROOT/pando.sqlite" \
 
 > CLI는 `pandoctl`이다 (ADR-010, npm 예약 이름). `bin/pandoctl.mjs`가 운영 CLI(`src/cli/agentctl.ts`)를 tsx로 실행하며, `pnpm pandoctl ...` / 전역 `pandoctl ...` / `pnpm tsx src/cli/agentctl.ts ...`는 모두 같은 진입점이다. 내부 모듈 이름은 ADR-010에 따라 당분간 `agentctl`로 유지한다.
 
-현재 dashboard submit도 같은 모델이다. 즉 "brief 파일 경로"를 이미 만들어 둔 뒤 queue에 넣는다. 제품 UX 목표는 웹에서 자연어 작업 설명, 참고할 spec/docs/assets path를 입력하면 pando가 canonical `brief.md`를 생성하고 queue에 넣는 것이다. file-path submit은 advanced/debug path로 남긴다.
+Dashboard submit은 인라인 자연어 brief가 기본이다. file-path submit은 advanced/debug path로 남긴다.
 
 ## Watch status
 
@@ -165,7 +166,8 @@ PANDO_DB="$ROOT/pando.sqlite" \
 
 ## PR behavior
 
-The `PR` stage is a real worker stage. It asks Claude Code to:
+The `PR` stage is a real worker stage. The default pipeline asks Codex
+(`gpt-5.5`) to:
 
 1. run `pnpm verify`
 2. commit with an English message
