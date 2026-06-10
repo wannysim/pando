@@ -37,10 +37,10 @@ document.
 - [x] Scheduler-enforced provider backoff deferral: retryable provider
       `backoffMs` now persists `deferredUntil`, and runnable claims skip the job
       until that timestamp.
-- [ ] Docker/OpenAI live worker smoke: re-verify the default Codex/OpenAI
-      pipeline in Docker/host. Claude live smoke is only for legacy/custom
-      `claude-code` profiles and needs `ANTHROPIC_API_KEY` or container-local
-      `claude /login`.
+- [x] Docker/OpenAI live worker smoke: Codex-only Docker worker probes passed
+      with current smoke code mounted into the runtime image. Evidence:
+      `/tmp/pando-docker-openai-live-smoke-docker-openai-20260610-185532`.
+      Claude live smoke remains legacy/custom only and credential-gated.
 - [ ] `pandoctl@0.1.0` npm publish: run release workflow dry-run, publish, then
       global install/update smoke.
 
