@@ -264,6 +264,25 @@ top-level `/root/.claude.json` mounted, readiness blockers were `[]`, Codex exit
 matched the login blocker. The remaining action is to rerun with
 `ANTHROPIC_API_KEY` or container-local `claude /login` credentials.
 
+2026-06-10 Docker/OpenAI Codex-only rerun:
+
+- Evidence root:
+  `/tmp/pando-docker-openai-live-smoke-docker-openai-20260610-185532`.
+- Image refresh note: rebuilding `deploy-pando:latest` from the checked-out
+  Dockerfile failed before any project build step because Docker Hub metadata
+  resolution timed out for `docker/dockerfile:1` and `node:22-bookworm-slim`.
+  The live smoke therefore bind-mounted the current checkout at `/app` inside the
+  existing runtime image so the container used the current Codex-only smoke
+  script while still exercising the Linux Codex CLI, CA bundle, writable
+  `CODEX_HOME`, and Docker mount contract.
+- Readiness: `blockers: []`, `codex-cli 0.137.0`, `CODEX_HOME=/root/.codex`
+  writable, global concurrency `2`, and config/repos/worktrees/skills/data mounts
+  ready.
+- Live: `SMOKE-LIVE-CODEX-1` and `SMOKE-LIVE-CODEX-2` both used model
+  `gpt-5.5`, exited `0`, and reported `timedOut: false`.
+- Checks: `gateEvidence.pass`, `worktreeCollision.pass`, `providerCap.pass`, and
+  `globalConcurrency.withinLiveCap` were all `true`.
+
 ### Legacy Docker Claude auth commands
 
 API-key mode:
