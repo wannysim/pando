@@ -42,19 +42,19 @@
   },
   "dependencies": {
     "better-sqlite3": "^12.10.0",
-    "hono": "^4.12.23",
+    "hono": "^4.12.25",
     "tsx": "^4.22.4",
     "yaml": "^2.9.0"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.13",
-    "@types/node": "^22.19.19",
+    "@types/node": "^25.9.2",
     "@vitest/coverage-v8": "^4.1.8",
     "esbuild": "^0.28.0",
     "husky": "^9.1.7",
     "lint-staged": "^17.0.7",
-    "oxfmt": "^0.53.0",
-    "oxlint": "^1.68.0",
+    "oxfmt": "^0.54.0",
+    "oxlint": "^1.69.0",
     "typescript": "^6.0.3",
     "vitest": "^4.1.8"
   },
