@@ -56,6 +56,12 @@ interface DashboardAppProps {
 
 type StatusFilter = "ALL" | JobStatus;
 type LoadState = "idle" | "loading" | "ready" | "error";
+type QueueSummary = {
+  active: number;
+  done: number;
+  failed: number;
+  total: number;
+};
 
 const STATUS_TABS: Array<{ label: string; value: StatusFilter }> = [
   { label: "All", value: "ALL" },
@@ -67,6 +73,12 @@ const STATUS_TABS: Array<{ label: string; value: StatusFilter }> = [
 ];
 
 const RETRY_STAGES: readonly StageName[] = ["SPEC", "PLAN", "TEST", "IMPL", "REVIEW", "PR"];
+const QUEUE_SUMMARY_ITEMS: Array<{ key: keyof QueueSummary; label: string }> = [
+  { key: "total", label: "Total" },
+  { key: "active", label: "Active" },
+  { key: "failed", label: "Failed" },
+  { key: "done", label: "Done" },
+];
 
 const POLL_INTERVAL_MS = 4000;
 const TERMINAL_STATUSES = new Set<JobStatus>(["DONE", "FAILED", "ESCALATED", "CANCELED"]);
@@ -161,6 +173,7 @@ export function DashboardApp({ client }: DashboardAppProps) {
   }, [loadAnalytics, loadDetail, loadHealth, loadJobs, selectedJobId]);
 
   const hasActiveJobs = useMemo(() => jobs.some((job) => isActiveStatus(job.status)), [jobs]);
+  const queueSummary = useMemo(() => summarizeJobs(jobs), [jobs]);
 
   useEffect(() => {
     if (!hasActiveJobs) return;
@@ -217,6 +230,7 @@ export function DashboardApp({ client }: DashboardAppProps) {
           </CardHeader>
           <CardContent>
             <StatusTabs value={filter} onChange={setFilter} />
+            <QueueSummaryStrip summary={queueSummary} />
             <JobsTable jobs={jobs} loading={listState === "loading"} onOpen={loadDetail} />
           </CardContent>
         </Card>
@@ -581,6 +595,19 @@ function StatusTabs({
         </TabsTrigger>
       ))}
     </TabsList>
+  );
+}
+
+function QueueSummaryStrip({ summary }: { summary: QueueSummary }) {
+  return (
+    <section className="queue-summary-strip" aria-label="Queue summary">
+      {QUEUE_SUMMARY_ITEMS.map((item) => (
+        <div className="queue-summary-metric" key={item.key}>
+          <span className="queue-summary-label">{item.label}</span>
+          <strong className="queue-summary-value">{summary[item.key]}</strong>
+        </div>
+      ))}
+    </section>
   );
 }
 
@@ -991,6 +1018,18 @@ function BriefSubmitPanel({
 
 function StatusBadge({ status }: { status: JobStatus }) {
   return <Badge className={`status-badge ${status.toLowerCase()}`}>{status}</Badge>;
+}
+
+function summarizeJobs(jobs: ApiJobSummary[]): QueueSummary {
+  return jobs.reduce<QueueSummary>(
+    (summary, job) => ({
+      active: summary.active + (isActiveStatus(job.status) ? 1 : 0),
+      done: summary.done + (job.status === "DONE" ? 1 : 0),
+      failed: summary.failed + (job.status === "FAILED" ? 1 : 0),
+      total: summary.total + 1,
+    }),
+    { active: 0, done: 0, failed: 0, total: 0 },
+  );
 }
 
 function optionalField(value: string): string | undefined {

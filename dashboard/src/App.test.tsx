@@ -43,6 +43,70 @@ describe("DashboardApp", () => {
     await waitFor(() => expect(client.listJobs).toHaveBeenLastCalledWith({ status: "FAILED" }));
   });
 
+  it("renders queue summary counts from the loaded jobs", async () => {
+    const client = createMockClient();
+    client.listJobs.mockResolvedValue({
+      jobs: jobsWithStatuses("SUMMARY", [
+        "QUEUED",
+        "SPEC",
+        "PLAN",
+        "TEST",
+        "IMPL",
+        "REVIEW",
+        "PR",
+        "DONE",
+        "FAILED",
+        "ESCALATED",
+        "CANCELED",
+      ]),
+    });
+
+    render(<DashboardApp client={client} />);
+
+    const summary = await screen.findByLabelText("Queue summary");
+    expectQueueMetric(summary, "Total", "11");
+    expectQueueMetric(summary, "Active", "7");
+    expectQueueMetric(summary, "Failed", "1");
+    expectQueueMetric(summary, "Done", "1");
+
+    const jobsPanel = screen.getByRole("region", { name: "Jobs" });
+    const tabs = within(jobsPanel).getByRole("tablist", { name: "Job status" });
+    const table = within(jobsPanel).getByRole("table");
+    expect(tabs.compareDocumentPosition(summary) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(summary.compareDocumentPosition(table) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("updates queue summary counts from filtered status tab responses", async () => {
+    const client = createMockClient();
+    const user = userEvent.setup();
+    client.listJobs.mockImplementation(async (input) => ({
+      jobs:
+        input?.status === "FAILED"
+          ? jobsWithStatuses("FAILED-FILTER", ["FAILED", "FAILED"])
+          : jobsWithStatuses("ALL-FILTER", ["QUEUED", "DONE", "FAILED", "CANCELED"]),
+    }));
+
+    render(<DashboardApp client={client} />);
+
+    const summary = await screen.findByLabelText("Queue summary");
+    expectQueueMetric(summary, "Total", "4");
+    expectQueueMetric(summary, "Active", "1");
+    expectQueueMetric(summary, "Failed", "1");
+    expectQueueMetric(summary, "Done", "1");
+    expect(client.listJobs).toHaveBeenCalledWith(undefined);
+
+    await user.click(screen.getByRole("tab", { name: "Failed" }));
+
+    await waitFor(() => expect(client.listJobs).toHaveBeenLastCalledWith({ status: "FAILED" }));
+    await waitFor(() => {
+      const filteredSummary = screen.getByLabelText("Queue summary");
+      expectQueueMetric(filteredSummary, "Total", "2");
+      expectQueueMetric(filteredSummary, "Active", "0");
+      expectQueueMetric(filteredSummary, "Failed", "2");
+      expectQueueMetric(filteredSummary, "Done", "0");
+    });
+  });
+
   it("shows job detail work item, timeline, failure evidence, and worktree path", async () => {
     const client = createMockClient();
     const user = userEvent.setup();
@@ -598,6 +662,14 @@ function jobSummary(jobId: string, status: JobStatus): ApiJobSummary {
     updatedAt: "2026-06-06T00:02:00.000Z",
     worktreePath: "/worktrees/pando/feat-w5-minimal-dashboard",
   };
+}
+
+function jobsWithStatuses(prefix: string, statuses: JobStatus[]): ApiJobSummary[] {
+  return statuses.map((status, index) => jobSummary(`${prefix}-${index + 1}`, status));
+}
+
+function expectQueueMetric(summary: HTMLElement, label: string, value: string): void {
+  expect(summary).toHaveTextContent(new RegExp(`${label}\\s*${value}`));
 }
 
 function workItem(id: string): WorkItem {

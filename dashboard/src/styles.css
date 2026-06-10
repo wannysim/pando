@@ -657,6 +657,38 @@ h3.ui-card-title {
   gap: 6px;
 }
 
+.queue-summary-strip {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0 0 12px;
+}
+
+.queue-summary-metric {
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: #fcfcfd;
+  padding: 9px 10px;
+}
+
+.queue-summary-label {
+  display: block;
+  color: var(--muted-foreground);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.queue-summary-value {
+  display: block;
+  margin-top: 2px;
+  color: var(--foreground);
+  font-size: 20px;
+  line-height: 1.15;
+  overflow-wrap: anywhere;
+}
+
 .stop-reason {
   margin-bottom: 14px;
 }
@@ -866,6 +898,10 @@ h3.ui-card-title {
   .ui-tabs-trigger {
     min-width: max-content;
     flex: 1 0 auto;
+  }
+
+  .queue-summary-strip {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .ui-description-list,
