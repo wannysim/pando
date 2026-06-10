@@ -104,7 +104,7 @@ describe("formatStartupBanner", () => {
     expect(text).toContain("/tmp/pando-local-x/pando.sqlite");
     expect(text).toContain("/tmp/pando-local-x/worktrees");
     expect(text.toLowerCase()).toContain("ctrl+c");
-    expect(text).toContain("rm -rf /tmp/pando-local-x");
+    expect(text).toContain("pandoctl gc --force");
   });
 
   it("never echoes secret-looking env values", () => {
@@ -148,6 +148,7 @@ describe("runPandoStart", () => {
       createDaemon: async () => ({ start() {}, stop() {}, async tick() {} }),
       probePort: async () => true,
       ensureDir: async () => {},
+      recordRun: async () => {},
       log: () => {},
       ...overrides,
     };
@@ -158,6 +159,34 @@ describe("runPandoStart", () => {
     await runPandoStart(["start"], deps({ ensureDir: async (dir) => void made.push(dir) }));
     expect(made).toContain("/tmp/pando-local-20260607-123456");
     expect(made).toContain("/tmp/pando-local-20260607-123456/worktrees");
+  });
+
+  it("records the run in the manifest so gc can reclaim it if this process dies", async () => {
+    const recorded: Array<{ id: string; runRoot: string; pid: number; startedAt: string }> = [];
+    await runPandoStart(
+      ["start"],
+      deps({ recordRun: async (record) => void recorded.push(record) }),
+    );
+    expect(recorded).toEqual([
+      {
+        id: "pando-local-20260607-123456",
+        runRoot: "/tmp/pando-local-20260607-123456",
+        pid: process.pid,
+        startedAt: FIXED_NOW.toISOString(),
+      },
+    ]);
+  });
+
+  it("does not record a run when the port cannot be bound", async () => {
+    const recorded: unknown[] = [];
+    await runPandoStart(
+      ["start", "--port", "3210"],
+      deps({
+        probePort: async () => false,
+        recordRun: async (record) => void recorded.push(record),
+      }),
+    );
+    expect(recorded).toEqual([]);
   });
 
   it("prints help and returns 0 without booting a server", async () => {
