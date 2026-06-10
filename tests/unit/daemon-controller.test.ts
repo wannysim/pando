@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "bun:test";
 import { createDaemonLoopController } from "../../src/daemon/local-runtime";
 
 describe("daemon loop controller", () => {
@@ -94,7 +94,9 @@ describe("daemon loop controller", () => {
     });
 
     controller.start();
-    await vi.advanceTimersByTimeAsync(1_000);
+    await Promise.resolve();
+    vi.advanceTimersByTime(1_000);
+    await Promise.resolve();
     controller.stop();
     vi.useRealTimers();
 

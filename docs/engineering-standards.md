@@ -35,10 +35,10 @@
 ③ RED   — 실패하는 테스트 먼저. 실패 확인 없이 구현 시작 금지
 ④ GREEN — 테스트를 통과시키는 최소 구현 (YAGNI)
 ⑤ REFACTOR + 커밋 — 변경 ~100라인 내외 atomic commit (agent-skills 변경 사이징)
-⑥ verification-before-completion — "된 것 같다" 금지. pnpm verify 출력이 증거
+⑥ verification-before-completion — "된 것 같다" 금지. bun run verify 출력이 증거
 ```
 
-규칙 세 줄 요약: **테스트 없는 구현 코드 금지 · 커밋 전 `pnpm verify` 통과 · 아키텍처 결정은 ADR로.**
+규칙 세 줄 요약: **테스트 없는 구현 코드 금지 · 커밋 전 `bun run verify` 통과 · 아키텍처 결정은 ADR로.**
 
 ---
 
@@ -46,7 +46,7 @@
 
 ### 2.1 도구와 기준
 
-- **vitest** + v8 coverage. `pnpm verify` = `pnpm coverage && pnpm lint && pnpm types` (`vitest run --coverage`, `oxlint .`, `tsc --noEmit`)
+- **bun test** coverage. `bun run verify` = `bun run coverage && bun run lint && bun run types` (`bun test --coverage`, `oxlint .`, `tsc --noEmit`)
 - 커버리지 게이트(CI 실패 기준): `src/core` `src/pipeline/gates` `src/scheduler` **95%+** / 전체 **85%+** / `src/cli`·엔트리 제외 가능
 - 테스트 피라미드 80/15/5 (agent-skills): unit 다수, integration 소수, e2e 스모크 한 줌
 - **DAMP over DRY**: 테스트는 중복돼도 읽혀야 한다. 과한 헬퍼 추상화 금지
@@ -75,7 +75,7 @@ adapters: engines/claude-code·codex, worktree/manager, reporters/jira, db/
 
 ### 2.3 CI (.github/workflows/ci.yml)
 
-push/PR마다: `pnpm verify` + 커버리지 임계치. Shift Left(agent-skills ci-cd) — 로컬 `pnpm verify`와 CI가 완전히 같은 명령. main 브랜치 보호 + PR 필수는 너 혼자여도 켜둔다(에이전트가 이 레포 자체를 만지게 될 미래 대비).
+push/PR마다: `bun run verify` + 커버리지 임계치. Shift Left(agent-skills ci-cd) — 로컬 `bun run verify`와 CI가 완전히 같은 명령. main 브랜치 보호 + PR 필수는 너 혼자여도 켜둔다(에이전트가 이 레포 자체를 만지게 될 미래 대비).
 
 ---
 

@@ -17,7 +17,7 @@ and structured JSON. LLM output text is not used as a pass/fail signal.
 ## Requirements
 
 - Node.js `>=22.13.0`.
-- `pnpm@11.5.2`, the pinned package manager in `package.json`.
+- `bun@1.3.5`, the pinned package manager in `package.json`.
 - `git`.
 - Codex CLI (`codex`) with OpenAI auth configured. The default pipeline uses
   Codex for all stages with `gpt-5.5`; use `OPENAI_API_KEY` or persisted Codex
@@ -36,15 +36,13 @@ Use the checkout scripts for this repository snapshot.
 ```bash
 git clone https://github.com/wannysim/pando.git
 cd pando
-corepack enable
-corepack prepare pnpm@11.5.2 --activate
-pnpm install
+bun install
 ```
 
 Optional global commands from the checkout:
 
 ```bash
-pnpm link --global
+bun link
 pandoctl start
 ```
 
@@ -64,13 +62,13 @@ If you want the dashboard served by the same local pando server, build the
 dashboard assets once:
 
 ```bash
-pnpm --filter @pando/dashboard build
+bun --filter=@pando/dashboard run build
 ```
 
 Start the local daemon/API:
 
 ```bash
-pnpm pando start
+bun run pando start
 ```
 
 Startup output includes:
@@ -96,18 +94,18 @@ dashboard directory.
 From a source checkout, the integrated dashboard path is:
 
 ```bash
-pnpm --filter @pando/dashboard build
-pnpm pando start
+bun --filter=@pando/dashboard run build
+bun run pando start
 ```
 
-Open the dashboard URL printed by `pnpm pando start`.
+Open the dashboard URL printed by `bun run pando start`.
 
 For dashboard frontend development, run the Vite dev server against the local
 API:
 
 ```bash
-pnpm pando start
-VITE_PANDO_API_URL=http://127.0.0.1:3210 pnpm --filter @pando/dashboard dev
+bun run pando start
+VITE_PANDO_API_URL=http://127.0.0.1:3210 bun --filter=@pando/dashboard run dev
 ```
 
 Open the Vite dashboard URL ending in `/dashboard/`.
@@ -129,20 +127,20 @@ duration, and deterministic evidence.
 
 ## CLI Usage
 
-`pandoctl` is the operator CLI. From the checkout, run it with `pnpm pandoctl`.
+`pandoctl` is the operator CLI. From the checkout, run it with `bun run pandoctl`.
 
 List or watch jobs through the running API:
 
 ```bash
-PANDO_API_URL=http://127.0.0.1:3210 pnpm pandoctl list
-PANDO_API_URL=http://127.0.0.1:3210 pnpm pandoctl watch readme-demo
-PANDO_API_URL=http://127.0.0.1:3210 pnpm pandoctl daemon status
+PANDO_API_URL=http://127.0.0.1:3210 bun run pandoctl list
+PANDO_API_URL=http://127.0.0.1:3210 bun run pandoctl watch readme-demo
+PANDO_API_URL=http://127.0.0.1:3210 bun run pandoctl daemon status
 ```
 
 For detailed event history, use the DB path printed by `pando start`:
 
 ```bash
-PANDO_DB=/tmp/pando-local-<timestamp>/pando.sqlite pnpm pandoctl show readme-demo
+PANDO_DB=/tmp/pando-local-<timestamp>/pando.sqlite bun run pandoctl show readme-demo
 ```
 
 File-backed brief submission is available for terminal workflows:
@@ -182,7 +180,7 @@ No UI change.
 EOF
 
 PANDO_DB=/tmp/pando-local-<timestamp>/pando.sqlite \
-  pnpm pandoctl submit brief \
+  bun run pandoctl submit brief \
   --repo pando \
   --id readme-demo \
   --branch chore/readme-demo \
@@ -195,7 +193,7 @@ cleanup.
 
 ## Stop And Cleanup
 
-- Stop the daemon with `Ctrl-C` in the terminal running `pnpm pando start`.
+- Stop the daemon with `Ctrl-C` in the terminal running `bun run pando start`.
 - Remove the run root printed at startup, for example:
 
 ```bash
@@ -205,7 +203,7 @@ rm -rf /tmp/pando-local-<timestamp>
 - To clean a single job worktree through pando, use the same DB path:
 
 ```bash
-PANDO_DB=/tmp/pando-local-<timestamp>/pando.sqlite pnpm pandoctl cleanup readme-demo
+PANDO_DB=/tmp/pando-local-<timestamp>/pando.sqlite bun run pandoctl cleanup readme-demo
 ```
 
 ## Smoke And Readiness Checks
@@ -214,7 +212,7 @@ Host readiness smoke checks worker CLI availability, auth signals, mount/path
 readiness, and concurrency cap without printing secrets:
 
 ```bash
-pnpm pandoctl smoke readiness --target host \
+bun run pandoctl smoke readiness --target host \
   --evidence /tmp/pando-readiness-smoke/host.json
 ```
 
@@ -222,7 +220,7 @@ For deterministic no-credential smoke evidence:
 
 ```bash
 PANDO_GLOBAL_CONCURRENCY=2 \
-  pnpm smoke:two-job -- --mode fake \
+  bun run smoke:two-job -- --mode fake \
   --evidence /tmp/pando-two-job-fake.json
 ```
 

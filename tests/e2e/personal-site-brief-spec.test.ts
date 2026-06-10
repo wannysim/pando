@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "bun:test";
 import { loadRepoProfilesFromYaml, type FileProbe } from "../../src/core/config";
 import { loadStageConfigFromYaml } from "../../src/core/stage-config";
 import type { WorkerEngine, WorkerRunOptions, WorkerResult } from "../../src/core/types";

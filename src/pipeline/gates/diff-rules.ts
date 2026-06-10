@@ -58,6 +58,7 @@ interface DiffRulesEvidence {
 
 const ROOT_PACKAGE_METADATA = [
   "package.json",
+  "bun.lock",
   "pnpm-lock.yaml",
   "pnpm-workspace.yaml",
   "yarn.lock",

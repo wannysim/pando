@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "bun:test";
 import { createSqliteJobStore } from "../../src/db/index";
 import type { RepoProfile, WorkItem } from "../../src/core/types";
 

@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "bun:test";
 import { aggregateSoakRuns, type SoakIterationInput } from "../../src/daemon/soak-analytics";
 import type {
   TerminalJobSummary,

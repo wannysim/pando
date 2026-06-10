@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "bun:test";
 import type { RunRecord } from "../../src/core/run-gc";
 import { runPandoGc, type PandoGcDeps } from "../../src/cli/pando-gc";
 
@@ -138,7 +138,7 @@ describe("runPandoGc — reporting", () => {
 
     const payload = JSON.parse(h.lines.join("\n")) as {
       mode: string;
-      reap: { id: string; reason: string }[];
+      reap: Array<Pick<RunRecord, "id" | "pid" | "runRoot"> & { reason: string }>;
     };
     expect(payload.mode).toBe("dry-run");
     expect(payload.reap).toEqual([

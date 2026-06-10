@@ -4,7 +4,7 @@ import { request as httpRequest } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { AddressInfo } from "node:net";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "bun:test";
 import { createPandoServer, serverOptionsFromEnv } from "../../src/server";
 
 const servers: Array<ReturnType<typeof createPandoServer>> = [];
@@ -86,14 +86,14 @@ describe("Pando HTTP server", () => {
     await listen(server);
     const baseUrl = serverUrl(server);
 
-    const health = await fetch(`${baseUrl}/health`);
-    const brief = await fetch(`${baseUrl}/briefs`, {
+    const health = await serverFetch(`${baseUrl}/health`);
+    const brief = await serverFetch(`${baseUrl}/briefs`, {
       body: JSON.stringify({ id: "smoke-brief", repo: "pando", title: "Smoke brief" }),
       headers: { "content-type": "application/json" },
       method: "POST",
     });
-    const shell = await fetch(`${baseUrl}/dashboard`);
-    const asset = await fetch(`${baseUrl}/dashboard/assets/app.css`);
+    const shell = await serverFetch(`${baseUrl}/dashboard`);
+    const asset = await serverFetch(`${baseUrl}/dashboard/assets/app.css`);
 
     expect(health.status).toBe(200);
     expect(await health.json()).toMatchObject({
@@ -124,7 +124,7 @@ describe("Pando HTTP server", () => {
     servers.push(server);
     await listen(server);
 
-    const response = await fetch(`${serverUrl(server)}/briefs`, {
+    const response = await serverFetch(`${serverUrl(server)}/briefs`, {
       body: JSON.stringify({
         brief: {
           title: "Inline server brief",
@@ -189,6 +189,10 @@ function defaultDaemonOptions() {
 function serverUrl(server: ReturnType<typeof createPandoServer>): string {
   const address = server.address() as AddressInfo;
   return `http://127.0.0.1:${address.port}`;
+}
+
+function serverFetch(input: string, init?: RequestInit): Promise<Response> {
+  return typeof Bun === "undefined" ? fetch(input, init) : Bun.fetch(input, init);
 }
 
 function rawRequest(

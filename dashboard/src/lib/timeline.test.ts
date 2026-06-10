@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "bun:test";
 import { groupEventsByStage } from "./timeline";
 import type { ApiJobEvent } from "../../../src/api/schema";
 

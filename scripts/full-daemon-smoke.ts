@@ -1,4 +1,4 @@
-#!/usr/bin/env tsx
+#!/usr/bin/env bun
 import process from "node:process";
 import {
   runHostFullDaemonSmoke,

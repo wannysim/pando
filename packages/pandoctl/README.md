@@ -59,7 +59,7 @@ Local DB mode uses `PANDO_DB` when set; otherwise it falls back to
 - `start` boots the API and daemon. The package does not bundle the dashboard
   SPA assets; the dashboard is served only when a built dashboard root is
   provided via `PANDO_STATIC_DASHBOARD_ROOT` (the Docker image, or a repo
-  checkout after `pnpm --filter @pando/dashboard build`).
+  checkout after `bun --filter @pando/dashboard run build`).
 
 ## Links
 

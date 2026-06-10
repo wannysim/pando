@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "bun:test";
 import { createWorktreeProvisioner } from "../../src/daemon/worktree-provisioner";
 import type { EnsureWorktreeOptions, EnsureWorktreeResult } from "../../src/worktree/manager";
 import type { RepoProfile, WorkItem } from "../../src/core/types";
@@ -49,7 +49,7 @@ describe("createWorktreeProvisioner", () => {
         envFiles: [".env.local"],
         repoPath: "/repo",
         setupEnv: isolation?.env,
-        setupCommand: "pnpm install",
+        setupCommand: "bun install",
         worktreeRoot: "/worktrees",
       },
     ]);
@@ -134,7 +134,7 @@ function repoProfile(): RepoProfile {
     envFiles: [".env.local"],
     gates: { test: "test" },
     guards: { forbidTestEditInImpl: true, protectedBranches: ["develop"] },
-    packageManager: "pnpm",
+    packageManager: "bun",
     path: "/repo",
     portRange: [3000, 3099],
     scope: "external",

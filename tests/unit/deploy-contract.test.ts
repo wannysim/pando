@@ -1,21 +1,20 @@
 import { readFileSync } from "node:fs";
 import { parse } from "yaml";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "bun:test";
 
 describe("Docker deployment contract", () => {
   it("pins the single-container image shape and dashboard build", () => {
     const dockerfile = readFileSync("deploy/Dockerfile", "utf8");
 
-    expect(dockerfile).toContain("FROM node:22");
-    expect(dockerfile).toContain("corepack enable");
+    expect(dockerfile).toContain("FROM oven/bun:1.3.5");
     expect(dockerfile).toContain("apt-get update");
     expect(dockerfile).toContain("ca-certificates");
     expect(dockerfile).toContain("git");
     expect(dockerfile).toContain("openssh-client");
-    expect(dockerfile).toContain("pnpm install --frozen-lockfile");
-    expect(dockerfile).toContain("pnpm --filter @pando/dashboard build");
+    expect(dockerfile).toContain("bun install --frozen-lockfile");
+    expect(dockerfile).toContain("bun --filter=@pando/dashboard run build");
     expect(dockerfile).toContain("EXPOSE 3210");
-    expect(dockerfile).toContain('CMD ["pnpm", "start"]');
+    expect(dockerfile).toContain('CMD ["bun", "run", "start"]');
   });
 
   it("offers an opt-in, version-pinned worker CLI install layer via build args", () => {

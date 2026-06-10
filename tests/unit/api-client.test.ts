@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "bun:test";
 import { createPandoApiApp } from "../../src/api/app";
 import { PandoApiClientError, createPandoApiClient } from "../../src/api/client";
 import type { JobRecord } from "../../src/db/index";

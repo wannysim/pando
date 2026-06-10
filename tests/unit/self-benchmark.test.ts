@@ -1,7 +1,7 @@
 import { mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import type { FullDaemonSmokeEvidence } from "../../src/daemon/full-daemon-smoke";
 import type { TerminalRunSummary } from "../../src/daemon/failure-analytics";
 import { runSelfBenchmark } from "../../src/daemon/self-benchmark";
@@ -22,7 +22,7 @@ describe("runSelfBenchmark", () => {
     const result = await runSelfBenchmark({
       now: () => "2026-06-10T00:00:00.000Z",
       outputDir,
-      packageManager: "pnpm@11.5.2",
+      packageManager: "bun@1.3.5",
       runId: "ci benchmark/1",
       runSmoke: async (opts) => {
         calls.push(opts);
@@ -43,7 +43,7 @@ describe("runSelfBenchmark", () => {
       generatedAt: "2026-06-10T00:00:00.000Z",
       mode: "contract",
       ok: true,
-      packageManager: "pnpm@11.5.2",
+      packageManager: "bun@1.3.5",
       runId: "ci-benchmark-1",
       schemaVersion: 1,
       totals: {
@@ -111,7 +111,7 @@ describe("runSelfBenchmark", () => {
     await runSelfBenchmark({
       now: () => "2026-06-10T00:00:00.000Z",
       outputDir,
-      packageManager: "pnpm@11.5.2",
+      packageManager: "bun@1.3.5",
       runId: "reuse",
       runSmoke: async (opts) => {
         await expect(stat(opts.dbPath ?? "")).rejects.toMatchObject({ code: "ENOENT" });

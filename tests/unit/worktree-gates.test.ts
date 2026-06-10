@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "bun:test";
 import type { GateContext } from "../../src/core/types";
 import { createWorktreeChecksumGate } from "../../src/pipeline/gates/checksum";
 import {

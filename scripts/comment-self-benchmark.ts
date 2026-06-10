@@ -1,4 +1,4 @@
-#!/usr/bin/env tsx
+#!/usr/bin/env bun
 import { readFile } from "node:fs/promises";
 import process from "node:process";
 import type { SelfBenchmarkSummary } from "../src/daemon/self-benchmark";

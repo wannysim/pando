@@ -10,10 +10,10 @@ Run the workflow manually with `publish=false`.
 
 The workflow performs:
 
-- `pnpm install --frozen-lockfile`
-- `pnpm verify`
-- `pnpm build:pandoctl`
-- `pnpm smoke:pandoctl-pack`
+- `bun install --frozen-lockfile`
+- `bun run verify`
+- `bun run build:pandoctl`
+- `bun run smoke:pandoctl-pack`
 - `npm publish --dry-run` from `packages/pandoctl`
 
 ## Publish

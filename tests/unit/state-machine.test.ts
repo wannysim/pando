@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "bun:test";
 import {
   initialState,
   STAGE_ORDER,
@@ -31,7 +31,7 @@ describe("happy path", () => {
 
   it("moves through SPEC, PLAN, TEST, IMPL, REVIEW, PR, and DONE on GATE_PASS", () => {
     let state = at("SPEC");
-    const expected = [...STAGE_ORDER.slice(1), "DONE"];
+    const expected: MachineState["status"][] = [...STAGE_ORDER.slice(1), "DONE"];
     for (const want of expected) {
       state = transition(state, { type: "GATE_PASS" }, BUDGET);
       expect(state.status).toBe(want);

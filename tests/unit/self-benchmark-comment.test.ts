@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "bun:test";
 import type { SelfBenchmarkSummary } from "../../src/daemon/self-benchmark";
 import {
   BENCHMARK_COMMENT_MARKER,
@@ -15,7 +15,7 @@ describe("self-benchmark PR comments", () => {
     expect(body).toContain(BENCHMARK_COMMENT_MARKER);
     expect(body).toContain("## Pando self-benchmark");
     expect(body).toContain("| Total duration | 13314 ms |");
-    expect(body).toContain("| Package manager | pnpm@11.5.2 |");
+    expect(body).toContain("| Package manager | bun@1.3.5 |");
     expect(body).toContain("| TEST | 11807 | 11807 | 11807 | 11807 | 1 | 0 |");
     expect(body).not.toContain("/tmp/");
   });
@@ -118,7 +118,7 @@ function summary(): SelfBenchmarkSummary {
     jobs: [],
     mode: "contract",
     ok: true,
-    packageManager: "pnpm@11.5.2",
+    packageManager: "bun@1.3.5",
     runId: "local-check",
     runner: {
       gateMode: "shell",

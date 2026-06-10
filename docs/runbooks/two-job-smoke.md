@@ -24,7 +24,7 @@ Use this before a host-mode live worker smoke:
 
 ```bash
 PANDO_GLOBAL_CONCURRENCY=2 \
-  pnpm smoke:two-job -- --mode readiness --target host \
+  bun run smoke:two-job -- --mode readiness --target host \
   --evidence /tmp/pando-host-readiness.json
 ```
 
@@ -49,7 +49,7 @@ mkdir -p /tmp/pando-live-worker-smoke
 PANDO_GLOBAL_CONCURRENCY=2 \
 PANDO_WORKTREE_ROOT=/tmp/pando-live-worker-smoke \
 PANDO_SMOKE_RUN_ID="$(date +%Y%m%d-%H%M%S)" \
-  pnpm smoke:two-job -- --mode live --target host \
+  bun run smoke:two-job -- --mode live --target host \
   --evidence /tmp/pando-live-worker-smoke/live-worker-smoke.json
 ```
 
@@ -75,7 +75,7 @@ Use this PR 1 contract before live full-daemon workers. It runs exactly two `pan
 RUN_ID="contract-$(date +%Y%m%d-%H%M%S)"
 ROOT="/tmp/pando-full-daemon-smoke-$RUN_ID"
 
-pnpm smoke:full-daemon -- \
+bun run smoke:full-daemon -- \
   --mode contract \
   --global-concurrency 2 \
   --worktree-root "$ROOT/worktrees" \
@@ -105,7 +105,7 @@ After the contract smoke passes, run the host full-daemon live smoke with exactl
 RUN_ID="live-$(date +%Y%m%d-%H%M%S)"
 ROOT="/tmp/pando-full-daemon-smoke-$RUN_ID"
 
-pnpm smoke:full-daemon -- \
+bun run smoke:full-daemon -- \
   --mode live \
   --global-concurrency 2 \
   --worktree-root "$ROOT/worktrees" \
@@ -135,7 +135,7 @@ The initial live run used exactly two jobs with global concurrency `2` and expos
 
 ## Docker worker readiness
 
-The readiness smoke runs the same `pnpm smoke:two-job -- --mode readiness` contract
+The readiness smoke runs the same `bun run smoke:two-job -- --mode readiness` contract
 *inside the container*, against the `docker` target. It records, as structured JSON,
 which class of blocker is open: CLI, auth, or mount. See `deploy/README.md`
 "Worker readiness" for the full CLI/auth/git decision and tradeoffs.
@@ -372,7 +372,7 @@ docker compose -f deploy/docker-compose.yml down -v
 ## Deterministic fallback
 
 ```bash
-pnpm smoke:two-job -- --mode fake --evidence smoke/evidence/two-job-smoke-fake.json
+bun run smoke:two-job -- --mode fake --evidence smoke/evidence/two-job-smoke-fake.json
 ```
 
 Use fallback when live credentials, repo mounts, provider access, or cost approval are missing. The evidence file must include the fallback reason and the same four checks as the live smoke.
@@ -402,7 +402,7 @@ Re-verify the Docker Claude live worker once a credential is available:
 ```bash
 export ANTHROPIC_API_KEY='<set locally; do not commit>'
 PANDO_GLOBAL_CONCURRENCY=2 PANDO_LIVE_SMOKE=1 \
-  pnpm smoke:two-job -- --mode live --target docker \
+  bun run smoke:two-job -- --mode live --target docker \
   --evidence /tmp/pando-docker-claude-live.json
 ```
 

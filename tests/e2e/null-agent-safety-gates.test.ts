@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "bun:test";
 import type { RepoProfile, WorkerEngine, WorkerResult } from "../../src/core/types";
 import type { StageConfig } from "../../src/core/stage-config";
 import { runDaemonOnce } from "../../src/daemon/loop";

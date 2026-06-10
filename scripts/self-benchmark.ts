@@ -1,4 +1,4 @@
-#!/usr/bin/env tsx
+#!/usr/bin/env bun
 import process from "node:process";
 import { runSelfBenchmark, type SelfBenchmarkOptions } from "../src/daemon/self-benchmark";
 import type { FullDaemonSmokeMode } from "../src/daemon/full-daemon-smoke";

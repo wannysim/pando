@@ -14,7 +14,7 @@ credits.
 RUN_ID="soak-contract-$(date +%Y%m%d-%H%M%S)"
 ROOT="/tmp/pando-full-daemon-smoke-$RUN_ID"
 
-pnpm smoke:full-daemon -- \
+bun run smoke:full-daemon -- \
   --mode contract \
   --jobs 3 \
   --global-concurrency 2 \
@@ -38,7 +38,7 @@ CLI auth, and repo credentials are ready.
 RUN_ID="soak-live-$(date +%Y%m%d-%H%M%S)"
 ROOT="/tmp/pando-full-daemon-smoke-$RUN_ID"
 
-pnpm smoke:full-daemon -- \
+bun run smoke:full-daemon -- \
   --mode live \
   --jobs 3 \
   --global-concurrency 2 \
@@ -87,7 +87,7 @@ is a full `runHostFullDaemonSmoke` run with its own DB, worktree root, and
 evidence under a per-iteration directory.
 
 ```bash
-pnpm soak:nightly -- \
+bun run soak:nightly -- \
   --mode contract \
   --iterations 3 \
   --jobs 3 \

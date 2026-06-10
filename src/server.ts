@@ -143,7 +143,7 @@ function toWebRequest(request: IncomingMessage, host: string, port: number): Req
     init.duplex = "half";
   }
 
-  return new Request(url, init);
+  return new Request(url.toString(), init);
 }
 
 function requestHeaders(request: IncomingMessage): Headers {

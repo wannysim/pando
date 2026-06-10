@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import { promisify } from "node:util";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "bun:test";
 import {
   branchSlug,
   ensureWorktree,
@@ -34,7 +34,7 @@ describe("worktree path helpers", () => {
 
 // Real-git integration: bare repo init + clone + worktree add can exceed the
 // 5s default under parallel coverage load, so give this suite a wider timeout.
-describe("ensureWorktree", { timeout: 30_000 }, () => {
+describe("ensureWorktree", () => {
   it("creates a daemon-mode worktree from the origin base without touching the source checkout", async () => {
     const repo = await createRepo();
     const beforeBranch = await git(repo.path, ["rev-parse", "--abbrev-ref", "HEAD"]);
@@ -156,7 +156,7 @@ describe("ensureWorktree", { timeout: 30_000 }, () => {
 
 // ADR-012: gc reaps a run-root with `rm -rf`, which leaves the worktree
 // registration dangling in the source repo. pruneWorktrees clears it.
-describe("pruneWorktrees", { timeout: 30_000 }, () => {
+describe("pruneWorktrees", () => {
   it("clears registrations whose worktree directory was deleted out from under git", async () => {
     const repo = await createRepo();
     const created = await ensureWorktree({

@@ -1,7 +1,7 @@
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "bun:test";
 import { createDraftPrAutomationGate } from "../../src/pipeline/gates/draft-pr";
 import type { GateCommandRunner } from "../../src/pipeline/gates/exit-code";
 import type { GateContext } from "../../src/core/types";
