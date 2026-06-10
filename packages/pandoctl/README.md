@@ -2,7 +2,8 @@
 
 CLI for [**pando**](https://github.com/wannysim/pando) — a multi-repo background
 coding agent orchestrator. One daemon spins up git worktrees across many repos and
-drives coding-agent CLIs (claude/codex) through a SPEC → PLAN → TEST → IMPL ⇄ REVIEW → PR pipeline.
+drives Codex by default through a SPEC → PLAN → TEST → IMPL ⇄ REVIEW → PR pipeline.
+Claude Code remains available only for legacy/custom stage profiles.
 
 `pandoctl` is a single binary that both boots a local pando instance and operates
 its job queue.

@@ -23,20 +23,19 @@ ENV PANDO_STATIC_DASHBOARD_ROOT=/app/dashboard/dist
 
 # Worker CLI strategy: secret-free base image, opt-in worker CLI layer.
 #
-# The daemon/API/dashboard run from this image, but the SPEC->...->PR pipeline
-# shells out to the `claude` / `codex` worker CLIs. We deliberately do NOT install
-# those CLIs by default:
-#   1. Auth cannot be baked. Both CLIs authenticate through managed-connector
-#      tokens / config stored in ~/.claude and ~/.codex on the host. The image
-#      would still need those host volumes mounted, so baking the binary alone
-#      buys nothing runnable.
+# The daemon/API/dashboard run from this image, but the default SPEC->...->PR
+# pipeline shells out to the `codex` worker CLI. `claude` remains optional for
+# legacy/custom profiles. We deliberately do NOT install worker CLIs by default:
+#   1. Auth cannot be baked. Codex uses OPENAI_API_KEY or writable CODEX_HOME;
+#      Claude profiles use Anthropic/Claude runtime credentials. Baking binaries
+#      alone buys nothing runnable.
 #   2. No secrets in the image (CLAUDE.md rule 5 + deploy security): API keys and
 #      connector tokens stay on the host and are bind-mounted read-only at runtime.
 #   3. Version parity. The host already runs tested CLI versions (handoff records
-#      claude 2.1.167, codex-cli 0.137.0); mounting the host CLIs avoids drift
+#      claude 2.1.167, codex-cli 0.137.0); mounting the host CLI avoids drift
 #      between "what was tested" and "what shipped".
 #
-# Two ways to put the CLIs in the container (auth still comes from host volumes):
+# Two ways to put the CLIs in the container (auth still comes from host/env):
 #   A. Bind-mount the host CLI bin onto PATH via PANDO_WORKER_BIN (/worker-bin).
 #      ONLY works when host and container share OS+arch. Verified that a macOS
 #      arm64 host CANNOT use this: ~/.local/bin/{claude,codex} are Mach-O arm64
@@ -47,9 +46,9 @@ ENV PANDO_STATIC_DASHBOARD_ROOT=/app/dashboard/dist
 #         --build-arg INSTALL_WORKER_CLIS=true
 #      (compose: PANDO_INSTALL_WORKER_CLIS=true). Versions are pinned via build
 #      args so "what shipped" matches "what was tested" (handoff: claude 2.1.167,
-#      codex-cli 0.137.0). Verified 2026-06-07: this layer makes the docker
-#      readiness probe report workerCli.pass=true; auth still needs API keys or
-#      usable runtime credentials.
+#      codex-cli 0.137.0). Verified 2026-06-07: this layer makes Codex available
+#      for docker readiness; auth still needs OPENAI_API_KEY or usable runtime
+#      credentials.
 # Either way auth must come from API keys or mounted runtime credentials; never
 # bake secrets into the image. See deploy/docker-compose.yml and deploy/README.md
 # "Worker readiness". The runtime also includes ca-certificates/git/ssh because

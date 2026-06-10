@@ -30,8 +30,9 @@ Increase `--jobs` to `4` or `5` for a larger soak. Keep
 
 ## Live Soak
 
-Live mode uses real worker CLIs and can spend model credits. Run it only when
-Claude Code auth, GitHub CLI auth, and repo credentials are ready.
+Live mode uses real worker CLIs and can spend model credits. The default stage
+runtime is Codex with `gpt-5.5`, so run it only when OpenAI/Codex auth, GitHub
+CLI auth, and repo credentials are ready.
 
 ```bash
 RUN_ID="soak-live-$(date +%Y%m%d-%H%M%S)"

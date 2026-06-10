@@ -37,7 +37,7 @@ function readinessEvidence(env, target) {
   const gitCreds = gitCredentialsCheck(env, target);
   const mounts = mountContractCheck(env, target);
   // gitCreds is recorded but does NOT contribute to blockers. The worker probe
-  // (claude/codex -p echo) never pushes; git push / PR creation only matters at
+  // (codex exec echo) never pushes; git push / PR creation only matters at
   // the PR stage, which is a documented manual prerequisite (deploy/README.md).
   const blockers = [
     ...globalConcurrency.blockers,
@@ -171,45 +171,51 @@ function liveProbeSpecs(env, readiness) {
   const runId = smokeRunId(env);
   const root = join(readiness.checks.mounts.paths.worktrees.path, "pando-live-smoke", runId);
   const timeoutMs = Number.parseInt(env.PANDO_WORKER_SMOKE_TIMEOUT_MS ?? "120000", 10);
+  const codexOneWorktree = join(root, "codex-1");
+  const codexTwoWorktree = join(root, "codex-2");
 
   return [
     {
-      args: [
-        "-p",
-        "Reply exactly: pando-claude-live-smoke-ok",
-        "--model",
-        env.PANDO_CLAUDE_SMOKE_MODEL ?? "sonnet",
-        "--output-format",
-        "json",
-        "--allowedTools",
-        "Read",
-      ],
-      command: "claude",
-      engine: "claude-code",
-      id: "SMOKE-LIVE-CLAUDE",
-      model: env.PANDO_CLAUDE_SMOKE_MODEL ?? "sonnet",
-      timeoutMs,
-      worktreePath: join(root, "claude"),
-    },
-    {
-      args: [
-        "exec",
-        "--skip-git-repo-check",
-        "--json",
-        "--sandbox",
-        "workspace-write",
-        "--model",
-        env.PANDO_CODEX_SMOKE_MODEL ?? "gpt-5-codex",
-        "Reply exactly: pando-codex-live-smoke-ok. Do not edit files.",
-      ],
+      args: codexProbeArgs(env, codexOneWorktree, "pando-codex-live-smoke-ok-1"),
       command: "codex",
       engine: "codex",
-      id: "SMOKE-LIVE-CODEX",
-      model: env.PANDO_CODEX_SMOKE_MODEL ?? "gpt-5-codex",
+      id: "SMOKE-LIVE-CODEX-1",
+      model: codexSmokeModel(env),
       timeoutMs,
-      worktreePath: join(root, "codex"),
+      worktreePath: codexOneWorktree,
+    },
+    {
+      args: codexProbeArgs(env, codexTwoWorktree, "pando-codex-live-smoke-ok-2"),
+      command: "codex",
+      engine: "codex",
+      id: "SMOKE-LIVE-CODEX-2",
+      model: codexSmokeModel(env),
+      timeoutMs,
+      worktreePath: codexTwoWorktree,
     },
   ];
+}
+
+function codexProbeArgs(env, worktreePath, expectedText) {
+  return [
+    "exec",
+    "--ephemeral",
+    "--cd",
+    worktreePath,
+    "--config",
+    'approval_policy="never"',
+    "--skip-git-repo-check",
+    "--json",
+    "--sandbox",
+    "workspace-write",
+    "--model",
+    codexSmokeModel(env),
+    `Reply exactly: ${expectedText}. Do not edit files.`,
+  ];
+}
+
+function codexSmokeModel(env) {
+  return env.PANDO_CODEX_SMOKE_MODEL ?? "gpt-5.5";
 }
 
 async function runLiveProbe(spec, env) {
@@ -327,7 +333,7 @@ function globalConcurrencyCheck(env) {
 
 function workerCliCheck(env) {
   const commands = Object.fromEntries(
-    ["claude", "codex"].map((command) => [command, commandEvidence(command, env)]),
+    ["codex"].map((command) => [command, commandEvidence(command, env)]),
   );
   const blockers = Object.entries(commands)
     .filter(([, evidence]) => !evidence.available)
@@ -394,12 +400,6 @@ function workerAuthCheck(env) {
     configDirWritable: pathWritable(codexConfigDir),
   };
   const blockers = [];
-  if (
-    !claude.apiKeyPresent &&
-    !(claude.configDirPresent && claude.configFilePresent && claude.configFileNonEmpty)
-  ) {
-    blockers.push("Claude authentication is not configured");
-  }
   if (!codex.apiKeyPresent && !(codex.configDirPresent && codex.configDirWritable)) {
     blockers.push("Codex authentication is not configured");
   }

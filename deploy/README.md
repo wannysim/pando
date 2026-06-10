@@ -23,22 +23,25 @@ Dashboard assets are served from `/dashboard`; API routes such as `/health` and 
 
 ## Worker readiness
 
-The base image only verifies the HTTP/API/dashboard skeleton. The pipeline
-(`SPEC -> PLAN -> TEST -> IMPL -> REVIEW -> PR`) shells out to the `claude` and
-`codex` worker CLIs, and those CLIs need auth and git credentials. None of that is
-in the image by design.
+The base image only verifies the HTTP/API/dashboard skeleton. The default
+pipeline (`SPEC -> PLAN -> TEST -> IMPL -> REVIEW -> PR`) shells out to the
+`codex` worker CLI with OpenAI auth. Claude Code is only needed for
+legacy/custom profiles that explicitly select `claude-code`. Worker CLI auth and
+git credentials are not in the image by design.
 
 ### CLI strategy
 
-The base image does **not** bake in `claude` / `codex`. Reasons: auth cannot be
-baked (it lives in `~/.claude` / `~/.codex` on the host and must be mounted either
-way), no secrets in the image (CLAUDE.md rule 5), and the host already runs tested
-CLI versions. There are two ways to make the CLIs available at runtime, and
+The base image does **not** bake in `codex` or optional `claude`. Reasons: auth
+cannot be baked (it lives in `OPENAI_API_KEY` / `CODEX_HOME`, and optionally
+`~/.claude` for legacy profiles), no secrets in the image (CLAUDE.md rule 5),
+and the host already runs tested CLI versions. There are two ways to make the
+CLIs available at runtime, and
 **which one works depends on your host OS/arch**:
 
 **A. Bind-mount the host CLI bin (Linux host only).** The runtime image sets
 `PANDO_WORKER_BIN=/worker-bin` and prepends `/worker-bin` to `PATH`. Mount the
-host bin that holds `claude`/`codex` there and they resolve without a rebuild.
+host bin that holds `codex` there and it resolves without a rebuild. Mount
+`claude` too only for legacy/custom profiles.
 
 > Verified blocker on macOS: on an Apple-silicon host, `~/.local/bin/{claude,codex}`
 > are **Mach-O arm64** binaries. Bind-mounting them into the `linux/arm64`
@@ -61,8 +64,8 @@ CLIs (defaults: `CLAUDE_CLI_VERSION=2.1.167`, `CODEX_CLI_VERSION=0.137.0`; overr
 with `PANDO_CLAUDE_CLI_VERSION` / `PANDO_CODEX_CLI_VERSION`). Default is `false`, so
 the base image stays lean and secret-free. Then provide auth (below). This yields
 a self-contained, cross-platform image at the cost of a larger image. Verified
-2026-06-07: this layer makes the docker readiness probe report
-`workerCli.pass: true` for `claude 2.1.167` and `codex-cli 0.137.0`. The runtime
+2026-06-07: this layer makes the docker readiness probe report Codex CLI
+availability, and it can also install Claude for legacy profiles. The runtime
 image also installs `ca-certificates`; without it Codex can fail live calls with
 `no native root CA certificates found`.
 
@@ -80,15 +83,17 @@ live model auth.
 
 Supported Docker auth paths are now:
 
-1. **API-key mode for Docker live smoke** — set `ANTHROPIC_API_KEY` (and
-   `OPENAI_API_KEY` if you do not use Codex's persisted auth) from the host env or
-   an untracked `.env` file. Never commit these values. This bypasses the managed
-   connector for model access.
-2. **Container-local CLI login** — run `claude /login` inside a throwaway or
+1. **OpenAI API-key mode for Docker live smoke** — set `OPENAI_API_KEY` from the
+   host env or an untracked `.env` file. Never commit this value.
+2. **Writable Codex home** — mount a writable `CODEX_HOME` such as `/root/.codex`
+   if you use persisted Codex auth instead of `OPENAI_API_KEY`.
+3. **Legacy Claude API-key mode** — set `ANTHROPIC_API_KEY` only when a
+   legacy/custom profile selects `claude-code`.
+4. **Legacy container-local Claude login** — run `claude /login` inside a throwaway or
    persisted, untracked Docker volume, then mount that volume as the container's
    Claude config. This keeps secrets out of the image but avoids macOS keychain /
    host connector assumptions.
-3. **Jira REST fallback** — if the Atlassian MCP connector specifically cannot be
+5. **Jira REST fallback** — if the Atlassian MCP connector specifically cannot be
    inherited, intake/context can fall back to direct Jira REST with a host-provided
    token instead of the MCP tool. This remains an ADR candidate before product use.
 

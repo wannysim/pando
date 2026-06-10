@@ -4,14 +4,14 @@
 
 ## 프로젝트 한 줄 정의
 
-**pando** — 하나의 데몬이 여러 레포에 git worktree를 틔우고 claude/codex CLI를 워커로 부려, Jira 티켓/brief를 `SPEC→PLAN→TEST→IMPL⇄REVIEW→PR` 파이프라인으로 자동 처리하는 multi-repo background coding agent orchestrator.
+**pando** — 하나의 데몬이 여러 레포에 git worktree를 틔우고 Codex CLI를 기본 워커로 부려, Jira 티켓/brief를 `SPEC→PLAN→TEST→IMPL⇄REVIEW→PR` 파이프라인으로 자동 처리하는 multi-repo background coding agent orchestrator. Claude Code adapter는 legacy/custom stage profile용으로 유지한다.
 
 ## 지금까지 결정된 것 (변경하려면 ADR 먼저)
 
 | 결정 | 근거 |
 |---|---|
 | 상태/큐 = SQLite 단독, 인프로세스 세마포어 3계층 (global 6 / per-repo / per-provider) | ADR-001 |
-| 워커 = 기존 CLI 헤드리스 (codex exec, claude -p). 현재 기본 self-dogfood profile은 전 단계 Claude Code이며 TEST/IMPL은 sonnet, PLAN/REVIEW는 opus를 쓴다. Codex adapter는 유지 | ADR-002, PR #33 |
+| 워커 = 기존 CLI 헤드리스 (codex exec, claude -p). 현재 기본 runtime은 전 단계 `codex` + `gpt-5.5`이고, Claude Code adapter는 legacy/custom profile용으로 유지 | ADR-002, OpenAI 전환 |
 | 대시보드 = 웹. 데몬이 Hono HTTP API 서빙, agentctl도 같은 API 클라이언트 | ADR-003 |
 | 헤드리스 MCP = claude.ai connector **상속** (`--mcp-config` 주입 금지) | ADR-004 ← W1 실측 |
 | 레포 환경 컨텍스트 = 선언적 프로파일 + **PM lockfile 자동감지** + SPEC source 분기 + profile fail-fast | ADR-005 ← 평가 |
@@ -68,8 +68,8 @@
 - `src/core/artifacts.ts` — W2 2단계 완료. `_spec.md`/`PLAN.md` 필수 스키마 검증, Open Questions `[Blocker]` 파싱, ADR-007의 commit 단위 `Implementation Roadmap` 검사. DEMO-1234 legacy `Stacked PR Roadmap`은 sanitized fixture로 drift 감지(파싱은 되지만 현재 계약 invalid)
 - `src/worktree/manager.ts` — W2 3단계 완료. `01-worktree.sh` TS 이식, origin base 직접 분기, `~/.worktrees/{repo}/{branch-slug}` 규약, `.git/.dispatch.lock` atomic file lock, env copy/setup hook. 진짜 git integration 테스트 포함
 - `src/engines/claude-code.ts` — W2 4단계 완료. `claude -p`, JSON output, allowedTools 기본값(`Task`, `mcp__claude_ai_Atlassian` 포함), ADR-004에 따라 `--mcp-config` 거부
-- `src/engines/codex.ts` — W2 5단계 완료. `codex exec --json --sandbox workspace-write --model`, JSON-lines session/cost/output 파싱. 2026-06-07 full-daemon live smoke에서 Codex stdin 대기가 재현되어 기본 runner를 `spawn(..., stdio: ["ignore", "pipe", "pipe"])`로 전환하고 stdin 종료 회귀 테스트를 추가했다
-- `src/core/stage-config.ts` — `config/stages.yaml` engine/model/skill/source별 skills/allowedTools/env/defaults 검증. W3에서 `allowed_tools_by_source`를 추가해 brief SPEC 경로가 Atlassian MCP tool을 받지 않도록 분리
+- `src/engines/codex.ts` — W2 5단계 완료. `codex exec --ephemeral --cd <worktree> --config 'approval_policy="never"' --json --sandbox workspace-write --model`, JSON-lines session/cost/output 파싱. 2026-06-07 full-daemon live smoke에서 Codex stdin 대기가 재현되어 기본 runner를 `spawn(..., stdio: ["ignore", "pipe", "pipe"])`로 전환하고 stdin 종료 회귀 테스트를 추가했다. 2026-06-10 self-benchmark에서 TEST stage의 비대화형 `write_stdin` 실패가 재현되어 headless-safe flags(`--ephemeral`, explicit `--cd`, `approval_policy="never"`)를 기본 계약으로 고정했다
+- `src/core/stage-config.ts` — `config/stages.yaml` engine/model/skill/source별 skills/allowedTools/env/defaults 검증. W3에서 `allowed_tools_by_source`를 추가해 brief SPEC 경로가 Atlassian MCP tool을 받지 않도록 분리했다. 현재 기본 `config/stages.yaml`은 Codex CLI 계약에 맞춰 모든 stage를 `codex` + `gpt-5.5`로 두고 Claude 전용 `allowed_tools`를 넘기지 않는다
 - `src/pipeline/gates/artifact-schema.ts` — W2-B 완료. `_spec.md`/`PLAN.md` artifact schema gate. PLAN blocker는 `failureKind: "blocking-questions"`로 보고
 - `src/pipeline/gates/exit-code.ts` — W2-B 완료. `RepoProfile.gates` PM-agnostic action을 package-manager command로 변환하고 exit code만 판정. workspace scope용 command builder hook 포함
 - `src/pipeline/gates/checksum.ts` — W5 PR #17 완료. TEST 단계가 기록할 테스트/중요 파일 checksum manifest 순수 로직과 IMPL 단계 checksum mismatch gate 계약. 실패는 `{reason, evidence}` 구조로 보고하며 evidence는 changed/missing checksum JSON
@@ -93,9 +93,9 @@
   - 시작 전 `pnpm verify` 통과. 변경 후 최종 `pnpm verify`도 통과(27 files / 185 tests, coverage all statements 92.69% / branches 85.60% / functions 96.33% / lines 93.81%). Docker HTTP/API/static smoke도 재확인: compose build/up, health `healthy`, `/health` 200, `/dashboard` HTML 200, dashboard JS asset 200, `/briefs` enqueue + `/jobs` list 200, `down -v` 정리.
   - `scripts/two-job-smoke.mjs`에 `--mode readiness`와 host/docker target evidence를 추가했다. evidence는 CLI availability, auth signal booleans, mount/path readiness, global cap 2~3 여부를 구조화 JSON으로 기록한다. secret 값은 기록하지 않는다.
   - Host readiness 통과: `claude 2.1.167 (Claude Code)`, `codex-cli 0.137.0`, `~/.claude`, `~/.codex`, `~/.ai-skills`, `~/.worktrees`, repo/config paths 모두 ready. 명시 API key env는 unset이지만 기본 auth dir 신호가 있음.
-  - Host live worker 2-job smoke 통과: `PANDO_GLOBAL_CONCURRENCY=2`, `PANDO_WORKTREE_ROOT=/tmp/pando-live-worker-smoke`, evidence `/tmp/pando-live-worker-smoke/live-worker-smoke.json`. `SMOKE-LIVE-CLAUDE`와 `SMOKE-LIVE-CODEX` 둘 다 exit `0`, `timedOut=false`, worktree path distinct, provider cap pass, gate evidence pass. 초기 구현에서 Codex가 `execFile` stdin 대기로 timeout됐고, `spawn(..., stdio: ["ignore", "pipe", "pipe"])`로 고쳐 재실행 통과.
+  - Host live worker 2-job smoke 통과: `PANDO_GLOBAL_CONCURRENCY=2`, `PANDO_WORKTREE_ROOT=/tmp/pando-live-worker-smoke`, evidence `/tmp/pando-live-worker-smoke/live-worker-smoke.json`. 당시 mixed Claude/Codex probe는 둘 다 exit `0`, `timedOut=false`, worktree path distinct, provider cap pass, gate evidence pass였다. 현재 기본 smoke는 `SMOKE-LIVE-CODEX-1`/`SMOKE-LIVE-CODEX-2` Codex-only probe로 같은 deterministic exit-code 계약을 검증한다. 초기 구현에서 Codex가 `execFile` stdin 대기로 timeout됐고, `spawn(..., stdio: ["ignore", "pipe", "pipe"])`로 고쳐 재실행 통과.
   - Docker readiness/live follow-up: opt-in Linux CLI install layer로 `claude 2.1.167`, `codex-cli 0.137.0`가 container에서 available해졌다. runtime image는 `ca-certificates`, `git`, `openssh-client`를 포함한다. readiness evidence는 `claude.configFilePresent`와 `codex.configDirWritable`까지 기록해 directory-only false positive를 막는다. Evidence root: `/tmp/pando-docker-live-worker-smoke-20260607/evidence`.
-  - Docker live worker smoke는 실제 실행했다. 최초 live evidence는 두 worker 모두 exit `1`: Claude는 `Not logged in`, Codex는 `no native root CA certificates found`. CA blocker를 runtime image 수정으로 제거한 뒤 `docker-live-worker-smoke-post-ca.json`을 재실행했고 readiness blockers는 `[]`, Codex는 exit `0`, Claude는 여전히 exit `1`이었다. 이 환경에서 Claude managed connector는 container로 상속되지 않으므로 다음 live pass는 `ANTHROPIC_API_KEY` 또는 container-local `claude /login` credential이 필요하다.
+  - Docker live worker smoke는 실제 실행했다. 최초 live evidence는 두 worker 모두 exit `1`: Claude는 `Not logged in`, Codex는 `no native root CA certificates found`. CA blocker를 runtime image 수정으로 제거한 뒤 `docker-live-worker-smoke-post-ca.json`을 재실행했고 readiness blockers는 `[]`, Codex는 exit `0`, Claude는 여전히 exit `1`이었다. 이 환경에서 Claude managed connector는 container로 상속되지 않는다. 현재 기본 pipeline은 Codex/OpenAI이므로 Claude live pass는 legacy/custom profile을 쓸 때만 `ANTHROPIC_API_KEY` 또는 container-local `claude /login` credential로 별도 재실행한다.
   - 범위 주의: Docker live worker smoke는 **worker probe**다. Host full daemon live pipeline smoke는 별도로 완료됐고, local daemon/dashboard/API는 `pando start`로 켤 수 있다.
 - **Full daemon smoke contract (2026-06-07, branch `chore/full-daemon-live-smoke`)**:
   - `config/repos.yaml`에 `pando` self-profile을 brief-only target으로 추가했다. context providers는 비워 provider cap을 소비하지 않고, gates는 `pnpm test`/`pnpm lint`/`pnpm exec tsc --noEmit` package-action gate로 해석된다.
@@ -113,6 +113,7 @@
 - PR #34/#35에서 실제 pando self-dogfood 중 드러난 runtime blocker를 고쳤다. SPEC/PLAN prompt가 artifact schema(`## Requirements Overview`, `### Commit 1:`)를 명시하고, TEST/IMPL Claude stage는 직접 worktree edit toolset으로 제한한다.
 - concurrency 3 self-dogfood batch 결과: `PANDO-3701` dashboard UX, `PANDO-3702` agentctl UX, `PANDO-3703` README/getting-started 모두 `DONE`. Evidence: `/tmp/pando-multi-run-20260607-024505/pando-multi-success-evidence.json`.
 - 해당 batch에서 pando가 만든 PR #36, #37, #38은 develop에 merge됐다.
+- 현재 checkout에서는 Claude credit exhaustion 대응으로 기본 운영 profile을 전 단계 `codex` + `gpt-5.5`로 되돌렸다. Codex CLI는 `allowedTools`를 받지 않으므로 기본 stage config에서 Claude 전용 tool whitelist를 제거했다.
 
 **다음 세션 시작점 — W6 운영 확장.**
 
@@ -135,7 +136,7 @@ W5의 최소 운영 준비와 첫 3-job self-dogfood batch는 닫혔다. 이후 
     2. **3~5 job soak/nightly 운영화** — 기존 soak/failure analytics 기반을 nightly 또는 반복 실행 가능한 운영 루틴으로 올린다. 새 DB table은 추가하지 말고 기존 jobs/events payload와 `/tmp` structured JSON summary를 사용한다.
     3. **Dashboard failure/readiness analytics** — soak/nightly 결과, terminal failure reason, readiness/auth blocker를 dashboard에서 바로 읽을 수 있게 한다. 판단은 DB/event/structured evidence만 사용하고 LLM output text는 쓰지 않는다.
     4. **Provider backoff/retry policy** — timeout/rate-limit/auth/transient failure를 deterministic failure kind로 나누고 provider별 retry/backoff를 정교화한다. 비용과 무한 retry를 줄이는 것이 목표다.
-    5. **Docker Claude live worker smoke** — 위 운영 루틴이 먼저 안정된 뒤 `ANTHROPIC_API_KEY` 또는 container-local `claude /login` credential로 Docker Claude live blocker를 다시 검증한다.
+    5. **Docker/OpenAI live worker smoke** — 기본 Codex/OpenAI pipeline을 Docker/host에서 다시 검증한다. Claude live smoke는 legacy/custom profile을 쓸 때만 `ANTHROPIC_API_KEY` 또는 container-local `claude /login` credential로 별도 재검증한다.
     6. **`pandoctl@0.1.0` 실제 npm publish** — 마지막에 release workflow dry-run → publish → global install/update smoke를 닫는다.
 
 낮은 우선순위 후보: notifications, GitHub Issue/Jira write-back, auth hardening, Docker egress policy, split containers/TUI. 위 1~6이 끝나기 전에는 새 범위를 섞지 않는다.
@@ -151,7 +152,7 @@ W4 완료 판정:
 
 W4/W5에서 의도적으로 남긴 것:
 - 실제 Claude/Codex worker 2-job probe와 host full-daemon live dogfood는 완료. `pando start`로 local daemon/dashboard/API를 켤 수 있다.
-- Docker live worker smoke는 시도 완료. Codex 쪽 image CA blocker는 제거했고 post-CA rerun에서 Codex는 exit `0`까지 확인했다. Claude managed connector는 이 환경에서 container로 상속되지 않는다. 다음 live pass는 `ANTHROPIC_API_KEY` 또는 container-local `claude /login` credential이 준비된 상태에서 재실행한다.
+- Docker live worker smoke는 시도 완료. Codex 쪽 image CA blocker는 제거했고 post-CA rerun에서 Codex는 exit `0`까지 확인했다. Claude managed connector는 이 환경에서 container로 상속되지 않지만, 현재 기본 pipeline은 Codex/OpenAI이므로 Claude credential 재검증은 legacy/custom profile 범위로 미룬다.
 - Jira `fixVersion` 기반 release branch 매핑과 `WorkItem.baseBranch` override는 PR #53/ADR-011로 완료.
 - monorepo 변경 workspace/file gate scoping의 순수 계약은 W5 PR #17에서 완료했고, 실제 git diff/checksum adapter 연결은 PR #52로 완료.
 - GitHub Issue intake/write-back, Stacked PR 자동화, provider별 정교한 backoff는 아직 범위 밖

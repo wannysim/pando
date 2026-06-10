@@ -44,7 +44,7 @@
 
 | 에이전트 | 모델 자유도 | 헤드리스 구동 | 샌드박스 내장 | 라이선스 |
 |---|---|---|---|---|
-| **Codex CLI/SDK** (OpenAI) | OpenAI 기본 + **서드파티 가능** (`model_providers` config, 검증됨) | `codex exec --json` + `@openai/codex-sdk` | read-only 기본, `--sandbox workspace-write` 프리셋 | 오픈소스 (github.com/openai/codex) |
+| **Codex CLI/SDK** (OpenAI) | OpenAI 기본 + **서드파티 가능** (`model_providers` config, 검증됨) | `codex exec --ephemeral --json` + `@openai/codex-sdk` | read-only 기본, `--sandbox workspace-write` 프리셋 | 오픈소스 (github.com/openai/codex) |
 | **Claude Code / Agent SDK** | Anthropic 전용 (+Bedrock/Vertex) | `claude -p --output-format stream-json` + `@anthropic-ai/claude-agent-sdk` | OS 레벨 권한 모드 | 독점 |
 | **Aider** | 100+ 프로바이더 (LiteLLM 기반) | `aider --yes-always --message "..."` — PTY 불필요, subprocess로 가장 단순 | 없음 (직접 Docker) | Apache 2.0 |
 | **OpenHands** | LiteLLM 기반 전체 | `openhands --headless` + Python SDK | Docker/Local/K8s 런타임 | MIT |
@@ -57,7 +57,7 @@ Codex 헤드리스 사용 예:
 
 ```bash
 # 단발 실행, NDJSON 이벤트 스트림
-codex exec --json --sandbox workspace-write \
+codex exec --ephemeral --cd "$PWD" --config 'approval_policy="never"' --json --sandbox workspace-write \
   --output-schema ./gate-result.schema.json \
   -o ./result.json \
   "SPEC.md를 읽고 acceptance criteria에 대응하는 실패하는 테스트를 작성해"
