@@ -170,6 +170,52 @@ describe("DashboardApp", () => {
     );
   });
 
+  it("defaults to the system color theme and supports light/dark overrides", async () => {
+    const client = createMockClient();
+    const user = userEvent.setup();
+    localStorage.clear();
+    document.documentElement.removeAttribute("data-theme");
+    document.documentElement.removeAttribute("data-theme-preference");
+
+    render(<DashboardApp client={client} />);
+
+    expect(await screen.findByRole("group", { name: "Color theme" })).toBeVisible();
+    await waitFor(() => expect(document.documentElement.dataset.themePreference).toBe("system"));
+    expect(document.documentElement.dataset.theme).toBeUndefined();
+
+    await user.click(screen.getByRole("button", { name: "Use dark theme" }));
+    expect(document.documentElement.dataset.themePreference).toBe("dark");
+    expect(document.documentElement.dataset.theme).toBe("dark");
+    expect(localStorage.getItem("pando-dashboard-theme")).toBe("dark");
+
+    await user.click(screen.getByRole("button", { name: "Use light theme" }));
+    expect(document.documentElement.dataset.themePreference).toBe("light");
+    expect(document.documentElement.dataset.theme).toBe("light");
+    expect(
+      screen.getByRole("button", { name: "Use light theme" }).classList.contains("active"),
+    ).toBe(true);
+
+    await user.click(screen.getByRole("button", { name: "Use system theme" }));
+    expect(document.documentElement.dataset.themePreference).toBe("system");
+    expect(document.documentElement.dataset.theme).toBeUndefined();
+  });
+
+  it("renders job status as a Magic UI-style status card", async () => {
+    const client = createMockClient();
+
+    render(<DashboardApp client={client} />);
+
+    const signal = await screen.findByTestId("job-status-DEMO-5001");
+    expect(signal).toHaveAttribute("data-slot", "magic-card");
+    expect(within(signal).getByTestId("status-shine-border")).toHaveAttribute(
+      "data-slot",
+      "magicui-shine-border",
+    );
+    expect(within(signal).getByText("FAILED")).toBeVisible();
+    expect(within(signal).getByText("Failed")).toBeVisible();
+    expect(within(signal).getByLabelText("progress 0%")).toBeVisible();
+  });
+
   it("validates and submits a brief form through the API client", async () => {
     const client = createMockClient();
     const user = userEvent.setup();

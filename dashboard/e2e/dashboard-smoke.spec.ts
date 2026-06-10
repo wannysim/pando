@@ -55,7 +55,7 @@ test("loads jobs, opens detail, calls an action, and shows health", async ({ pag
 
   await page.getByRole("button", { name: /open DEMO-5001/i }).click();
   await expect(page.getByRole("heading", { name: "DEMO-5001" })).toBeVisible();
-  await expect(page.getByText("checksum mismatch")).toBeVisible();
+  await expect(page.getByTestId("stop-reason").getByText("checksum mismatch")).toBeVisible();
 
   await page.getByRole("button", { name: "Retry from IMPL" }).click();
   await expect.poll(() => retryCalls).toBe(1);
