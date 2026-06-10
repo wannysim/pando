@@ -71,6 +71,42 @@ describe("self-benchmark PR comments", () => {
       "X-GitHub-Api-Version": "2022-11-28",
     });
   });
+
+  it("retries transient GitHub comment API failures before succeeding", async () => {
+    const statuses = [500, 502, 200];
+    const client = createGitHubIssueCommentClient({
+      apiUrl: "https://api.github.test",
+      fetchImpl: async () => {
+        const status = statuses.shift() ?? 200;
+        return status === 200 ? jsonResponse([{ body: "ok", id: 12 }]) : textResponse(status);
+      },
+      retryDelaysMs: [0, 0],
+      token: "github-token",
+    });
+
+    await expect(
+      client.listIssueComments({ issueNumber: 7, owner: "wannysim", repo: "pando" }),
+    ).resolves.toEqual([{ body: "ok", id: 12 }]);
+    expect(statuses).toEqual([]);
+  });
+
+  it("does not retry non-transient GitHub comment API failures", async () => {
+    let requests = 0;
+    const client = createGitHubIssueCommentClient({
+      apiUrl: "https://api.github.test",
+      fetchImpl: async () => {
+        requests += 1;
+        return textResponse(401);
+      },
+      retryDelaysMs: [0, 0],
+      token: "github-token",
+    });
+
+    await expect(
+      client.listIssueComments({ issueNumber: 7, owner: "wannysim", repo: "pando" }),
+    ).rejects.toThrow(/failed: 401/);
+    expect(requests).toBe(1);
+  });
 });
 
 function fakeClient(initialComments: Array<{ id: number; body?: string }>) {
@@ -97,6 +133,10 @@ function jsonResponse(value: unknown): Response {
     headers: { "Content-Type": "application/json" },
     status: 200,
   });
+}
+
+function textResponse(status: number): Response {
+  return new Response("try again", { status });
 }
 
 function summary(): SelfBenchmarkSummary {
