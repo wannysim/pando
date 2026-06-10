@@ -19,6 +19,7 @@ CREATE TABLE IF NOT EXISTS jobs (
   attempts_left INTEGER NOT NULL,
   worktree_path TEXT,
   cancel_requested_at TEXT,
+  deferred_until TEXT,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,
   started_at TEXT,
@@ -27,6 +28,9 @@ CREATE TABLE IF NOT EXISTS jobs (
 
 CREATE INDEX IF NOT EXISTS idx_jobs_status_created_at
   ON jobs (status, created_at);
+
+CREATE INDEX IF NOT EXISTS idx_jobs_status_deferred_until
+  ON jobs (status, deferred_until, updated_at);
 
 CREATE TABLE IF NOT EXISTS events (
   sequence INTEGER PRIMARY KEY AUTOINCREMENT,

@@ -267,9 +267,23 @@ function persistStateChange(
     status: change.next.status,
     worktreePath,
   });
+  const deferred =
+    change.stage !== undefined &&
+    change.backoffMs !== undefined &&
+    change.backoffMs > 0 &&
+    change.next.status === change.stage
+      ? store.deferJob({
+          delayMs: change.backoffMs,
+          jobId,
+          reason: change.reason ?? "provider retry backoff",
+          stage: change.stage,
+        })
+      : undefined;
   store.appendEvent({
     jobId,
     payload: {
+      backoffMs: change.backoffMs,
+      deferredUntil: deferred?.deferredUntil,
       event: change.event,
       next: change.next.status,
       previous: change.previous.status,

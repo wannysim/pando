@@ -21,12 +21,20 @@ export interface UpdateJobStatusInput {
   attemptsLeft: number;
   worktreePath?: string;
   clearCancelRequest?: boolean;
+  clearDeferral?: boolean;
 }
 
 export interface RetryJobInput {
   jobId: string;
   from: StageName;
   attemptsLeft: number;
+}
+
+export interface DeferJobInput {
+  jobId: string;
+  stage: StageName;
+  delayMs: number;
+  reason: string;
 }
 
 export interface CancelJobInput {
@@ -86,6 +94,7 @@ export interface JobRecord {
   status: JobStatus;
   attemptsLeft: number;
   cancelRequestedAt?: string;
+  deferredUntil?: string;
   worktreePath?: string;
   createdAt: string;
   updatedAt: string;
@@ -112,6 +121,7 @@ export interface JobStore {
   claimNextRunnable(input?: ClaimNextRunnableInput): JobRecord | undefined;
   getJob(jobId: string): JobRecord | undefined;
   updateJobStatus(input: UpdateJobStatusInput): JobRecord;
+  deferJob(input: DeferJobInput): JobRecord;
   retryJob(input: RetryJobInput): JobRecord;
   cancelJob(input: CancelJobInput): JobRecord;
   listCancelRequestedJobs(): JobRecord[];
@@ -143,6 +153,7 @@ class SqliteJobStore implements JobStore {
     this.now = now;
     this.db.exec(readFileSync(schemaPath, "utf8"));
     this.ensureColumn("jobs", "cancel_requested_at", "TEXT");
+    this.ensureColumn("jobs", "deferred_until", "TEXT");
   }
 
   enqueueJob(input: EnqueueJobInput): JobRecord {
@@ -187,18 +198,32 @@ class SqliteJobStore implements JobStore {
   claimNextRunnable(input?: ClaimNextRunnableInput): JobRecord | undefined {
     const excluded = input?.excludeJobIds ?? [];
     const excludedClause = excluded.length > 0 ? `AND id NOT IN (${placeholders(excluded)})` : "";
+    const now = this.now();
     const active = this.selectOne(
       `
         SELECT * FROM jobs
         WHERE status IN (${ACTIVE_STATUSES.map(() => "?").join(", ")})
         AND cancel_requested_at IS NULL
+        AND (deferred_until IS NULL OR deferred_until <= ?)
         ${excludedClause}
         ORDER BY updated_at ASC, created_at ASC, id ASC
         LIMIT 1
       `,
-      [...ACTIVE_STATUSES, ...excluded],
+      [...ACTIVE_STATUSES, now, ...excluded],
     );
-    if (active !== undefined) return deserializeJob(active);
+    if (active !== undefined) {
+      const job = deserializeJob(active);
+      if (job.deferredUntil !== undefined) {
+        return this.updateJobStatus({
+          attemptsLeft: job.attemptsLeft,
+          clearDeferral: true,
+          jobId: job.item.id,
+          status: job.status,
+          worktreePath: job.worktreePath,
+        });
+      }
+      return job;
+    }
 
     const queued = this.selectOne(
       `
@@ -236,6 +261,10 @@ class SqliteJobStore implements JobStore {
               WHEN ? = 1 THEN NULL
               ELSE cancel_requested_at
             END,
+            deferred_until = CASE
+              WHEN ? = 1 OR ? IN ('DONE', 'FAILED', 'ESCALATED', 'CANCELED') THEN NULL
+              ELSE deferred_until
+            END,
             updated_at = ?,
             started_at = CASE
               WHEN status = 'QUEUED' OR started_at IS NULL THEN ?
@@ -249,12 +278,49 @@ class SqliteJobStore implements JobStore {
         input.attemptsLeft,
         input.worktreePath ?? null,
         input.clearCancelRequest === true ? 1 : 0,
+        input.clearDeferral === true ? 1 : 0,
+        input.status,
         now,
         now,
         TERMINAL_STATUSES.includes(input.status) ? now : null,
         input.jobId,
       );
 
+    return this.requiredJob(input.jobId);
+  }
+
+  deferJob(input: DeferJobInput): JobRecord {
+    const existing = this.requiredJob(input.jobId);
+    if (TERMINAL_STATUSES.includes(existing.status)) {
+      throw new Error(`job ${input.jobId} is terminal: ${existing.status}`);
+    }
+    if (input.delayMs <= 0 || !Number.isFinite(input.delayMs)) {
+      throw new Error(`delayMs must be positive, got ${input.delayMs}`);
+    }
+
+    const now = this.now();
+    const baseMs = Date.parse(now);
+    if (Number.isNaN(baseMs)) throw new Error(`invalid clock value: ${now}`);
+    const deferredUntil = new Date(baseMs + Math.ceil(input.delayMs)).toISOString();
+    this.db
+      .prepare(`
+        UPDATE jobs
+        SET deferred_until = ?,
+            updated_at = ?
+        WHERE id = ?
+      `)
+      .run(deferredUntil, now, input.jobId);
+    this.appendEvent({
+      jobId: input.jobId,
+      payload: {
+        backoffMs: input.delayMs,
+        deferredUntil,
+        reason: input.reason,
+      },
+      stage: input.stage,
+      status: existing.status,
+      type: "retry-deferred",
+    });
     return this.requiredJob(input.jobId);
   }
 
@@ -267,6 +333,7 @@ class SqliteJobStore implements JobStore {
     const retried = this.updateJobStatus({
       attemptsLeft: input.attemptsLeft,
       clearCancelRequest: true,
+      clearDeferral: true,
       jobId: input.jobId,
       status: input.from,
     });
@@ -519,6 +586,7 @@ function deserializeJob(row: Row): JobRecord {
     cancelRequestedAt: optionalText(row, "cancel_requested_at"),
     createdAt: text(row, "created_at"),
     finishedAt: optionalText(row, "finished_at"),
+    deferredUntil: optionalText(row, "deferred_until"),
     item: {
       branch: optionalText(row, "branch"),
       dependsOn: dependsOn.length > 0 ? dependsOn : undefined,

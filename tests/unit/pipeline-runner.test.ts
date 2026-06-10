@@ -481,22 +481,31 @@ describe("runPipeline", () => {
     expect(failed?.payload).toMatchObject({ providerKind: "auth" });
   });
 
-  it("retries a transient engine failure with backoff until the budget is exhausted", async () => {
+  it("defers a retryable transient engine failure instead of retrying immediately", async () => {
+    const stateChanges: Array<{ backoffMs?: number; deferredUntilMs?: number }> = [];
     const result = await runPipeline({
+      clock: { nowMs: () => 10_000 },
       engines: {
         "claude-code": failingEngine("claude-code", { exitCode: 1 }),
         codex: engine("codex", []),
       },
       item: workItem(),
+      onStateChange(change) {
+        stateChanges.push({
+          backoffMs: change.backoffMs,
+          deferredUntilMs: change.deferredUntilMs,
+        });
+      },
       profile: repoProfile(),
       stageConfig: { ...stageConfig(), defaults: { retryBudget: 2, timeoutMinutes: 30 } },
       worktree: "/worktree",
     });
 
-    expect(result.final).toEqual({ attemptsLeft: 0, status: "FAILED" });
+    expect(result.final).toEqual({ attemptsLeft: 1, status: "SPEC" });
     const engineFails = result.events.filter((event) => event.type === "engine-fail");
-    expect(engineFails).toHaveLength(2);
+    expect(engineFails).toHaveLength(1);
     expect(engineFails[0]?.payload).toMatchObject({ backoffMs: 2_000, providerKind: "transient" });
+    expect(stateChanges.at(-1)).toEqual({ backoffMs: 2_000, deferredUntilMs: 12_000 });
   });
 
   it("classifies a timed-out engine failure as a retryable timeout", async () => {

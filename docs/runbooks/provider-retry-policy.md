@@ -49,5 +49,16 @@ partial onto the built-in `defaultRetryPolicy()`. Pass it to `runPipeline` via
 Engine failures emit `providerKind` and `backoffMs` in the `engine-fail` /
 `stage-failed` event payload, and the failure reason includes the kind
 (`<engine> returned ok=false (<kind>)`). The dashboard failure-reason histogram
-(W6 #3) groups by that reason. Enforcing the `backoffMs` delay as a scheduler
-deferral is a follow-up; today it is recorded as advisory telemetry.
+(W6 #3) groups by that reason.
+
+## Scheduler deferral
+
+Retryable engine failures do not retry immediately inside the same pipeline
+call. After the `GATE_FAIL` state transition, the daemon persists
+`deferredUntil = now + backoffMs` and emits a `retry-deferred` event with
+`backoffMs`, `deferredUntil`, and the deterministic provider failure reason.
+
+`claimNextRunnable` skips active jobs with a future `deferredUntil`, so other
+runnable jobs can use scheduler capacity while the provider backoff is cooling
+down. Once the timestamp is due, the claim clears the deferral and resumes the
+same stage with the already-consumed retry budget.
