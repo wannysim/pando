@@ -18,12 +18,13 @@ Gate 판정은 exit code, 파일, checksum, 구조화 JSON 같은 결정적 evid
 - Node.js `>=22.13.0`.
 - `package.json`에 고정된 package manager인 `pnpm@11.5.2`.
 - `git`.
-- 인증이 준비된 Claude Code CLI(`claude`). 기본 pipeline은 모든 stage에서
-  Claude Code를 사용합니다.
+- OpenAI 인증이 준비된 Codex CLI(`codex`). 기본 pipeline은 모든 stage에서
+  `gpt-5.5`를 사용하는 Codex입니다. `OPENAI_API_KEY` 또는 저장된 Codex auth를
+  사용하세요.
 - `gh auth status`가 통과하는 GitHub CLI(`gh`). PR stage에서 `gh`를
   사용합니다.
-- 선택 사항: container 점검용 Docker, optional worker smoke/adapter 경로용
-  Codex CLI.
+- 선택 사항: container 점검용 Docker, 그리고 아직 `claude-code`를 선택하는
+  legacy/custom stage profile용 Claude Code CLI(`claude`).
 
 임시 DB, worktree, smoke evidence는 `/tmp` 아래에 두세요. 기본 local runner는
 이 방식을 사용합니다.
@@ -233,7 +234,7 @@ Live worker와 Docker smoke는 유효한 local/container auth가 필요합니다
 
 - pando는 local/private-network 도구입니다. Public API auth는 구현되어 있지
   않습니다.
-- 기본 pipeline은 Claude Code auth를 기대하며 model credit을 사용할 수
+- 기본 pipeline은 Codex/OpenAI auth를 기대하며 OpenAI model credit을 사용할 수
   있습니다.
 - PR stage는 `gh`를 통해 commit 생성, branch push, draft PR 생성을 수행할 수
   있습니다.

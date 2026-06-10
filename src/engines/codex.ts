@@ -40,7 +40,20 @@ export function buildCodexArgs(opts: WorkerRunOptions): string[] {
     throw new Error("Codex CLI does not accept allowedTools");
   }
 
-  return ["exec", "--json", "--sandbox", "workspace-write", "--model", opts.model, opts.prompt];
+  return [
+    "exec",
+    "--ephemeral",
+    "--cd",
+    opts.cwd,
+    "--config",
+    'approval_policy="never"',
+    "--json",
+    "--sandbox",
+    "workspace-write",
+    "--model",
+    opts.model,
+    opts.prompt,
+  ];
 }
 
 export function parseCodexJsonStream(stream: string): CodexStreamSummary {

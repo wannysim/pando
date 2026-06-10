@@ -45,6 +45,15 @@ describe("createWorktreeDiffRulesGate", () => {
     expect(result.reason).toBe("diff rules rejected IMPL changes");
   });
 
+  it("can skip test-file violations when checksum gates enforce IMPL test immutability", async () => {
+    const gate = createWorktreeDiffRulesGate({
+      collectChanges: async () => [{ path: "tests/unit/button.test.ts", status: "modified" }],
+      forbidTestEditInImpl: false,
+    });
+
+    await expect(gate.check(context())).resolves.toEqual({ pass: true });
+  });
+
   it("passes when the live diff only touches implementation files", async () => {
     const gate = createWorktreeDiffRulesGate({
       collectChanges: async () => [{ path: "src/button.ts", status: "modified" }],

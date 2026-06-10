@@ -90,6 +90,13 @@ describe("createLocalDaemonRuntime", () => {
       },
       gateRunner: async (command) => {
         gateCommands.push(command);
+        if (command === "gh pr view --json isDraft,number,url") {
+          return {
+            exitCode: 0,
+            stderr: "",
+            stdout: JSON.stringify({ isDraft: true, number: 42, url: "https://x/pull/42" }),
+          };
+        }
         return { exitCode: 0, stderr: "", stdout: "" };
       },
       globalConcurrency: 1,
@@ -118,24 +125,109 @@ describe("createLocalDaemonRuntime", () => {
         expect.stringContaining("Stage: SPEC"),
         expect.stringContaining(`Brief path: ${briefPath}`),
         expect.stringContaining("Stage: PR"),
-        expect.stringContaining("Create a Draft PR against the repo base branch"),
+        expect.stringContaining("READY_FOR_PR_GATES"),
       ]),
     );
     expect(gateCommands).toEqual(
-      expect.arrayContaining(["pnpm test", "pnpm lint", "pnpm exec tsc --noEmit"]),
+      expect.arrayContaining([
+        "pnpm test",
+        "pnpm lint",
+        "pnpm exec tsc --noEmit",
+        "git add -A",
+        "git commit -m 'chore: Local runner task'",
+        "git push -u origin HEAD",
+        "gh pr view --json isDraft,number,url",
+      ]),
     );
     expect(events).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ gateName: "diff-rules", stage: "IMPL", type: "gate-pass" }),
         expect.objectContaining({ stage: "PR", type: "engine-pass" }),
-        expect.objectContaining({ stage: "PR", type: "gate-pass" }),
+        expect.objectContaining({ gateName: "draft-pr-create", stage: "PR", type: "gate-pass" }),
+        expect.objectContaining({ gateName: "pr-draft", stage: "PR", type: "gate-pass" }),
       ]),
     );
   });
 });
 
 describe("createLocalDaemonRuntime IMPL diff-rules gate", () => {
-  it("fails the job when collected IMPL changes modify a test file", async () => {
+  it("allows TEST-created test files through IMPL when their checksum stays unchanged", async () => {
+    const root = await mkdtemp(join(tmpdir(), "pando-local-runtime-test-checksum-"));
+    const configDir = join(root, "config");
+    const worktreeRoot = join(root, "worktrees");
+    const repoRoot = join(root, "repo");
+    const dbPath = join(root, "pando.sqlite");
+    const briefPath = join(root, "brief.md");
+    mkdirSync(configDir, { recursive: true });
+    mkdirSync(repoRoot, { recursive: true });
+    writeRuntimeConfig(configDir, repoRoot);
+    writeFileSync(briefPath, briefMarkdown());
+
+    const seed = createSqliteJobStore({ path: dbPath });
+    seed.enqueueJob({
+      item: {
+        branch: "chore/local-runner-task",
+        id: "LOCAL-CHECKSUM-PASS-1",
+        payload: { briefPath, kind: "brief" },
+        repo: "pando",
+        source: "brief",
+        title: "Local runner task",
+      },
+      retryBudget: 1,
+    });
+    seed.close();
+
+    const runtime = await createLocalDaemonRuntime({
+      collectChanges: async () => [
+        { path: "tests/unit/generated.test.ts", status: "added" },
+        { path: "docs/generated.md", status: "added" },
+      ],
+      collectChecksums: async (_worktree, paths) =>
+        paths.map((path) => ({ checksum: "stable-test-hash", path })),
+      configDir,
+      dbPath,
+      engines: {
+        "claude-code": writingEngine([]),
+        codex: writingEngine([]),
+      },
+      ensureWorktree: async (opts): Promise<EnsureWorktreeResult> => {
+        const path = join(worktreeRoot, "pando", opts.branch.replaceAll("/", "-"));
+        mkdirSync(path, { recursive: true });
+        return { branch: opts.branch, path, reused: false };
+      },
+      gateRunner: async (command) =>
+        command === "gh pr view --json isDraft,number,url"
+          ? {
+              exitCode: 0,
+              stderr: "",
+              stdout: JSON.stringify({ isDraft: true, number: 42, url: "https://x/pull/42" }),
+            }
+          : { exitCode: 0, stderr: "", stdout: "" },
+      globalConcurrency: 1,
+      repoRoot,
+      tickMs: 10,
+      worktreeRoot,
+    });
+
+    await runtime.tick();
+    runtime.stop();
+
+    const store = createSqliteJobStore({ path: dbPath });
+    const job = store.getJob("LOCAL-CHECKSUM-PASS-1");
+    const events = store.listEvents("LOCAL-CHECKSUM-PASS-1");
+    store.close();
+
+    expect(job?.status).toBe("DONE");
+    expect(events).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ gateName: "checksum-record", stage: "TEST", type: "gate-pass" }),
+        expect.objectContaining({ gateName: "checksum", stage: "IMPL", type: "gate-pass" }),
+        expect.objectContaining({ gateName: "diff-rules", stage: "IMPL", type: "gate-pass" }),
+      ]),
+    );
+  });
+
+  it("fails the job when IMPL changes a TEST-recorded test checksum", async () => {
     const root = await mkdtemp(join(tmpdir(), "pando-local-runtime-diff-"));
     const configDir = join(root, "config");
     const worktreeRoot = join(root, "worktrees");
@@ -162,10 +254,16 @@ describe("createLocalDaemonRuntime IMPL diff-rules gate", () => {
     seed.close();
 
     const collectChangesCalls: Array<{ worktree: string; baseRef: string }> = [];
+    let checksumCalls = 0;
     const runtime = await createLocalDaemonRuntime({
       collectChanges: async (worktree, baseRef) => {
         collectChangesCalls.push({ baseRef, worktree });
         return [{ path: "tests/unit/button.test.ts", status: "modified" }];
+      },
+      collectChecksums: async (_worktree, paths) => {
+        const checksum = checksumCalls === 0 ? "before-impl" : "after-impl";
+        checksumCalls += 1;
+        return paths.map((path) => ({ checksum, path }));
       },
       configDir,
       dbPath,
@@ -200,7 +298,7 @@ describe("createLocalDaemonRuntime IMPL diff-rules gate", () => {
     });
     expect(events).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ gateName: "diff-rules", stage: "IMPL", type: "gate-fail" }),
+        expect.objectContaining({ gateName: "checksum", stage: "IMPL", type: "gate-fail" }),
       ]),
     );
   });
@@ -244,10 +342,13 @@ describe("local runtime helpers", () => {
       "Edit files directly in this worktree; do not spawn subagents.",
     );
     expect(buildLocalPipelinePrompt("TEST", context)).toContain("relevant test change");
+    expect(buildLocalPipelinePrompt("TEST", context)).toContain("focused test command");
     expect(buildLocalPipelinePrompt("IMPL", context)).toContain(
       "Edit files directly in this worktree; do not spawn subagents.",
     );
     expect(buildLocalPipelinePrompt("IMPL", context)).toContain("implementation change");
+    expect(buildLocalPipelinePrompt("IMPL", context)).toContain("Do not run full verification");
+    expect(buildLocalPipelinePrompt("REVIEW", context)).toContain("Do not run full verification");
   });
 
   it("builds PR prompts with base branch context and omits brief paths for non-brief work", () => {
@@ -264,11 +365,11 @@ describe("local runtime helpers", () => {
     });
 
     expect(prompt).toContain("Base branch: develop");
-    expect(prompt).toContain("Create a Draft PR against the repo base branch");
+    expect(prompt).toContain("READY_FOR_PR_GATES");
     expect(prompt).not.toContain("Brief path:");
   });
 
-  it("builds PR prompts from configured package gates instead of hard-coded pando verification", () => {
+  it("keeps PR prompts bounded to deterministic gates instead of worker commands", () => {
     const prompt = buildLocalPipelinePrompt("PR", {
       item: {
         id: "DEMO-1",
@@ -281,10 +382,9 @@ describe("local runtime helpers", () => {
       worktree: "/worktree",
     });
 
-    expect(prompt).toContain("Run the configured verification commands:");
-    expect(prompt).toContain("1. yarn test");
-    expect(prompt).toContain("2. yarn lint");
-    expect(prompt).toContain("3. yarn tsc --noEmit");
+    expect(prompt).toContain("deterministic PR gates");
+    expect(prompt).toContain("Do not run package, git, or gh commands");
+    expect(prompt).not.toContain("yarn test");
     expect(prompt).not.toContain("pnpm verify");
   });
 
@@ -305,7 +405,7 @@ describe("local runtime helpers", () => {
       worktree: "/worktree",
     });
 
-    expect(prompt).toContain("1. npm run lint");
+    expect(prompt).toContain("deterministic PR gates");
     expect(prompt).not.toContain("npm run test");
     expect(prompt).not.toContain("pnpm verify");
   });

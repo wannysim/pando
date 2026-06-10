@@ -14,11 +14,11 @@
     "requiredEnv": [
       "PANDO_LIVE_SMOKE=1",
       "PANDO_GLOBAL_CONCURRENCY=2 or 3",
-      "Claude/Codex authentication or API key mode"
+      "Codex/OpenAI authentication or API key mode"
     ],
     "requiredMounts": ["/data", "/repos", "/worktrees", "/config", "/skills"],
     "workerProbe": {
-      "requiredJobIds": ["SMOKE-LIVE-CLAUDE", "SMOKE-LIVE-CODEX"],
+      "requiredJobIds": ["SMOKE-LIVE-CODEX-1", "SMOKE-LIVE-CODEX-2"],
       "gateName": "worker-exit-code",
       "deterministicEvidence": ["exitCode", "timedOut", "signal"]
     }
@@ -31,7 +31,7 @@
       "git-credentials",
       "mount-contract"
     ],
-    "workerCommands": ["claude", "codex"],
+    "workerCommands": ["codex"],
     "authSignals": [
       "ANTHROPIC_API_KEY",
       "CLAUDE_CONFIG_DIR",

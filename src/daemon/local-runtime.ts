@@ -1,14 +1,10 @@
 import { exec } from "node:child_process";
 import { existsSync } from "node:fs";
-import { readFile } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import { promisify } from "node:util";
-import {
-  loadOrchestratorConfigFromYaml,
-  loadRepoProfilesFromYaml,
-  packageCommand,
-} from "../core/config";
+import { loadOrchestratorConfigFromYaml, loadRepoProfilesFromYaml } from "../core/config";
 import type { RepoProfile, StageName, WorkItem } from "../core/types";
 import { loadStageConfigFromYaml } from "../core/stage-config";
 import { createSqliteJobStore } from "../db/index";
@@ -16,14 +12,23 @@ import { ClaudeCodeEngine } from "../engines/claude-code";
 import { CodexEngine } from "../engines/codex";
 import { createBriefIntakeGate } from "../intake/brief";
 import { createSpecArtifactGate, createPlanArtifactGate } from "../pipeline/gates/artifact-schema";
+import {
+  createChecksumManifest,
+  evaluateChecksumManifest,
+  isTestFilePath,
+  type ChecksumManifest,
+  type CollectChecksumsPort,
+} from "../pipeline/gates/checksum";
 import { createPackageActionGate, type GateCommandRunner } from "../pipeline/gates/exit-code";
+import { createDraftPrAutomationGate } from "../pipeline/gates/draft-pr";
+import { createPrDraftGate } from "../pipeline/gates/pr-draft";
 import { createWorktreeDiffRulesGate, type CollectChangesPort } from "../pipeline/gates/diff-rules";
-import { collectChangedFiles } from "../git/inspector";
+import { collectChangedFiles, collectFileChecksums } from "../git/inspector";
 import { createRunScheduler } from "../scheduler/scheduler";
 import { runDaemonOnce } from "./loop";
 import { createWorktreeProvisioner, type EnsureWorktreePort } from "./worktree-provisioner";
 import type { WorkerEngineName } from "../core/stage-config";
-import type { WorkerEngine } from "../core/types";
+import type { Gate, GateContext, WorkerEngine } from "../core/types";
 
 export interface DaemonLoopController {
   start(): void;
@@ -50,10 +55,10 @@ export interface LocalDaemonRuntimeOptions {
   ensureWorktree?: EnsureWorktreePort;
   gateRunner?: GateCommandRunner;
   collectChanges?: CollectChangesPort;
+  collectChecksums?: CollectChecksumsPort;
 }
 
 const execAsync = promisify(exec);
-const PR_GATE_ORDER = ["test", "lint", "types"] as const;
 
 export function createDaemonLoopController(
   opts: DaemonLoopControllerOptions,
@@ -119,6 +124,8 @@ export async function createLocalDaemonRuntime(
   const store = createSqliteJobStore({ path: opts.dbPath });
   const gateRunner = opts.gateRunner ?? shellGateRunner;
   const collectChanges = opts.collectChanges ?? collectChangedFiles;
+  const collectChecksums = opts.collectChecksums ?? collectFileChecksums;
+  const testChecksumManifests = new Map<string, ChecksumManifest>();
   const scheduler = createRunScheduler({
     globalConcurrency: opts.globalConcurrency,
     providerConcurrency: orchestrator.providerConcurrency,
@@ -139,7 +146,8 @@ export async function createLocalDaemonRuntime(
         },
         gates: {
           IMPL: [
-            createWorktreeDiffRulesGate({ collectChanges }),
+            createWorktreeDiffRulesGate({ collectChanges, forbidTestEditInImpl: false }),
+            createVerifyStoredChecksumGate({ collectChecksums, manifests: testChecksumManifests }),
             createPackageActionGate("lint", gateRunner),
           ],
           PLAN: [createPlanArtifactGate({ readText: optionalReadText })],
@@ -147,10 +155,22 @@ export async function createLocalDaemonRuntime(
             createPackageActionGate("test", gateRunner),
             createPackageActionGate("lint", gateRunner),
             createPackageActionGate("types", gateRunner),
+            createDraftPrAutomationGate({
+              files: { writeText },
+              runner: gateRunner,
+            }),
+            createPrDraftGate({ readText: optionalReadText }),
           ],
           SPEC: [
             createBriefIntakeGate({ readText: optionalReadText }),
             createSpecArtifactGate({ readText: optionalReadText }),
+          ],
+          TEST: [
+            createRecordTestChecksumGate({
+              collectChanges,
+              collectChecksums,
+              manifests: testChecksumManifests,
+            }),
           ],
         },
         profiles: localProfiles(profiles, repoRoot),
@@ -224,6 +244,8 @@ If this repository has no configured test gate, do not introduce a new test
 framework unless PLAN.md explicitly calls for it; add the smallest deterministic
 validation artifact that fits the repo.
 Edit files directly in this worktree; do not spawn subagents.
+If you run tests, use a focused test command for the file or behavior you
+changed. Avoid full-suite verification here; the PR stage runs configured gates.
 Before exiting, make sure git diff contains at least one relevant test change.
 Keep the change scoped to this job.`;
   }
@@ -235,8 +257,10 @@ Implement the smallest change that satisfies PLAN.md and the tests.
 Edit files directly in this worktree; do not spawn subagents.
 Before exiting, make sure git diff contains the implementation change.
 Never modify, add, or delete files under tests/ in this stage. The diff-rules
-gate hard-rejects any test-file change in IMPL and fails the stage, so adjust
-the implementation instead. If a test looks wrong, leave it untouched.
+and checksum gates reject unsafe IMPL changes, so adjust the implementation
+instead. If a test looks wrong, leave it untouched.
+Do not run full verification in this stage; the PR stage runs configured gates.
+Use only focused checks when they are necessary to finish the implementation.
 Keep unrelated files untouched.`;
   }
 
@@ -244,35 +268,16 @@ Keep unrelated files untouched.`;
     return `${header}
 
 Review the current diff for correctness, scope, deterministic gates, and secrets.
-Fix concrete issues only. Do not rely on LLM output text for pass/fail decisions.`;
+Fix concrete issues only. Do not rely on LLM output text for pass/fail decisions.
+Do not run full verification in this stage; the PR stage runs configured gates.`;
   }
-
-  const verificationCommands = buildPrVerificationCommands(context.profile);
-  const verificationInstructions =
-    verificationCommands.length === 0
-      ? "No package verification gates are configured for this repo. Inspect repo-local docs before choosing any extra verification command, and mention the missing configured gates in the PR description."
-      : `Run the configured verification commands:
-${verificationCommands.map((command, index) => `${index + 1}. ${command}`).join("\n")}`;
 
   return `${header}
 
-Prepare the result for human review:
-${verificationInstructions}
-Then:
-1. Commit with an English message.
-2. Push the branch.
-3. Create a Draft PR against the repo base branch with gh pr create.
+The deterministic PR gates will run configured verification, commit, push, and
+create the Draft PR. Do not run package, git, or gh commands in this worker.
+Inspect the diff only if needed, then return READY_FOR_PR_GATES.
 Do not print secrets. Do not merge the PR.`;
-}
-
-function buildPrVerificationCommands(profile: RepoProfile): string[] {
-  const manager = profile.packageManager;
-  if (manager === undefined) return [];
-
-  return PR_GATE_ORDER.flatMap((gateName) => {
-    const action = profile.gates[gateName];
-    return action === undefined ? [] : [packageCommand(manager, action)];
-  });
 }
 
 export async function shellGateRunner(command: string, opts: { cwd: string }) {
@@ -298,6 +303,56 @@ export async function shellGateRunner(command: string, opts: { cwd: string }) {
   }
 }
 
+function createRecordTestChecksumGate(opts: {
+  collectChanges: CollectChangesPort;
+  collectChecksums: CollectChecksumsPort;
+  manifests: Map<string, ChecksumManifest>;
+}): Gate {
+  return {
+    name: "checksum-record",
+    async check(ctx) {
+      const testPaths = await changedTestPaths(ctx, opts.collectChanges);
+      const files = await opts.collectChecksums(ctx.worktree, testPaths);
+      const manifest = createChecksumManifest(files);
+      opts.manifests.set(checksumManifestKey(ctx), manifest);
+      return { evidence: JSON.stringify({ entries: manifest.entries.length }), pass: true };
+    },
+  };
+}
+
+function createVerifyStoredChecksumGate(opts: {
+  collectChecksums: CollectChecksumsPort;
+  manifests: Map<string, ChecksumManifest>;
+}): Gate {
+  return {
+    name: "checksum",
+    async check(ctx) {
+      const expected = opts.manifests.get(checksumManifestKey(ctx)) ?? { entries: [] };
+      if (expected.entries.length === 0) return { pass: true };
+      const files = await opts.collectChecksums(
+        ctx.worktree,
+        expected.entries.map((entry) => entry.path),
+      );
+      return evaluateChecksumManifest(expected, createChecksumManifest(files));
+    },
+  };
+}
+
+async function changedTestPaths(
+  ctx: GateContext,
+  collectChanges: CollectChangesPort,
+): Promise<string[]> {
+  const changes = await collectChanges(ctx.worktree, `origin/${ctx.profile.baseBranch}`);
+  return changes
+    .map((change) => change.path)
+    .filter(isTestFilePath)
+    .sort((left, right) => left.localeCompare(right));
+}
+
+function checksumManifestKey(ctx: GateContext): string {
+  return `${ctx.item.id}:${ctx.worktree}`;
+}
+
 export async function optionalReadText(path: string): Promise<string | undefined> {
   try {
     return await readFile(path, "utf8");
@@ -305,6 +360,10 @@ export async function optionalReadText(path: string): Promise<string | undefined
     if (isNotFound(error)) return undefined;
     throw error;
   }
+}
+
+export async function writeText(path: string, text: string): Promise<void> {
+  await writeFile(path, text, "utf8");
 }
 
 function asyncExists(path: string): boolean {

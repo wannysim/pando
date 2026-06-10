@@ -5,7 +5,8 @@ services:
       dockerfile: deploy/Dockerfile
       # Opt-in, version-pinned worker CLI install (Dockerfile option B). Default
       # false keeps the base image lean and secret-free. Set
-      # PANDO_INSTALL_WORKER_CLIS=true to bake claude/codex into the image
+      # PANDO_INSTALL_WORKER_CLIS=true to bake codex into the image. It also
+      # installs claude for legacy/custom profiles.
       # (required on a macOS host; the host Mach-O binaries cannot exec in the
       # linux container). Auth still comes from the mounted volumes below.
       args:
@@ -29,9 +30,8 @@ services:
       PANDO_GLOBAL_CONCURRENCY: "${PANDO_GLOBAL_CONCURRENCY:-2}"
       # Worker credentials for live Docker workers. Empty by default so no secret
       # is committed and the HTTP-only skeleton is unaffected; values come from the
-      # host env or an untracked .env file. ANTHROPIC_API_KEY is the recommended
-      # path for Docker Claude (managed-connector inheritance is unreliable in a
-      # container — see deploy/README.md and docs/runbooks/two-job-smoke.md).
+      # host env or an untracked .env file. OPENAI_API_KEY is the default Codex
+      # path; ANTHROPIC_API_KEY is only for legacy/custom claude-code profiles.
       ANTHROPIC_API_KEY: "${ANTHROPIC_API_KEY:-}"
       OPENAI_API_KEY: "${OPENAI_API_KEY:-}"
     volumes:
@@ -46,7 +46,8 @@ services:
       # HTTP smoke needs no host CLIs. See deploy/README.md "Worker readiness".
       #
       # 1) Worker CLIs on PATH (LINUX HOST ONLY). Mount the host bin holding
-      #    `claude` / `codex` read-only at /worker-bin (= PANDO_WORKER_BIN).
+      #    `codex` read-only at /worker-bin (= PANDO_WORKER_BIN). Add `claude`
+      #    there only for legacy/custom profiles.
       #    NOTE: only works when host and container share OS+arch. A macOS host
       #    ships Mach-O binaries that will NOT run in the linux container; install
       #    the CLI in the image instead (see deploy/README.md option B).
@@ -72,12 +73,11 @@ services:
       #    b) gh / HTTPS token via git credential store (host-managed, read-only):
       # - "${PANDO_GIT_CREDENTIALS:-~/.git-credentials}:/root/.git-credentials:ro"
       # - "${PANDO_GITCONFIG:-~/.gitconfig}:/root/.gitconfig:ro"
-    # For Docker live workers, ANTHROPIC_API_KEY / OPENAI_API_KEY are forwarded
+    # For Docker live workers, OPENAI_API_KEY / ANTHROPIC_API_KEY are forwarded
     # from the host env (or an untracked .env file) via the environment: block
-    # above; both default to empty so no secret is committed. As an alternative to
-    # ANTHROPIC_API_KEY, mount a container-local `claude /login` volume if host
-    # managed-connector inheritance fails (observed on macOS). For Codex, set
-    # CODEX_HOME: "/root/.codex" alongside the writable codex config mount. See
+    # above; both default to empty so no secret is committed. For Codex, set
+    # CODEX_HOME: "/root/.codex" alongside the writable codex config mount.
+    # For legacy Claude, use ANTHROPIC_API_KEY or a container-local login volume. See
     # deploy/README.md and docs/runbooks/two-job-smoke.md.
     healthcheck:
       test:
