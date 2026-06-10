@@ -25,11 +25,13 @@ describe("CI benchmark wiring", () => {
   it("comments the benchmark table on pull requests without making the comment mandatory", async () => {
     const workflow = await readFile(resolve(root, ".github/workflows/ci.yml"), "utf8");
 
+    expect(workflow).toContain("actions: read");
     expect(workflow).toContain("issues: write");
     expect(workflow).toContain("pull-requests: write");
     expect(workflow).toContain("github.event_name == 'pull_request'");
     expect(workflow).toContain("GITHUB_TOKEN: ${{ github.token }}");
     expect(workflow).toContain("bun run benchmark:comment");
+    expect(workflow).toContain('--baseline-branch "${{ github.base_ref }}"');
     expect(workflow).toContain("continue-on-error: true");
   });
 });

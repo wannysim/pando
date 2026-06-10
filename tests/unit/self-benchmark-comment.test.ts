@@ -20,6 +20,35 @@ describe("self-benchmark PR comments", () => {
     expect(body).not.toContain("/tmp/");
   });
 
+  it("renders a baseline comparison table with percentage improvement", () => {
+    const baseline = summary({
+      packageManager: "pnpm@11.5.2",
+      runId: "ci-baseline",
+      stageTotalMs: 16_000,
+      totalMs: 20_000,
+    });
+    const body = renderSelfBenchmarkPrComment(summary(), { baseline });
+
+    expect(body).toContain("### Baseline comparison");
+    expect(body).toContain("| Baseline run | ci-baseline |");
+    expect(body).toContain("| Baseline package manager | pnpm@11.5.2 |");
+    expect(body).toContain("| Total | 20000 | 13314 | -6686 | +33.43% faster |");
+    expect(body).toContain("| TEST | 16000 | 11807 | -4193 | +26.21% faster |");
+  });
+
+  it("marks slower benchmark comparisons as negative improvement", () => {
+    const baseline = summary({
+      packageManager: "pnpm@11.5.2",
+      runId: "ci-baseline",
+      stageTotalMs: 8_000,
+      totalMs: 10_000,
+    });
+    const body = renderSelfBenchmarkPrComment(summary(), { baseline });
+
+    expect(body).toContain("| Total | 10000 | 13314 | 3314 | -33.14% slower |");
+    expect(body).toContain("| TEST | 8000 | 11807 | 3807 | -47.59% slower |");
+  });
+
   it("updates an existing benchmark comment when the marker is present", async () => {
     const client = fakeClient([{ body: `old\n${BENCHMARK_COMMENT_MARKER}`, id: 10 }]);
     const result = await upsertBenchmarkPrComment({
@@ -139,7 +168,16 @@ function textResponse(status: number): Response {
   return new Response("try again", { status });
 }
 
-function summary(): SelfBenchmarkSummary {
+function summary(
+  overrides: {
+    packageManager?: string;
+    runId?: string;
+    stageTotalMs?: number;
+    totalMs?: number;
+  } = {},
+): SelfBenchmarkSummary {
+  const stageTotalMs = overrides.stageTotalMs ?? 11_807;
+
   return {
     artifacts: {
       evidencePath: "/tmp/pando-self-benchmark/full-daemon-smoke.json",
@@ -158,8 +196,8 @@ function summary(): SelfBenchmarkSummary {
     jobs: [],
     mode: "contract",
     ok: true,
-    packageManager: "bun@1.3.5",
-    runId: "local-check",
+    packageManager: overrides.packageManager ?? "bun@1.3.5",
+    runId: overrides.runId ?? "local-check",
     runner: {
       gateMode: "shell",
       globalConcurrency: 2,
@@ -177,11 +215,11 @@ function summary(): SelfBenchmarkSummary {
         completed: 1,
         count: 1,
         failed: 0,
-        maxMs: 11807,
-        meanMs: 11807,
-        minMs: 11807,
+        maxMs: stageTotalMs,
+        meanMs: stageTotalMs,
+        minMs: stageTotalMs,
         stage: "TEST",
-        totalMs: 11807,
+        totalMs: stageTotalMs,
       },
     ],
     totals: {
@@ -193,7 +231,7 @@ function summary(): SelfBenchmarkSummary {
       running: 0,
       success: 1,
       timeout: 0,
-      totalMs: 13314,
+      totalMs: overrides.totalMs ?? 13_314,
     },
   };
 }

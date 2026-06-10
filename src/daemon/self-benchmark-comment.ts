@@ -31,7 +31,14 @@ export type UpsertBenchmarkPrCommentResult =
   | { action: "created"; commentId: number }
   | { action: "updated"; commentId: number };
 
-export function renderSelfBenchmarkPrComment(summary: SelfBenchmarkSummary): string {
+export interface RenderSelfBenchmarkPrCommentOptions {
+  baseline?: SelfBenchmarkSummary;
+}
+
+export function renderSelfBenchmarkPrComment(
+  summary: SelfBenchmarkSummary,
+  opts: RenderSelfBenchmarkPrCommentOptions = {},
+): string {
   const lines = [
     BENCHMARK_COMMENT_MARKER,
     "## Pando self-benchmark",
@@ -57,11 +64,91 @@ export function renderSelfBenchmarkPrComment(summary: SelfBenchmarkSummary): str
         `| ${stage.stage} | ${stage.totalMs} | ${stage.meanMs} | ${stage.minMs} | ${stage.maxMs} | ${stage.completed} | ${stage.failed} |`,
     ),
     "",
+    ...(opts.baseline === undefined ? [] : renderBaselineComparison(summary, opts.baseline)),
     "Full benchmark JSON, Markdown, smoke evidence, and failure summary are attached to this workflow run as the `pando-self-benchmark-*` artifact.",
     "",
   ];
 
   return `${lines.join("\n")}\n`;
+}
+
+function renderBaselineComparison(
+  current: SelfBenchmarkSummary,
+  baseline: SelfBenchmarkSummary,
+): string[] {
+  return [
+    "### Baseline comparison",
+    "",
+    "| Metric | Value |",
+    "| --- | --- |",
+    `| Baseline run | ${baseline.runId} |`,
+    `| Baseline package manager | ${baseline.packageManager} |`,
+    `| Baseline generated at | ${baseline.generatedAt} |`,
+    "",
+    "Positive improvement means this PR is faster than the baseline.",
+    "",
+    "| Metric | Baseline ms | Current ms | Delta ms | Improvement |",
+    "| --- | ---: | ---: | ---: | --- |",
+    ...comparisonRows(current, baseline).map(
+      (row) =>
+        `| ${row.label} | ${formatMaybeMs(row.baselineMs)} | ${formatMaybeMs(row.currentMs)} | ${formatDeltaMs(row)} | ${formatImprovement(row)} |`,
+    ),
+    "",
+  ];
+}
+
+interface BenchmarkComparisonRow {
+  label: string;
+  baselineMs?: number;
+  currentMs?: number;
+}
+
+function comparisonRows(
+  current: SelfBenchmarkSummary,
+  baseline: SelfBenchmarkSummary,
+): BenchmarkComparisonRow[] {
+  const currentStages = new Map(current.stageDurations.map((stage) => [stage.stage, stage]));
+  const baselineStages = new Map(baseline.stageDurations.map((stage) => [stage.stage, stage]));
+  const stageLabels = [
+    ...new Set([
+      ...current.stageDurations.map((stage) => stage.stage),
+      ...baseline.stageDurations.map((stage) => stage.stage),
+    ]),
+  ];
+
+  return [
+    {
+      baselineMs: baseline.totals.totalMs,
+      currentMs: current.totals.totalMs,
+      label: "Total",
+    },
+    ...stageLabels.map((stage) => ({
+      baselineMs: baselineStages.get(stage)?.totalMs,
+      currentMs: currentStages.get(stage)?.totalMs,
+      label: stage,
+    })),
+  ];
+}
+
+function formatMaybeMs(value: number | undefined): string {
+  return value === undefined ? "n/a" : `${value}`;
+}
+
+function formatDeltaMs(row: BenchmarkComparisonRow): string {
+  if (row.baselineMs === undefined || row.currentMs === undefined) return "n/a";
+  return `${row.currentMs - row.baselineMs}`;
+}
+
+function formatImprovement(row: BenchmarkComparisonRow): string {
+  if (row.baselineMs === undefined || row.currentMs === undefined || row.baselineMs === 0) {
+    return "n/a";
+  }
+
+  const improvement = ((row.baselineMs - row.currentMs) / row.baselineMs) * 100;
+  if (Math.abs(improvement) < 0.005) return "0.00% unchanged";
+
+  const formatted = Math.abs(improvement).toFixed(2);
+  return improvement > 0 ? `+${formatted}% faster` : `-${formatted}% slower`;
 }
 
 export async function upsertBenchmarkPrComment(
