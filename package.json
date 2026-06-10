@@ -36,6 +36,8 @@
     "smoke:full-daemon": "tsx scripts/full-daemon-smoke.ts",
     "smoke:two-job": "node scripts/two-job-smoke.mjs",
     "soak:nightly": "tsx scripts/soak-nightly.ts",
+    "benchmark:self": "tsx scripts/self-benchmark.ts",
+    "benchmark:comment": "tsx scripts/comment-self-benchmark.ts",
     "prepare": "husky"
   },
   "dependencies": {

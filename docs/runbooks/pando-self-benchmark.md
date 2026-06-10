@@ -3,6 +3,23 @@
 Use this note after a local daemon self-benchmark run to find the run artifacts,
 read stage durations, and confirm whether the PR stage produced a Draft PR.
 
+## Local command
+
+Run the deterministic self-benchmark with:
+
+```bash
+pnpm run benchmark:self
+```
+
+The command runs one pando self-profile job with contract workers and shell
+gates, then writes `benchmark.json`, `benchmark.md`, the full daemon smoke
+evidence JSON, and the terminal failure summary under `/tmp`.
+
+CI runs the same command after `pnpm verify`, appends `benchmark.md` to the
+GitHub Actions step summary, and uploads the benchmark directory as the
+`pando-self-benchmark-*` artifact. On pull requests, CI also upserts a PR
+comment with the benchmark metric and stage duration tables.
+
 ## Artifact locations
 
 Local daemon run roots, structured evidence JSON, temporary databases, and

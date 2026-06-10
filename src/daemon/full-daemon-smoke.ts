@@ -86,7 +86,7 @@ export interface FullDaemonSmokeJobEvidence {
 const execAsync = promisify(exec);
 const DEFAULT_SMOKE_JOB_COUNT = 2;
 const MAX_SOAK_JOB_COUNT = 5;
-const MIN_SOAK_JOB_COUNT = 2;
+const MIN_SMOKE_JOB_COUNT = 1;
 const TERMINAL_STATUSES = new Set<JobStatus>(["CANCELED", "DONE", "ESCALATED", "FAILED"]);
 
 export async function runHostFullDaemonSmoke(
@@ -505,9 +505,9 @@ function targetJobsSettled(
 }
 
 function smokeJobCount(value: number): number {
-  if (!Number.isInteger(value) || value < MIN_SOAK_JOB_COUNT || value > MAX_SOAK_JOB_COUNT) {
+  if (!Number.isInteger(value) || value < MIN_SMOKE_JOB_COUNT || value > MAX_SOAK_JOB_COUNT) {
     throw new Error(
-      `full daemon smoke jobCount must be an integer from ${MIN_SOAK_JOB_COUNT} to ${MAX_SOAK_JOB_COUNT}`,
+      `full daemon smoke jobCount must be an integer from ${MIN_SMOKE_JOB_COUNT} to ${MAX_SOAK_JOB_COUNT}`,
     );
   }
   return value;

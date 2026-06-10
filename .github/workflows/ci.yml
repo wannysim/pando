@@ -5,6 +5,11 @@ on:
     branches: [main, develop]
   pull_request:
 
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
+
 jobs:
   verify:
     runs-on: ubuntu-latest
@@ -18,3 +23,31 @@ jobs:
       - run: pnpm install --frozen-lockfile
       # Shift Left: 로컬과 CI가 완전히 같은 명령 (engineering-standards §2.3)
       - run: pnpm verify
+      - name: Run pando self-benchmark
+        run: |
+          pnpm benchmark:self -- \
+            --output-dir "$RUNNER_TEMP/pando-self-benchmark" \
+            --run-id "ci-${{ github.run_id }}-${{ github.run_attempt }}"
+      - name: Append benchmark summary
+        if: always()
+        run: |
+          if [ -f "$RUNNER_TEMP/pando-self-benchmark/benchmark.md" ]; then
+            cat "$RUNNER_TEMP/pando-self-benchmark/benchmark.md" >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: Comment benchmark on PR
+        if: ${{ always() && github.event_name == 'pull_request' }}
+        continue-on-error: true
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          if [ -f "$RUNNER_TEMP/pando-self-benchmark/benchmark.json" ]; then
+            pnpm benchmark:comment -- \
+              --summary "$RUNNER_TEMP/pando-self-benchmark/benchmark.json" \
+              --pr "${{ github.event.pull_request.number }}"
+          fi
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: pando-self-benchmark-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/pando-self-benchmark
+          if-no-files-found: warn
