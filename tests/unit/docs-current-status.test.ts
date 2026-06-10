@@ -19,6 +19,20 @@ describe("current status docs", () => {
     expect(koreanReadme).not.toContain("brief 입력은 아직 파일 경로 기반");
   });
 
+  it("uses docs README as the single starting point for future work", async () => {
+    const docsReadme = await readDoc("docs/README.md");
+    const claude = await readDoc("CLAUDE.md");
+
+    expect(docsReadme).toContain("## Read Every Time");
+    expect(docsReadme).toContain("## Active W6 Queue");
+    expect(docsReadme).toContain("## Archive / Records");
+    expect(docsReadme).toMatch(
+      /Do not start from `handoff\.md`, `practical-adoption-roadmap\.md`, or\s+`next-session-prompt\.md`/,
+    );
+    expect(claude).toContain("`docs/README.md`를 먼저 읽을 것");
+    expect(claude).not.toContain("`docs/handoff.md`를 먼저 읽을 것");
+  });
+
   it("marks roadmap PR 7 through PR 10 done and points the next step at W6", async () => {
     const roadmap = await readDoc("docs/practical-adoption-roadmap.md");
 
@@ -47,7 +61,8 @@ describe("current status docs", () => {
   it("next-session prompt points at W6 rather than PR10", async () => {
     const prompt = await readDoc("docs/next-session-prompt.md");
 
-    expect(prompt).toContain("W6 운영 확장");
+    expect(prompt).toContain("Use `docs/README.md` as the source of truth");
+    expect(prompt).toContain("Do not start from this file");
     expect(prompt).not.toContain("다음 세션 목표는 PR 10: pandoctl npm distribution");
   });
 

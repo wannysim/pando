@@ -254,7 +254,7 @@ services:
   # SQLite: /data/pando.sqlite
   # repos: /repos, worktrees: /worktrees, config: /config, skills: /skills
 ```
-PR #25 기준 로컬 Docker Desktop에서 image build, compose health, `/health`, `/dashboard`, `/briefs`, `/jobs` smoke를 확인했다. 아직 남은 점: 컨테이너 안에서 `claude`/`codex` CLI 설치·인증(API 키 모드 또는 auth volume), Atlassian OAuth/token fallback, git 자격증명(deploy key 권장), live worker 2-job smoke.
+PR #25 이후 로컬 Docker Desktop에서 image build, compose health, `/health`, `/dashboard`, `/briefs`, `/jobs` smoke를 확인했다. 이후 worker CLI install layer, CA bundle, git/ssh runtime, readiness evidence, Docker live worker probe까지 follow-up으로 진행됐다. 현재 남은 Docker/OpenAI live 재검증과 Claude legacy credential blocker는 `docs/README.md`의 Active W6 Queue와 `docs/runbooks/two-job-smoke.md`를 따른다.
 
 ---
 
@@ -274,4 +274,4 @@ PR #25 기준 로컬 Docker Desktop에서 image build, compose health, `/health`
 ## 7. 남은 구조 포인트
 
 1. **prompts/ vs ~/.ai-skills 경계**: 단계 프롬프트 신규분(impl-from-plan 등)을 이 레포 prompts/에 둘지, .ai-skills에 스킬로 추가할지. 제안: **오케스트레이터 전용(비대화형 전제)은 이 레포, 대화형으로도 쓸 것은 .ai-skills** 기준
-2. W5 운영 준비는 완료됐다. 다음 구조 포인트는 live worker smoke에서 드러나는 실제 adapter 연결이다: git diff/checksum 수집, exit-code workspace command scoping, Claude/Codex CLI/auth를 컨테이너에서 안정적으로 제공하는 방식.
+2. W5 운영 준비는 완료됐다. git diff/checksum adapter와 exit-code workspace command scoping은 follow-up에서 연결됐다. 다음 구조 포인트는 `docs/README.md`의 Active W6 Queue에 있는 scheduler-enforced provider backoff deferral과 Docker/OpenAI live worker 재검증이다.

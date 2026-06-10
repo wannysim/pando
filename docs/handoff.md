@@ -1,6 +1,11 @@
 # 인수인계 — 현재 상태와 다음 단계 (2026-06-07)
 
-> 이 문서는 세션 간 컨텍스트 이관용. 새 세션은 CLAUDE.md → 이 문서 → 참조 문서 순으로 읽으면 된다.
+> Archive note: 새 작업은 이 문서에서 시작하지 않는다. 현재 작업 큐와 문서 라우팅은
+> `docs/README.md`가 source of truth이고, 지속되는 결정은 `docs/adr/`에만 남긴다.
+> 이 문서는 과거 세션 기록을 이해해야 할 때만 참고한다.
+
+> 이 문서는 세션 간 컨텍스트 이관용으로 쓰던 과거 기록이다. 새 세션은
+> CLAUDE.md → docs/README.md 순서로 시작한다.
 
 ## 프로젝트 한 줄 정의
 
@@ -131,17 +136,11 @@ W5의 최소 운영 준비와 첫 3-job self-dogfood batch는 닫혔다. 이후 
 8. ✅ **Release branch routing** (PR #53) — Jira `fixVersion` 기반 `release/*` base branch 매핑과 `WorkItem.baseBranch` override를 ADR-011과 코드/테스트로 고정했다.
 9. ✅ **Docker worker readiness** (PR #55 + 이번 follow-up) — opt-in Linux worker CLI install layer, CA bundle, git/ssh runtime, auth/git credential readiness evidence를 갖췄다. Docker live worker smoke는 실제 실행했고 post-CA rerun에서 Codex는 exit `0`, Claude는 auth blocker로 exit `1`이었다. 이 환경에서 Claude Code managed connector는 container로 상속되지 않아 실제 Docker Claude call은 `ANTHROPIC_API_KEY` 또는 container-local `claude /login` credential이 필요하다는 blocker를 evidence로 남겼다.
 10. ✅ **pandoctl npm distribution** (roadmap PR 10) — 통합 진입점 `src/cli/pandoctl.ts`가 `start`(= `pando start`)와 ops 서브커맨드를 한 바이너리로 합친다. `packages/pandoctl`는 esbuild로 번들된 `dist/pandoctl.mjs`(shebang) + `schema.sql`을 담은 실제 publish 후보(`pandoctl@0.1.0`)다. `better-sqlite3`만 native external로 두고 `npm i -g pandoctl`을 임시 `--prefix`로 검증했다(prebuilt 해결, node-gyp 불필요). 실제 npm publish는 W6 항목으로 남긴다.
-11. **W6 다음 작업 순서** — 다음 작업은 후보가 아니라 아래 순서로 진행한다. #1은 이 문서 업데이트로 완료됐고, 다음 활성 작업은 #2다.
-    1. ✅ **Docs/current-state sync** — PR #62 이후 상태를 handoff/roadmap/prompt에 맞췄다. `pando start`는 source checkout의 `dashboard/dist`를 기본 dashboard root로 쓰고, accidental DB/evidence artifact는 repo root가 아니라 `/tmp`로 간다. `pandoctl` release workflow는 생겼지만 실제 npm publish는 아직 마지막 순서다.
-    2. **3~5 job soak/nightly 운영화** — 기존 soak/failure analytics 기반을 nightly 또는 반복 실행 가능한 운영 루틴으로 올린다. 새 DB table은 추가하지 말고 기존 jobs/events payload와 `/tmp` structured JSON summary를 사용한다.
-    3. **Dashboard failure/readiness analytics** — soak/nightly 결과, terminal failure reason, readiness/auth blocker를 dashboard에서 바로 읽을 수 있게 한다. 판단은 DB/event/structured evidence만 사용하고 LLM output text는 쓰지 않는다.
-    4. **Provider backoff/retry policy** — timeout/rate-limit/auth/transient failure를 deterministic failure kind로 나누고 provider별 retry/backoff를 정교화한다. 비용과 무한 retry를 줄이는 것이 목표다.
-    5. **Docker/OpenAI live worker smoke** — 기본 Codex/OpenAI pipeline을 Docker/host에서 다시 검증한다. Claude live smoke는 legacy/custom profile을 쓸 때만 `ANTHROPIC_API_KEY` 또는 container-local `claude /login` credential로 별도 재검증한다.
-    6. **`pandoctl@0.1.0` 실제 npm publish** — 마지막에 release workflow dry-run → publish → global install/update smoke를 닫는다.
+11. **W6 다음 작업 순서** — 이 문서는 더 이상 활성 큐의 source of truth가 아니다. 현재 미완료 작업은 `docs/README.md`의 Active W6 Queue를 따른다.
 
-낮은 우선순위 후보: notifications, GitHub Issue/Jira write-back, auth hardening, Docker egress policy, split containers/TUI. 위 1~6이 끝나기 전에는 새 범위를 섞지 않는다.
+낮은 우선순위 후보: notifications, GitHub Issue/Jira write-back, auth hardening, Docker egress policy, split containers/TUI. `docs/README.md`의 활성 큐가 끝나기 전에는 새 범위를 섞지 않는다.
 
-새 세션에 그대로 전달할 상세 프롬프트는 `docs/next-session-prompt.md`에 있다.
+새 세션은 `docs/README.md`에서 시작한다. `docs/next-session-prompt.md`는 오래된 링크를 위한 compatibility pointer다.
 
 W4 완료 판정:
 - ✅ scheduler/semaphore 계약: global / per-repo / per-provider cap 테스트 완료

@@ -1,5 +1,9 @@
 # pando 실사용 전환 로드맵
 
+> Archive note: 현재 작업 큐는 `docs/README.md`의 Active W6 Queue를 따른다.
+> 이 문서는 PR #1~#10과 W6 전환 기록을 보존하기 위한 참고 자료다. 지속되는
+> 결정은 `docs/adr/`에만 남긴다.
+
 > 작성일: 2026-06-07 · 목적: pando를 "직접 써볼 수 있는 도구"에서 "실제로 일을 맡길 수 있는 도구"로 올리는 다음 작업 묶음
 
 ## 현재 경계
@@ -330,25 +334,24 @@ README는 아래 순서가 좋다.
 PR #36~#38 이후에는 작은 문서/운영 UX 작업을 pando self-dogfood batch로 끝까지 돌릴 수 있다. PR #41과 PR #54 이후에는 `pando start`/`pandoctl start`로 local daemon/dashboard/API를 켜고, dashboard/API의 인라인 자연어 brief intake로 canonical brief를 만들 수 있다. PR 10 이후 운영 CLI는 `pandoctl` 하나로 start/list/show/retry/cancel/cleanup/watch/smoke 흐름을 제공하며, 빌드된 npm 패키지로 배포할 수 있다.
 
 1. 새 Codex/Claude 세션을 연다.
-2. `docs/next-session-prompt.md`를 그대로 붙여 넣는다.
-3. 이번 문서(`docs/practical-adoption-roadmap.md`)를 읽고 현재 첫 우선순위부터 진행하라고 시킨다.
+2. `docs/README.md`를 읽고 Active W6 Queue의 첫 미완료 항목을 진행하라고 시킨다.
+3. 필요한 runbook은 `docs/README.md`의 Task Routes에서 하나만 고른다.
 4. pando self-dogfood를 사용할 경우, jobs를 먼저 queue에 넣고 daemon을 concurrency 2~3으로 켜야 같은 tick에서 병렬 처리된다.
-5. 작업이 끝나면 `pnpm verify`, `/tmp` structured evidence, docs/handoff 업데이트, English commit을 요구한다.
+5. 작업이 끝나면 `pnpm verify`, `/tmp` structured evidence, 필요한 runbook/ADR 업데이트, English commit을 요구한다.
 
 붙여 넣을 수 있는 짧은 지시:
 
 ```text
-CLAUDE.md, docs/handoff.md, docs/practical-adoption-roadmap.md, docs/next-session-prompt.md를 읽고 develop 최신 상태에서 시작해줘.
+CLAUDE.md와 docs/README.md를 읽고 develop 최신 상태에서 시작해줘.
 
-목표는 PR 10: published `pandoctl` npm distribution이야.
-`pandoctl start`와 기존 operations subcommand를 하나의 배포 바이너리로 통합하고, native dependency/install 전략을 검증해줘.
+docs/README.md의 Active W6 Queue에서 아직 끝나지 않은 가장 앞 항목 하나만 골라 작게 진행해줘.
 비밀값은 출력/커밋하지 말고, evidence는 /tmp 아래에 남겨줘.
 완료 후 pnpm verify를 통과시키고 English commit message로 커밋해줘.
 ```
 
 ### self-dogfood 방식
 
-작은 작업은 pando 자신에게 brief를 넣는 방식으로 전환할 수 있다. 현재는 아직 file-path 기반이라 아래처럼 brief 파일을 먼저 만든다.
+작은 작업은 pando 자신에게 brief를 넣는 방식으로 전환할 수 있다. Dashboard/API의 inline brief가 기본이고, 아래 file-path 방식은 advanced/debug 경로다.
 
 예상 흐름:
 
@@ -369,13 +372,10 @@ PANDO_API_URL=http://127.0.0.1:3210 \
 
 ## 다음 결정
 
-Stacked PR Roadmap(PR 1~10)은 모두 닫혔다. 다음 작업은 **W6 운영 확장**이고, 진행 순서는 아래로 고정한다. #1은 이 문서 업데이트로 완료됐고, 다음 활성 작업은 #2다.
+Stacked PR Roadmap(PR 1~10)은 모두 닫혔다. 다음 작업은 **W6 운영 확장**이다.
+이 문서의 하단 큐는 더 이상 source of truth가 아니다. 현재 활성 큐는
+`docs/README.md`의 Active W6 Queue를 따른다.
 
-1. ✅ **Docs/current-state sync** — handoff, roadmap, next-session prompt가 최신 merge 상태와 다음 순서를 같은 말로 설명하게 맞춰졌다.
-2. **3~5 job soak/nightly 운영화** — 반복 실행 가능한 soak/nightly 루틴과 `/tmp` structured JSON summary를 만든다. 기존 jobs/events payload를 쓰고 새 DB table은 추가하지 않는다.
-3. **Dashboard failure/readiness analytics** — soak/nightly 결과, terminal failure reason, readiness/auth blocker를 dashboard에서 바로 읽게 한다.
-4. **Provider backoff/retry policy** — timeout/rate-limit/auth/transient failure를 deterministic failure kind로 나누고 provider별 retry/backoff를 정교화한다.
-5. **Docker/OpenAI live worker smoke** — 기본 Codex/OpenAI pipeline을 Docker/host에서 재검증한다. Claude live smoke는 legacy/custom profile을 쓸 때만 `ANTHROPIC_API_KEY` 또는 container-local `claude /login` credential로 별도 재검증한다.
-6. **`pandoctl@0.1.0` 실제 npm publish** — release workflow dry-run → publish → global install/update smoke를 마지막에 수행한다.
-
-notifications, GitHub Issue/Jira write-back, auth hardening, Docker egress policy, split containers/TUI는 위 순서가 끝난 뒤 다시 우선순위를 잡는다.
+notifications, GitHub Issue/Jira write-back, auth hardening, Docker egress
+policy, split containers/TUI는 `docs/README.md`의 활성 큐가 끝난 뒤 다시
+우선순위를 잡는다.
