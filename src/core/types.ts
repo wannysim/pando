@@ -21,6 +21,8 @@ export interface WorkItem {
   branch?: string;
   /** Explicit base-branch override. Highest precedence in resolveBaseBranch (ADR-011). */
   baseBranch?: string;
+  /** Immutable base commit snapshot used by daemon gates when available. */
+  baseSha?: string;
   dependsOn?: string[];
   payload:
     | { kind: "jira"; ticketKey: string; fixVersion?: string }
@@ -104,7 +106,7 @@ export interface GateResult {
   pass: boolean;
   reason?: string;
   evidence?: string; // 명령 출력, 체크섬 diff 등
-  failureKind?: "gate-fail" | "blocking-questions";
+  failureKind?: "gate-fail" | "blocking-questions" | "non-retryable";
 }
 
 export interface Gate {

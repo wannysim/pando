@@ -13,6 +13,8 @@ CREATE TABLE IF NOT EXISTS jobs (
   source TEXT NOT NULL,
   title TEXT NOT NULL,
   branch TEXT,
+  base_branch TEXT,
+  base_sha TEXT,
   payload_json TEXT NOT NULL,
   depends_on_json TEXT NOT NULL,
   status TEXT NOT NULL,

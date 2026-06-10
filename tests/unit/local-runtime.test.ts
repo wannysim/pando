@@ -60,6 +60,7 @@ describe("createLocalDaemonRuntime", () => {
     const setupCalls: EnsureWorktreeOptions[] = [];
     const workerPrompts: string[] = [];
     const gateCommands: string[] = [];
+    let prViewCalls = 0;
     const seed = createSqliteJobStore({ path: dbPath });
     seed.enqueueJob({
       item: {
@@ -90,7 +91,22 @@ describe("createLocalDaemonRuntime", () => {
       },
       gateRunner: async (command) => {
         gateCommands.push(command);
+        if (command === "git rev-parse --verify 'origin/develop^{commit}'") {
+          return { exitCode: 0, stderr: "", stdout: "base-sha\n" };
+        }
+        if (command === "git merge-base HEAD 'origin/develop'") {
+          return { exitCode: 0, stderr: "", stdout: "base-sha\n" };
+        }
+        if (command === "git diff --cached --quiet") {
+          return { exitCode: 1, stderr: "", stdout: "" };
+        }
+        if (command === "git rev-parse --abbrev-ref HEAD") {
+          return { exitCode: 0, stderr: "", stdout: "chore/local-runner-task\n" };
+        }
         if (command === "gh pr view --json isDraft,number,url") {
+          prViewCalls += 1;
+          if (prViewCalls === 1)
+            return { exitCode: 1, stderr: "no pull requests found\n", stdout: "" };
           return {
             exitCode: 0,
             stderr: "",
@@ -133,9 +149,16 @@ describe("createLocalDaemonRuntime", () => {
         "bun run test",
         "bun run lint",
         "bun x tsc --noEmit",
+        "git fetch origin 'develop'",
+        "git rev-parse --verify 'origin/develop^{commit}'",
+        "git merge-base HEAD 'origin/develop'",
         "git add -A",
+        "git diff --cached --quiet",
         "git commit -m 'chore: Local runner task'",
         "git push -u origin HEAD",
+        "gh pr view --json isDraft,number,url",
+        "git rev-parse --abbrev-ref HEAD",
+        "gh pr create --draft --base 'develop' --head 'chore/local-runner-task' --title 'Local runner task' --body 'Automated pando result for LOCAL-RUNNER-1.'",
         "gh pr view --json isDraft,number,url",
       ]),
     );
