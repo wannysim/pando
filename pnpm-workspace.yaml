@@ -1,6 +1,0 @@
-packages:
-  - dashboard
-
-allowBuilds:
-  better-sqlite3: true
-  esbuild: true

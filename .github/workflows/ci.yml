@@ -6,6 +6,7 @@ on:
   pull_request:
 
 permissions:
+  actions: read
   contents: read
   issues: write
   pull-requests: write
@@ -15,17 +16,15 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
-      - uses: pnpm/action-setup@v6
-      - uses: actions/setup-node@v6
+      - uses: oven-sh/setup-bun@v2
         with:
-          node-version: 22.13.0
-          cache: pnpm
-      - run: pnpm install --frozen-lockfile
+          bun-version: 1.3.5
+      - run: bun install --frozen-lockfile
       # Shift Left: 로컬과 CI가 완전히 같은 명령 (engineering-standards §2.3)
-      - run: pnpm verify
+      - run: bun run verify
       - name: Run pando self-benchmark
         run: |
-          pnpm benchmark:self -- \
+          bun run benchmark:self -- \
             --output-dir "$RUNNER_TEMP/pando-self-benchmark" \
             --run-id "ci-${{ github.run_id }}-${{ github.run_attempt }}"
       - name: Append benchmark summary
@@ -41,8 +40,9 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
           if [ -f "$RUNNER_TEMP/pando-self-benchmark/benchmark.json" ]; then
-            pnpm benchmark:comment -- \
+            bun run benchmark:comment -- \
               --summary "$RUNNER_TEMP/pando-self-benchmark/benchmark.json" \
+              --baseline-branch "${{ github.base_ref }}" \
               --pr "${{ github.event.pull_request.number }}"
           fi
       - uses: actions/upload-artifact@v6

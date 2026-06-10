@@ -28,6 +28,8 @@ run_package_action() {
 
   if [ -f yarn.lock ]; then
     manager="yarn"
+  elif [ -f bun.lock ]; then
+    manager="bun"
   elif [ -f pnpm-lock.yaml ]; then
     manager="pnpm"
   elif [ -f package-lock.json ]; then
@@ -40,6 +42,7 @@ run_package_action() {
   case "$action:$manager" in
     typecheck:npm) npx tsc --noEmit ;;
     typecheck:yarn) yarn tsc --noEmit ;;
+    typecheck:bun) bun x tsc --noEmit ;;
     typecheck:pnpm) pnpm exec tsc --noEmit ;;
     test:npm) npm run test ;;
     lint:npm) npm run lint ;;

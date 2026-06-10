@@ -1,4 +1,4 @@
-#!/usr/bin/env tsx
+#!/usr/bin/env bun
 import process from "node:process";
 import { runSoakNightly, type SoakNightlyOptions } from "../src/daemon/soak-nightly";
 import type { FullDaemonSmokeMode } from "../src/daemon/full-daemon-smoke";

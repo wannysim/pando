@@ -2,7 +2,7 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "bun:test";
 import type { WorkerEngine, WorkerRunOptions, WorkerResult } from "../../src/core/types";
 import {
   buildLocalPipelinePrompt,
@@ -130,9 +130,9 @@ describe("createLocalDaemonRuntime", () => {
     );
     expect(gateCommands).toEqual(
       expect.arrayContaining([
-        "pnpm test",
-        "pnpm lint",
-        "pnpm exec tsc --noEmit",
+        "bun run test",
+        "bun run lint",
+        "bun x tsc --noEmit",
         "git add -A",
         "git commit -m 'chore: Local runner task'",
         "git push -u origin HEAD",
@@ -496,7 +496,7 @@ repos:
       providers: []
       policy_refs: []
     conventions: repo-local
-    package_manager: pnpm
+    package_manager: bun
     setup: install
     gates:
       test: test
@@ -531,7 +531,7 @@ function repoProfile(path: string) {
     conventions: "repo-local",
     gates: { test: "test" as const, lint: "lint" as const, types: "typecheck" as const },
     guards: { forbidTestEditInImpl: true, protectedBranches: ["main", "develop"] },
-    packageManager: "pnpm" as const,
+    packageManager: "bun" as const,
     path,
     portRange: [3300, 3399] as [number, number],
     scope: "external" as const,

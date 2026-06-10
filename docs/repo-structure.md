@@ -21,9 +21,9 @@
 
 ```
 ~/Github/{name}/
-├── package.json              # pnpm 11, Node 22.13+, TypeScript strict
+├── package.json              # Bun 1.3, Node 22.13+, TypeScript strict
 ├── tsconfig.json
-├── .github/workflows/ci.yml  # pnpm verify
+├── .github/workflows/ci.yml  # bun run verify
 ├── .oxlintrc.json            # 계층 경계 포함 lint 규칙
 ├── .oxfmtrc.json             # formatter 설정
 ├── .husky/pre-commit         # staged 파일 oxfmt
@@ -124,7 +124,7 @@ export type StageName = "SPEC" | "PLAN" | "TEST" | "IMPL" | "REVIEW" | "PR";
 export type JobStatus = StageName | "QUEUED" | "DONE" | "FAILED" | "ESCALATED" | "CANCELED";
 export type WorkItemSource = "jira" | "brief" | "github_issue";
 export type ContextProvider = "confluence" | "figma";
-export type PackageManager = "yarn" | "pnpm" | "npm";
+export type PackageManager = "yarn" | "pnpm" | "npm" | "bun";
 export type PackageAction = "install" | "test" | "lint" | "typecheck";
 
 export interface WorkItem {

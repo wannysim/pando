@@ -2,7 +2,7 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "bun:test";
 import { runHostFullDaemonSmoke } from "../../src/daemon/full-daemon-smoke";
 import type { EnsureWorktreeOptions, EnsureWorktreeResult } from "../../src/worktree/manager";
 
@@ -76,16 +76,16 @@ describe("runHostFullDaemonSmoke", () => {
     expect(new Set(evidence.jobs.map((job) => job.worktreePath)).size).toBe(2);
     expect(evidence.jobs.every((job) => job.gateEvidence.length === 3)).toBe(true);
     expect(evidence.jobs[0]?.gateEvidence[0]?.evidence).toMatchObject({
-      command: "pnpm test",
+      command: "bun run test",
       exitCode: 0,
     });
 
     expect(provisioned).toHaveLength(2);
     expect(provisioned.map((opts) => opts.baseBranch)).toEqual(["develop", "develop"]);
-    expect(provisioned.map((opts) => opts.setupCommand)).toEqual(["pnpm install", "pnpm install"]);
+    expect(provisioned.map((opts) => opts.setupCommand)).toEqual(["bun install", "bun install"]);
     expect(new Set(workerCalls.map((call) => call.command))).toEqual(new Set(["codex"]));
     expect(gateCalls.map((call) => call.command)).toEqual(
-      expect.arrayContaining(["pnpm test", "pnpm lint", "pnpm exec tsc --noEmit"]),
+      expect.arrayContaining(["bun run test", "bun run lint", "bun x tsc --noEmit"]),
     );
     expect(JSON.parse(readFileSync(evidencePath, "utf8"))).toEqual(evidence);
     expect(JSON.stringify(evidence)).not.toContain("do-not-record-worker-output");
@@ -144,7 +144,7 @@ describe("runHostFullDaemonSmoke", () => {
       evidencePath: join(root, "evidence.json"),
       failureSummaryPath,
       gateRunner: async (command, opts) => {
-        if (command === "pnpm test" && opts.cwd.includes("unit-soak-3")) {
+        if (command === "bun run test" && opts.cwd.includes("unit-soak-3")) {
           return { exitCode: 1, stderr: "", stdout: '{"exitCode":1}' };
         }
         return { exitCode: 0, stderr: "", stdout: "" };
@@ -321,7 +321,7 @@ repos:
       providers: []
       policy_refs: []
     conventions: repo-local
-    package_manager: pnpm
+    package_manager: bun
     setup: install
     gates:
       test: test

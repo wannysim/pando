@@ -607,7 +607,7 @@ function nodeSmokeRunner(): SmokeRunner {
     const { spawn } = await import("node:child_process");
     const evidencePath = evidenceArg(input.args);
     const exitCode = await new Promise<number>((resolve) => {
-      const child = spawn("pnpm", ["tsx", ...input.args], { stdio: "inherit" });
+      const child = spawn("bun", input.args, { stdio: "inherit" });
       child.on("error", () => {
         resolve(1);
       });

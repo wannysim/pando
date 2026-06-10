@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "bun:test";
 
 const root = resolve(new URL(".", import.meta.url).pathname, "../..");
 
@@ -14,9 +14,9 @@ describe("README.md — local run getting-started section", () => {
     expect(readme).toMatch(/##\s+Local run/i);
   });
 
-  it("lists prerequisites: pnpm install, codex, gh, git", async () => {
+  it("lists prerequisites: bun install, codex, gh, git", async () => {
     const readme = await readDoc("README.md");
-    expect(readme).toContain("pnpm install");
+    expect(readme).toContain("bun install");
     expect(readme).toMatch(/`codex`|Codex CLI/);
     expect(readme).toMatch(/OPENAI_API_KEY|OpenAI auth|OpenAI API/i);
     expect(readme).toMatch(/`gh`/);

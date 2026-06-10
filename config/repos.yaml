@@ -34,7 +34,7 @@ repos:
     context:
       providers: []
     conventions: repo-local
-    package_manager: pnpm
+    package_manager: bun
     setup: install
     gates:
       test: test
@@ -55,7 +55,7 @@ repos:
       providers: []
       policy_refs: []
     conventions: repo-local
-    package_manager: pnpm
+    package_manager: bun
     setup: install
     gates:
       test: test

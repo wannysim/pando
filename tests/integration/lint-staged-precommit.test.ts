@@ -2,7 +2,7 @@ import { execFileSync } from "node:child_process";
 import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "bun:test";
 
 // The pre-commit hook runs `lint-staged`, which feeds the list of staged files
 // matching its glob to `oxfmt`. The project's `.oxfmtrc.json` excludes some of

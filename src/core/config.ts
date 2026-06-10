@@ -20,7 +20,7 @@ export interface OrchestratorConfig {
   db: string;
 }
 
-const PACKAGE_MANAGERS = ["yarn", "pnpm", "npm"] as const;
+const PACKAGE_MANAGERS = ["yarn", "pnpm", "npm", "bun"] as const;
 const PACKAGE_ACTIONS = ["install", "test", "lint", "typecheck"] as const;
 const SCOPES = ["acme", "external"] as const;
 const INTAKE_SOURCES = ["jira", "brief", "github_issue"] as const;
@@ -32,6 +32,7 @@ const LEGACY_CONTEXT_PROVIDER_ALIASES: Record<string, ContextProvider> = {
 
 const LOCKFILES: readonly { file: string; manager: PackageManager }[] = [
   { file: "yarn.lock", manager: "yarn" },
+  { file: "bun.lock", manager: "bun" },
   { file: "pnpm-lock.yaml", manager: "pnpm" },
   { file: "package-lock.json", manager: "npm" },
 ];
@@ -175,9 +176,11 @@ export function packageCommand(manager: PackageManager, action: PackageAction): 
   if (action === "typecheck") {
     if (manager === "npm") return "npx tsc --noEmit";
     if (manager === "yarn") return "yarn tsc --noEmit";
+    if (manager === "bun") return "bun x tsc --noEmit";
     return `${manager} exec tsc --noEmit`;
   }
   if (manager === "npm") return `npm run ${action}`;
+  if (manager === "bun") return `bun run ${action}`;
   return `${manager} ${action}`;
 }
 

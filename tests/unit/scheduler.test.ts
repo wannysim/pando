@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "bun:test";
 import { CountingSemaphore } from "../../src/scheduler/semaphore";
 import { createRunScheduler } from "../../src/scheduler/scheduler";
 import type { RepoProfile } from "../../src/core/types";

@@ -15,7 +15,7 @@
     "noUncheckedIndexedAccess": true,
     "noImplicitOverride": true,
     "forceConsistentCasingInFileNames": true,
-    "types": ["vitest/globals", "@testing-library/jest-dom"]
+    "types": ["bun"]
   },
-  "include": ["src", "vite.config.ts", "vitest.config.ts", "playwright.config.ts"]
+  "include": ["src", "vite.config.ts", "playwright.config.ts"]
 }

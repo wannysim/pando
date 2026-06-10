@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "bun:test";
 import type { GateContext } from "../../src/core/types";
 import {
   createDiffRulesGate,
@@ -100,11 +100,11 @@ describe("resolveWorkspaceScope", () => {
   it("falls back to all workspaces for root package metadata changes", () => {
     expect(
       resolveWorkspaceScope(
-        [{ path: "pnpm-lock.yaml", status: "modified" }],
+        [{ path: "bun.lock", status: "modified" }],
         [{ name: "@pando/ui", root: "packages/ui" }],
       ),
     ).toEqual({
-      evidence: ["pnpm-lock.yaml changed root package metadata"],
+      evidence: ["bun.lock changed root package metadata"],
       kind: "all",
       workspaces: ["@pando/ui"],
     });

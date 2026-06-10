@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "bun:test";
 import { resolveClaudeCredentialMode } from "../../src/daemon/claude-credential-mode";
 
 describe("resolveClaudeCredentialMode", () => {

@@ -53,7 +53,7 @@ export interface RepoProfile {
   guards: { protectedBranches: string[]; forbidTestEditInImpl: boolean };
 }
 
-export type PackageManager = "yarn" | "pnpm" | "npm";
+export type PackageManager = "yarn" | "pnpm" | "npm" | "bun";
 
 export type PackageAction = "install" | "test" | "lint" | "typecheck";
 

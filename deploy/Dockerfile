@@ -1,19 +1,18 @@
 # syntax=docker/dockerfile:1
 
-FROM node:22-bookworm-slim AS deps
+FROM oven/bun:1.3.5 AS deps
 WORKDIR /app
-RUN corepack enable
 
-COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY package.json bun.lock ./
 COPY dashboard/package.json dashboard/package.json
-RUN pnpm install --frozen-lockfile
+RUN bun install --frozen-lockfile
 
 FROM deps AS build
 COPY . .
-RUN pnpm --filter @pando/dashboard build
-RUN pnpm types
+RUN bun --filter=@pando/dashboard run build
+RUN bun run types
 
-FROM node:22-bookworm-slim AS runtime
+FROM oven/bun:1.3.5 AS runtime
 WORKDIR /app
 ENV NODE_ENV=production
 ENV PANDO_HOST=0.0.0.0
@@ -63,7 +62,6 @@ RUN apt-get update \
       openssh-client \
     && rm -rf /var/lib/apt/lists/*
 
-RUN corepack enable
 COPY --from=build /app /app
 
 # Opt-in worker CLI install (option B). Default false keeps the base image lean
@@ -72,10 +70,10 @@ ARG INSTALL_WORKER_CLIS=false
 ARG CLAUDE_CLI_VERSION=2.1.167
 ARG CODEX_CLI_VERSION=0.137.0
 RUN if [ "${INSTALL_WORKER_CLIS}" = "true" ]; then \
-      npm install -g \
+      bun install --global \
         @anthropic-ai/claude-code@"${CLAUDE_CLI_VERSION}" \
         @openai/codex@"${CODEX_CLI_VERSION}"; \
     fi
 
 EXPOSE 3210
-CMD ["pnpm", "start"]
+CMD ["bun", "run", "start"]

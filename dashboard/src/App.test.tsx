@@ -1,6 +1,7 @@
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it, vi, type Mocked } from "vitest";
+import { describe, expect, it, vi, type Mock } from "bun:test";
+import { act } from "react";
 import { DashboardApp } from "./App";
 import { PandoApiClientError } from "../../src/api/client";
 import type { PandoApiClient } from "../../src/api/client";
@@ -14,6 +15,10 @@ import type {
   ApiJobSummary,
 } from "../../src/api/schema";
 import type { JobStatus, WorkItem } from "../../src/core/types";
+
+type Mocked<T> = {
+  [K in keyof T]: T[K] extends (...args: any[]) => any ? Mock<T[K]> : T[K];
+};
 
 describe("DashboardApp", () => {
   it("renders the jobs list from the API client", async () => {
@@ -101,20 +106,17 @@ describe("DashboardApp", () => {
   });
 
   it("auto-refreshes on an interval while a job is active", async () => {
-    vi.useFakeTimers({ shouldAdvanceTime: true });
-    try {
-      const client = createMockClient();
-      client.listJobs.mockResolvedValue({ jobs: [jobSummary("DEMO-9001", "IMPL")] });
+    const client = createMockClient();
+    client.listJobs.mockResolvedValue({ jobs: [jobSummary("DEMO-9001", "IMPL")] });
 
-      render(<DashboardApp client={client} />);
-      await screen.findByText(/auto-refresh/i);
-      const initial = client.listJobs.mock.calls.length;
+    render(<DashboardApp client={client} />);
+    await screen.findByText(/auto-refresh/i);
+    const initial = client.listJobs.mock.calls.length;
 
-      await vi.advanceTimersByTimeAsync(4500);
-      expect(client.listJobs.mock.calls.length).toBeGreaterThan(initial);
-    } finally {
-      vi.useRealTimers();
-    }
+    await act(async () => {
+      await wait(4600);
+    });
+    await waitFor(() => expect(client.listJobs.mock.calls.length).toBeGreaterThan(initial));
   });
 
   it("does not show the live badge when all jobs are terminal", async () => {
@@ -606,4 +608,8 @@ function workItem(id: string): WorkItem {
     source: "brief",
     title: "Build minimal dashboard",
   };
+}
+
+function wait(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }

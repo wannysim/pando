@@ -12,9 +12,9 @@ through different boundaries.
 > commands to the module still named `src/cli/agentctl.ts`. These are equivalent:
 >
 > ```bash
-> pandoctl <command> [args]                       # global bin after `pnpm link --global` / `npm i -g .`
-> pnpm pandoctl <command> [args]                  # package script, no link required
-> pnpm tsx src/cli/agentctl.ts <command> [args]   # direct entrypoint
+> pandoctl <command> [args]                       # global bin after `bun link` / `npm i -g .`
+> bun run pandoctl <command> [args]                  # package script, no link required
+> bun src/cli/agentctl.ts <command> [args]   # direct entrypoint
 > ```
 >
 > Examples below use the direct entrypoint so they work from a fresh clone, but
@@ -38,7 +38,7 @@ contend with the daemon for the SQLite handle.
 
 ```bash
 PANDO_API_URL=http://127.0.0.1:3210 \
-  pnpm tsx src/cli/agentctl.ts list
+  bun src/cli/agentctl.ts list
 ```
 
 These commands require API-backed mode because they read live daemon state:
@@ -66,10 +66,10 @@ modify that local run. If `PANDO_DB` is omitted, the fallback is
 current directory.
 
 ```bash
-pnpm tsx src/cli/agentctl.ts submit brief \
+bun src/cli/agentctl.ts submit brief \
   --repo pando --id pando-docs-ux --title "Improve docs UX"
 
-pnpm tsx src/cli/agentctl.ts show pando-docs-ux
+bun src/cli/agentctl.ts show pando-docs-ux
 ```
 
 Local-DB commands: `submit jira`, `submit brief`, `show <job-id>`,
@@ -86,7 +86,7 @@ status line per poll.
 
 ```bash
 PANDO_API_URL=http://127.0.0.1:3210 \
-  pnpm tsx src/cli/agentctl.ts watch pando-docs-ux --interval 2000
+  bun src/cli/agentctl.ts watch pando-docs-ux --interval 2000
 ```
 
 `list --watch` re-renders the job table on each poll. It has no natural
@@ -95,7 +95,7 @@ terminal condition, so it loops until Ctrl-C unless you bound it with
 
 ```bash
 PANDO_API_URL=http://127.0.0.1:3210 \
-  pnpm tsx src/cli/agentctl.ts list --status IMPL --watch \
+  bun src/cli/agentctl.ts list --status IMPL --watch \
   --interval 2000 --max-polls 30
 ```
 
@@ -113,8 +113,8 @@ availability, auth signal presence, mount/path readiness, and the global
 concurrency cap, then writes structured JSON evidence.
 
 ```bash
-pnpm tsx src/cli/agentctl.ts smoke readiness --target host
-pnpm tsx src/cli/agentctl.ts smoke readiness --target docker
+bun src/cli/agentctl.ts smoke readiness --target host
+bun src/cli/agentctl.ts smoke readiness --target docker
 ```
 
 - `--target host|docker`: which mount contract to check, default `host`.

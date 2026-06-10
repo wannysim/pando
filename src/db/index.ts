@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
+import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import Database from "better-sqlite3";
 import { STAGE_ORDER } from "../core/state-machine";
 import type { JobStatus, RepoProfile, StageName, WorkItem } from "../core/types";
 
@@ -139,17 +139,18 @@ export interface JobStore {
 const ACTIVE_STATUSES = STAGE_ORDER;
 const TERMINAL_STATUSES: readonly JobStatus[] = ["DONE", "FAILED", "ESCALATED", "CANCELED"];
 const schemaPath = join(dirname(fileURLToPath(import.meta.url)), "schema.sql");
+const require = createRequire(import.meta.url);
 
 export function createSqliteJobStore(opts: SqliteJobStoreOptions): JobStore {
   return new SqliteJobStore(opts.path, opts.now ?? defaultNow);
 }
 
 class SqliteJobStore implements JobStore {
-  private readonly db: Database.Database;
+  private readonly db: SqlDatabase;
   private readonly now: () => string;
 
   constructor(path: string, now: () => string) {
-    this.db = new Database(path);
+    this.db = createDatabase(path);
     this.now = now;
     this.db.exec(readFileSync(schemaPath, "utf8"));
     this.ensureColumn("jobs", "cancel_requested_at", "TEXT");
@@ -555,7 +556,7 @@ class SqliteJobStore implements JobStore {
 
   private selectOne(sql: string, values: readonly SqlValue[]): Row | undefined {
     const row = this.db.prepare(sql).get(...values);
-    return row === undefined ? undefined : asRow(row);
+    return row === undefined || row === null ? undefined : asRow(row);
   }
 
   private selectAll(sql: string, values: readonly SqlValue[]): Row[] {
@@ -574,6 +575,34 @@ class SqliteJobStore implements JobStore {
 
 type SqlValue = string | number | null;
 type Row = Record<string, unknown>;
+
+interface SqlStatement {
+  run(...values: SqlValue[]): unknown;
+  get(...values: SqlValue[]): unknown;
+  all(...values: SqlValue[]): unknown[];
+}
+
+interface SqlDatabase {
+  prepare(sql: string): SqlStatement;
+  exec(sql: string): unknown;
+  close(): unknown;
+}
+
+function createDatabase(path: string): SqlDatabase {
+  if (typeof process.versions.bun === "string") {
+    const sqlite = require("bun:sqlite") as {
+      Database: new (path: string) => SqlDatabase;
+    };
+    return new sqlite.Database(path);
+  }
+
+  const module = require("better-sqlite3") as
+    | { default?: new (path: string) => SqlDatabase }
+    | (new (path: string) => SqlDatabase);
+  const Database =
+    typeof module === "function" ? module : (module.default as new (path: string) => SqlDatabase);
+  return new Database(path);
+}
 
 function placeholders(values: readonly unknown[]): string {
   return values.map(() => "?").join(", ");

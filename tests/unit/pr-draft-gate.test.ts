@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "bun:test";
 import { createPrDraftGate, type TextFileReader } from "../../src/pipeline/gates/pr-draft";
 import type { GateContext } from "../../src/core/types";
 

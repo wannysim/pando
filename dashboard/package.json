@@ -6,12 +6,12 @@
   "scripts": {
     "dev": "vite --host 127.0.0.1",
     "build": "tsc --noEmit && vite build",
-    "test": "vitest run",
-    "test:ci": "vitest run",
-    "test:watch": "vitest",
+    "test": "bun test src --preload ./src/test/setup.ts --timeout 30000",
+    "test:ci": "bun test src --preload ./src/test/setup.ts --timeout 30000",
+    "test:watch": "bun test src --preload ./src/test/setup.ts --timeout 30000 --watch",
     "smoke": "playwright test",
     "types": "tsc --noEmit",
-    "verify": "pnpm test:ci && pnpm types && pnpm build"
+    "verify": "bun run test:ci && bun run types && bun run build"
   },
   "dependencies": {
     "lucide-react": "^0.555.0",
@@ -26,7 +26,6 @@
     "@types/react": "^19.2.7",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^5.1.1",
-    "jsdom": "^27.3.0",
     "vite": "^7.2.6"
   }
 }

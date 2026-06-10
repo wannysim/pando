@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "bun:test";
 import { pandoctlUsage, routePandoctl, runPandoctl } from "../../src/cli/pandoctl";
 
 describe("routePandoctl", () => {

@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "bun:test";
 
 const root = resolve(new URL(".", import.meta.url).pathname, "../..");
 const packageDir = resolve(root, "packages/pandoctl");
@@ -50,9 +50,9 @@ describe("pandoctl npm package contract", () => {
     const workflow = readFileSync(releaseWorkflowPath, "utf8");
 
     expect(workflow).toContain("workflow_dispatch:");
-    expect(workflow).toContain("pnpm verify");
-    expect(workflow).toContain("pnpm build:pandoctl");
-    expect(workflow).toContain("pnpm smoke:pandoctl-pack");
+    expect(workflow).toContain("bun run verify");
+    expect(workflow).toContain("bun run build:pandoctl");
+    expect(workflow).toContain("bun run smoke:pandoctl-pack");
     expect(workflow).toContain("npm publish --provenance --access public");
     expect(workflow).toContain("NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}");
   });

@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "bun:test";
 import type { SelfBenchmarkSummary } from "../../src/daemon/self-benchmark";
 import {
   BENCHMARK_COMMENT_MARKER,
@@ -15,9 +15,38 @@ describe("self-benchmark PR comments", () => {
     expect(body).toContain(BENCHMARK_COMMENT_MARKER);
     expect(body).toContain("## Pando self-benchmark");
     expect(body).toContain("| Total duration | 13314 ms |");
-    expect(body).toContain("| Package manager | pnpm@11.5.2 |");
+    expect(body).toContain("| Package manager | bun@1.3.5 |");
     expect(body).toContain("| TEST | 11807 | 11807 | 11807 | 11807 | 1 | 0 |");
     expect(body).not.toContain("/tmp/");
+  });
+
+  it("renders a baseline comparison table with percentage improvement", () => {
+    const baseline = summary({
+      packageManager: "pnpm@11.5.2",
+      runId: "ci-baseline",
+      stageTotalMs: 16_000,
+      totalMs: 20_000,
+    });
+    const body = renderSelfBenchmarkPrComment(summary(), { baseline });
+
+    expect(body).toContain("### Baseline comparison");
+    expect(body).toContain("| Baseline run | ci-baseline |");
+    expect(body).toContain("| Baseline package manager | pnpm@11.5.2 |");
+    expect(body).toContain("| Total | 20000 | 13314 | -6686 | +33.43% faster |");
+    expect(body).toContain("| TEST | 16000 | 11807 | -4193 | +26.21% faster |");
+  });
+
+  it("marks slower benchmark comparisons as negative improvement", () => {
+    const baseline = summary({
+      packageManager: "pnpm@11.5.2",
+      runId: "ci-baseline",
+      stageTotalMs: 8_000,
+      totalMs: 10_000,
+    });
+    const body = renderSelfBenchmarkPrComment(summary(), { baseline });
+
+    expect(body).toContain("| Total | 10000 | 13314 | 3314 | -33.14% slower |");
+    expect(body).toContain("| TEST | 8000 | 11807 | 3807 | -47.59% slower |");
   });
 
   it("updates an existing benchmark comment when the marker is present", async () => {
@@ -71,6 +100,42 @@ describe("self-benchmark PR comments", () => {
       "X-GitHub-Api-Version": "2022-11-28",
     });
   });
+
+  it("retries transient GitHub comment API failures before succeeding", async () => {
+    const statuses = [500, 502, 200];
+    const client = createGitHubIssueCommentClient({
+      apiUrl: "https://api.github.test",
+      fetchImpl: async () => {
+        const status = statuses.shift() ?? 200;
+        return status === 200 ? jsonResponse([{ body: "ok", id: 12 }]) : textResponse(status);
+      },
+      retryDelaysMs: [0, 0],
+      token: "github-token",
+    });
+
+    await expect(
+      client.listIssueComments({ issueNumber: 7, owner: "wannysim", repo: "pando" }),
+    ).resolves.toEqual([{ body: "ok", id: 12 }]);
+    expect(statuses).toEqual([]);
+  });
+
+  it("does not retry non-transient GitHub comment API failures", async () => {
+    let requests = 0;
+    const client = createGitHubIssueCommentClient({
+      apiUrl: "https://api.github.test",
+      fetchImpl: async () => {
+        requests += 1;
+        return textResponse(401);
+      },
+      retryDelaysMs: [0, 0],
+      token: "github-token",
+    });
+
+    await expect(
+      client.listIssueComments({ issueNumber: 7, owner: "wannysim", repo: "pando" }),
+    ).rejects.toThrow(/failed: 401/);
+    expect(requests).toBe(1);
+  });
 });
 
 function fakeClient(initialComments: Array<{ id: number; body?: string }>) {
@@ -99,7 +164,20 @@ function jsonResponse(value: unknown): Response {
   });
 }
 
-function summary(): SelfBenchmarkSummary {
+function textResponse(status: number): Response {
+  return new Response("try again", { status });
+}
+
+function summary(
+  overrides: {
+    packageManager?: string;
+    runId?: string;
+    stageTotalMs?: number;
+    totalMs?: number;
+  } = {},
+): SelfBenchmarkSummary {
+  const stageTotalMs = overrides.stageTotalMs ?? 11_807;
+
   return {
     artifacts: {
       evidencePath: "/tmp/pando-self-benchmark/full-daemon-smoke.json",
@@ -118,8 +196,8 @@ function summary(): SelfBenchmarkSummary {
     jobs: [],
     mode: "contract",
     ok: true,
-    packageManager: "pnpm@11.5.2",
-    runId: "local-check",
+    packageManager: overrides.packageManager ?? "bun@1.3.5",
+    runId: overrides.runId ?? "local-check",
     runner: {
       gateMode: "shell",
       globalConcurrency: 2,
@@ -137,11 +215,11 @@ function summary(): SelfBenchmarkSummary {
         completed: 1,
         count: 1,
         failed: 0,
-        maxMs: 11807,
-        meanMs: 11807,
-        minMs: 11807,
+        maxMs: stageTotalMs,
+        meanMs: stageTotalMs,
+        minMs: stageTotalMs,
         stage: "TEST",
-        totalMs: 11807,
+        totalMs: stageTotalMs,
       },
     ],
     totals: {
@@ -153,7 +231,7 @@ function summary(): SelfBenchmarkSummary {
       running: 0,
       success: 1,
       timeout: 0,
-      totalMs: 13314,
+      totalMs: overrides.totalMs ?? 13_314,
     },
   };
 }

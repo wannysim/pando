@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "bun:test";
 import { planRunGc, type RunRecord } from "../../src/core/run-gc";
 
 function record(overrides: Partial<RunRecord> = {}): RunRecord {
