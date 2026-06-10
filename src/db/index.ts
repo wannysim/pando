@@ -155,6 +155,8 @@ class SqliteJobStore implements JobStore {
     this.db.exec(readFileSync(schemaPath, "utf8"));
     this.ensureColumn("jobs", "cancel_requested_at", "TEXT");
     this.ensureColumn("jobs", "deferred_until", "TEXT");
+    this.ensureColumn("jobs", "base_branch", "TEXT");
+    this.ensureColumn("jobs", "base_sha", "TEXT");
   }
 
   enqueueJob(input: EnqueueJobInput): JobRecord {
@@ -162,10 +164,10 @@ class SqliteJobStore implements JobStore {
     this.db
       .prepare(`
         INSERT INTO jobs (
-          id, repo, source, title, branch, payload_json, depends_on_json,
+          id, repo, source, title, branch, base_branch, base_sha, payload_json, depends_on_json,
           status, attempts_left, created_at, updated_at
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, 'QUEUED', ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'QUEUED', ?, ?, ?)
       `)
       .run(
         input.item.id,
@@ -173,6 +175,8 @@ class SqliteJobStore implements JobStore {
         input.item.source,
         input.item.title,
         input.item.branch ?? null,
+        input.item.baseBranch ?? null,
+        input.item.baseSha ?? null,
         JSON.stringify(input.item.payload),
         JSON.stringify(input.item.dependsOn ?? []),
         input.retryBudget,
@@ -617,6 +621,8 @@ function deserializeJob(row: Row): JobRecord {
     finishedAt: optionalText(row, "finished_at"),
     deferredUntil: optionalText(row, "deferred_until"),
     item: {
+      baseBranch: optionalText(row, "base_branch"),
+      baseSha: optionalText(row, "base_sha"),
       branch: optionalText(row, "branch"),
       dependsOn: dependsOn.length > 0 ? dependsOn : undefined,
       id: text(row, "id"),

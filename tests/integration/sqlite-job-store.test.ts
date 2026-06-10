@@ -525,6 +525,8 @@ describe("SqliteJobStore", () => {
       now: fixedClock(["2026-06-06T00:00:00.000Z"]),
     });
     const item: WorkItem = {
+      baseBranch: "release/1.0",
+      baseSha: "abc123",
       branch: "feat/personal",
       dependsOn: ["DEMO-1001"],
       id: "personal-site-20260606-a",

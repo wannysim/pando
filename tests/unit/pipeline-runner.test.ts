@@ -350,6 +350,47 @@ describe("runPipeline", () => {
     );
   });
 
+  it("escalates non-retryable gate failures without burning retry budget", async () => {
+    const result = await runPipeline({
+      engines: {
+        "claude-code": engine("claude-code", []),
+        codex: engine("codex", []),
+      },
+      gates: {
+        PR: [
+          gate("draft-pr-create", () => ({
+            evidence: '{"baseBranch":"develop"}',
+            failureKind: "non-retryable",
+            pass: false,
+            reason: "base branch drifted before PR creation",
+          })),
+        ],
+      },
+      initialState: { attemptsLeft: 3, status: "PR" },
+      item: workItem(),
+      profile: repoProfile(),
+      stageConfig: stageConfig(),
+      worktree: "/worktree",
+    });
+
+    expect(result.final).toEqual({ attemptsLeft: 3, status: "ESCALATED" });
+    expect(result.events).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          evidence: '{"baseBranch":"develop"}',
+          gateName: "draft-pr-create",
+          payload: expect.objectContaining({
+            failureKind: "non-retryable",
+            reason: "base branch drifted before PR creation",
+          }),
+          reason: "base branch drifted before PR creation",
+          stage: "PR",
+          type: "gate-fail",
+        }),
+      ]),
+    );
+  });
+
   it("persists deterministic evidence from passing gates", async () => {
     const result = await runPipeline({
       engines: {
