@@ -111,6 +111,27 @@ describe("runHostFullDaemonSmoke", () => {
     expect(evidence.jobs.map((job) => job.finalStatus)).toEqual(["DONE", "DONE"]);
   });
 
+  it("supports a one-job benchmark smoke without requiring the two-job contract", async () => {
+    const root = mkdtempSync(join(tmpdir(), "pando-full-daemon-smoke-benchmark-"));
+    const worktreeRoot = join(root, "worktrees");
+
+    const evidence = await runHostFullDaemonSmoke({
+      dbPath: join(root, "pando.sqlite"),
+      ensureWorktree: fakeEnsureWorktree(worktreeRoot),
+      evidencePath: join(root, "evidence.json"),
+      jobCount: 1,
+      now: () => "2026-06-07T00:00:00.000Z",
+      repoRoot: process.cwd(),
+      runId: "unit-benchmark",
+      worktreeRoot,
+    });
+
+    expect(evidence.checks.jobsClaimed).toEqual({ actual: 1, expected: 1, pass: true });
+    expect(evidence.checks.twoJobsClaimed).toBeUndefined();
+    expect(evidence.jobs.map((job) => job.id)).toEqual(["PANDO-FULL-SMOKE-1"]);
+    expect(evidence.jobs.map((job) => job.finalStatus)).toEqual(["DONE"]);
+  });
+
   it("runs a configurable three-job soak and writes terminal failure analytics", async () => {
     const root = mkdtempSync(join(tmpdir(), "pando-full-daemon-soak-"));
     const failureSummaryPath = join(root, "failure-summary.json");
