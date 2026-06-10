@@ -108,7 +108,7 @@ export type PipelineRunEvent =
 
 interface StageFailureTelemetry {
   evidence?: string;
-  failureKind: "engine-fail" | "gate-fail" | "blocking-questions";
+  failureKind: "engine-fail" | "gate-fail" | "blocking-questions" | "non-retryable";
   gateName?: string;
   reason: string;
   providerKind?: ProviderFailureKind;
@@ -121,7 +121,7 @@ type StageRunResult =
 
 type GateRunResult =
   | { outcome: "pass" }
-  | { outcome: "fail" | "blocking"; failure: StageFailureTelemetry };
+  | { outcome: "fail" | "blocking" | "escalate"; failure: StageFailureTelemetry };
 
 type MaybePromise<T> = T | Promise<T>;
 type EmitPipelineEvent = (event: PipelineRunEvent) => Promise<void>;
@@ -313,6 +313,7 @@ async function runGates(
       const event = failedGateEvent(stage, gate.name, result);
       await emit(event);
       const failure = gateFailureTelemetry(gate.name, result);
+      if (result.failureKind === "non-retryable") return { failure, outcome: "escalate" };
       return result.failureKind === "blocking-questions" && canEscalateBlockingQuestions(stage)
         ? { failure, outcome: "blocking" }
         : { failure, outcome: "fail" };
@@ -381,7 +382,7 @@ function workerStagePayload(
 function gateFailureTelemetry(gateName: string, result: GateResult): StageFailureTelemetry {
   return {
     evidence: result.evidence,
-    failureKind: result.failureKind === "blocking-questions" ? "blocking-questions" : "gate-fail",
+    failureKind: result.failureKind ?? "gate-fail",
     gateName,
     reason: result.reason ?? `${gateName} failed`,
   };
