@@ -91,7 +91,8 @@ describe("personal-site brief SPEC path", () => {
     expect(result.final.status).toBe("DONE");
     expect(profile.intake.sources).toContain("brief");
     expect(profile.context.providers).toEqual([]);
-    expect(engineCalls[0]?.allowedTools).toEqual(["Read", "Glob", "Grep", "Write"]);
+    expect(engineCalls[0]?.allowedTools).toBeUndefined();
+    expect(engineCalls[0]?.model).toBe("gpt-5.5");
   });
 });
 

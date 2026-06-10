@@ -8,13 +8,14 @@ import { pathToFileURL } from "node:url";
 // owns the process entry, so they skip their own auto-run.
 (globalThis as { __PANDOCTL_EMBEDDED__?: boolean }).__PANDOCTL_EMBEDDED__ = true;
 
-export type PandoctlRoute = "start" | "ops" | "help";
+export type PandoctlRoute = "start" | "gc" | "ops" | "help";
 
 const HELP_TOKENS: readonly string[] = ["help", "--help", "-h"];
 
 export interface PandoctlHandlers {
   runStart(argv: readonly string[]): Promise<number>;
   runOps(argv: readonly string[]): Promise<number>;
+  runGc(argv: readonly string[]): Promise<number>;
   out(line: string): void;
   err(line: string): void;
 }
@@ -22,6 +23,7 @@ export interface PandoctlHandlers {
 export function routePandoctl(argv: readonly string[]): PandoctlRoute {
   const [command] = argv;
   if (command === "start") return "start";
+  if (command === "gc") return "gc";
   if (command === undefined || HELP_TOKENS.includes(command)) return "help";
   return "ops";
 }
@@ -32,6 +34,7 @@ export async function runPandoctl(
 ): Promise<number> {
   const route = routePandoctl(argv);
   if (route === "start") return handlers.runStart(argv);
+  if (route === "gc") return handlers.runGc(argv);
   if (route === "ops") return handlers.runOps(argv);
 
   const emitToStderr = argv.length === 0;
@@ -55,6 +58,7 @@ export function pandoctlUsage(): string[] {
     "  pandoctl watch <job-id> [--interval <ms>] [--max-polls <n>]",
     "  pandoctl daemon status",
     "  pandoctl smoke readiness [--target host|docker] [--evidence <path>]",
+    "  pandoctl gc [--force] [--json]",
     "  pandoctl help",
     "",
     "start boots a local daemon/dashboard/API; the other commands operate the same job store.",
@@ -65,9 +69,11 @@ export function pandoctlUsage(): string[] {
 async function main(argv: readonly string[] = process.argv.slice(2)): Promise<number> {
   const { runPandoStartCli } = await import("./pando");
   const { main: runAgentctl } = await import("./agentctl");
+  const { runPandoGcCli } = await import("./pando-gc");
   return runPandoctl(argv, {
     runStart: (start) => runPandoStartCli(start),
     runOps: (ops) => runAgentctl([...ops]),
+    runGc: (gc) => runPandoGcCli(gc),
     out: (line) => console.log(line),
     err: (line) => console.error(line),
   });

@@ -8,7 +8,7 @@
 
 ## 결정
 
-- 워커 = **Codex CLI(`codex exec --json`)와 Claude Code(`claude -p`)**, `WorkerEngine` 인터페이스로 추상화
+- 워커 = **Codex CLI(`codex exec --ephemeral --json`)와 Claude Code(`claude -p`)**, `WorkerEngine` 인터페이스로 추상화
 - 단계별 엔진/모델 매핑은 `config/stages.yaml` — SPEC/PLAN은 Claude Code(MCP + `.ai-skills` 스킬 의존), TEST/IMPL은 Codex
 - REVIEW는 구현 단계와 **다른 모델** 강제 (reward hacking 방어)
 

@@ -83,7 +83,7 @@ describe("runHostFullDaemonSmoke", () => {
     expect(provisioned).toHaveLength(2);
     expect(provisioned.map((opts) => opts.baseBranch)).toEqual(["develop", "develop"]);
     expect(provisioned.map((opts) => opts.setupCommand)).toEqual(["pnpm install", "pnpm install"]);
-    expect(new Set(workerCalls.map((call) => call.command))).toEqual(new Set(["claude"]));
+    expect(new Set(workerCalls.map((call) => call.command))).toEqual(new Set(["codex"]));
     expect(gateCalls.map((call) => call.command)).toEqual(
       expect.arrayContaining(["pnpm test", "pnpm lint", "pnpm exec tsc --noEmit"]),
     );
@@ -201,7 +201,7 @@ describe("runHostFullDaemonSmoke", () => {
     });
 
     expect(evidence.mode).toBe("live");
-    expect(new Set(commands)).toEqual(new Set(["claude"]));
+    expect(new Set(commands)).toEqual(new Set(["codex"]));
     expect(evidence.checks.gateEvidence.pass).toBe(true);
   });
 
@@ -315,12 +315,12 @@ repos:
       join(configDir, "stages.yaml"),
       `
 stages:
-  spec: { engine: claude-code, model: sonnet }
-  plan: { engine: claude-code, model: opus }
-  test: { engine: codex, model: gpt-5-codex }
-  impl: { engine: codex, model: gpt-5-codex }
-  review: { engine: claude-code, model: opus }
-  pr: { engine: claude-code, model: sonnet }
+  spec: { engine: codex, model: gpt-5.5 }
+  plan: { engine: codex, model: gpt-5.5 }
+  test: { engine: codex, model: gpt-5.5 }
+  impl: { engine: codex, model: gpt-5.5 }
+  review: { engine: codex, model: gpt-5.5 }
+  pr: { engine: codex, model: gpt-5.5 }
 defaults:
   retry_budget: 1
   timeout_minutes: 1
@@ -396,12 +396,12 @@ repos:
     join(configDir, "stages.yaml"),
     `
 stages:
-  spec: { engine: claude-code, model: sonnet }
-  plan: { engine: claude-code, model: opus }
-  test: { engine: codex, model: gpt-5-codex }
-  impl: { engine: codex, model: gpt-5-codex }
-  review: { engine: claude-code, model: opus }
-  pr: { engine: claude-code, model: sonnet }
+  spec: { engine: codex, model: gpt-5.5 }
+  plan: { engine: codex, model: gpt-5.5 }
+  test: { engine: codex, model: gpt-5.5 }
+  impl: { engine: codex, model: gpt-5.5 }
+  review: { engine: codex, model: gpt-5.5 }
+  pr: { engine: codex, model: gpt-5.5 }
 defaults:
   retry_budget: 1
   timeout_minutes: 1

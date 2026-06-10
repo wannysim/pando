@@ -86,6 +86,14 @@ export async function ensureWorktree(opts: EnsureWorktreeOptions): Promise<Ensur
   );
 }
 
+export interface PruneWorktreesOptions {
+  repoPath: string;
+}
+
+export async function pruneWorktrees(opts: PruneWorktreesOptions): Promise<void> {
+  await git(opts.repoPath, ["worktree", "prune"]);
+}
+
 export async function removeWorktree(opts: RemoveWorktreeOptions): Promise<void> {
   const args = ["worktree", "remove"];
   if (opts.force ?? true) args.push("--force");

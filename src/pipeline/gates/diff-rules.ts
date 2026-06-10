@@ -27,6 +27,7 @@ export type CollectChangesPort = (
 
 export interface WorktreeDiffRulesGateOptions {
   collectChanges: CollectChangesPort;
+  forbidTestEditInImpl?: boolean;
   protectedPaths?: readonly string[];
   baseRefFor?: (ctx: GateContext) => string;
 }
@@ -84,7 +85,7 @@ export function createWorktreeDiffRulesGate(opts: WorktreeDiffRulesGateOptions):
       const changes = await opts.collectChanges(ctx.worktree, baseRefFor(ctx));
       return evaluateDiffRules({
         changes,
-        forbidTestEditInImpl: ctx.profile.guards.forbidTestEditInImpl,
+        forbidTestEditInImpl: opts.forbidTestEditInImpl ?? ctx.profile.guards.forbidTestEditInImpl,
         protectedPaths: opts.protectedPaths ?? [],
       });
     },

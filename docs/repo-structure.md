@@ -78,7 +78,7 @@
 │   │
 │   ├── engines/
 │   │   ├── claude-code.ts    # claude -p, claude.ai connector 상속(--mcp-config 금지)
-│   │   └── codex.ts          # codex exec --json
+│   │   └── codex.ts          # codex exec --ephemeral --json
 │   │
 │   ├── worktree/
 │   │   └── manager.ts        # 데몬 모드 생성(origin ref 직접 분기, v2 §3.2),
@@ -238,7 +238,7 @@ agentctl daemon status                             # API client 기반 daemon he
 
 - **단일 Node 프로세스** 데몬. 동시성은 인프로세스 세마포어(global/per-repo/per-provider 3계층)
 - scheduler는 실행 슬롯만 관리한다. runnable job claim과 상태 persistence의 source of truth는 계속 SQLite다.
-- 워커는 `child_process.spawn`으로 `claude -p` / `codex exec` 실행 — 동시 N개는 자식 프로세스라 이벤트 루프 부담 없음
+- 워커는 `child_process.spawn`으로 `claude -p` / headless-safe `codex exec` 실행 — 동시 N개는 자식 프로세스라 이벤트 루프 부담 없음
 - 상태는 전부 SQLite (WAL 모드). 데몬이 죽어도 jobs 테이블에서 재개 — 단계 시작 전 상태만 기록하면 단계 단위 재실행으로 충분 (단계는 멱등: worktree가 이미 있으면 재사용)
 - W4 기준 `runDaemonOnce`는 scheduler cap 안에서 여러 job을 시작할 수 있다. `claimNextRunnable({ excludeJobIds })`는 같은 daemon tick에서 이미 in-flight인 job을 다시 잡지 않기 위한 최소 필터다. W5 PR 2부터 running cancel request가 저장된 active job은 runnable claim에서 제외하고, daemon tick은 `RunningJobController` port로 stop request를 보낸 뒤 `CANCELED` terminal 상태로 완료한다.
 - worktree setup/runner에는 job별 port/cache env가 들어간다: `PORT`, `PANDO_ASSIGNED_PORT`, `PANDO_CACHE_DIR`, `PANDO_JOB_ID`, `XDG_CACHE_HOME`.
@@ -264,7 +264,7 @@ PR #25 기준 로컬 Docker Desktop에서 image build, compose health, `/health`
 
 1. `01-worktree.sh` — web 레포에서 origin/develop 분기 worktree 생성+setup (데몬 방식 검증)
 2. `02-plan-headless.sh` — **최대 리스크 검증**: `claude -p "/implement-jira AP-X --batch"`가 claude.ai managed connector를 상속해 비대화형에서 PLAN.md를 만들어내는가. Atlassian MCP 인증이 헤드리스에서 살아있는가
-3. `03-impl-codex.sh` — PLAN.md 주고 `codex exec --json --sandbox workspace-write`로 구현 1회
+3. `03-impl-codex.sh` — PLAN.md 주고 `codex exec --ephemeral --cd <worktree> --config 'approval_policy="never"' --json --sandbox workspace-write`로 구현 1회
 4. `04-gates.sh` — lockfile 감지 기반 test/lint/typecheck + 테스트 체크섬 비교
 
 4개가 전부 통과하면 W2(데몬)는 이 스크립트들의 TS 이식 + 상태머신 결합이라 리스크가 거의 없다.

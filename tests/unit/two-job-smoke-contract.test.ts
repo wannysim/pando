@@ -47,13 +47,13 @@ describe("two-job smoke contract", () => {
       expect.arrayContaining([
         "PANDO_LIVE_SMOKE=1",
         "PANDO_GLOBAL_CONCURRENCY=2 or 3",
-        "Claude/Codex authentication or API key mode",
+        "Codex/OpenAI authentication or API key mode",
       ]),
     );
     expect(contract.live.workerProbe).toEqual({
       deterministicEvidence: ["exitCode", "timedOut", "signal"],
       gateName: "worker-exit-code",
-      requiredJobIds: ["SMOKE-LIVE-CLAUDE", "SMOKE-LIVE-CODEX"],
+      requiredJobIds: ["SMOKE-LIVE-CODEX-1", "SMOKE-LIVE-CODEX-2"],
     });
     expect(contract.checks.map((check) => check.id)).toEqual(
       expect.arrayContaining([
@@ -90,7 +90,7 @@ describe("two-job smoke contract", () => {
         "git-credentials",
         "mount-contract",
       ],
-      workerCommands: ["claude", "codex"],
+      workerCommands: ["codex"],
     });
   });
 
@@ -146,7 +146,7 @@ describe("two-job smoke contract", () => {
     mkdirSync(reposDir);
     mkdirSync(worktreesDir);
     mkdirSync(skillsDir);
-    for (const command of ["claude", "codex"]) {
+    for (const command of ["codex"]) {
       const commandPath = join(fakeBin, command);
       writeFileSync(commandPath, "#!/bin/sh\nprintf '%s fake\\n' \"$0\"\n");
       chmodSync(commandPath, 0o755);
@@ -169,7 +169,6 @@ describe("two-job smoke contract", () => {
       {
         env: {
           ...process.env,
-          ANTHROPIC_API_KEY: "redacted",
           HOME: homeDir,
           OPENAI_API_KEY: "redacted",
           PANDO_CONFIG_DIR: configDir,
@@ -223,7 +222,7 @@ describe("two-job smoke contract", () => {
     expect(evidence.checks.workerCli.pass).toBe(true);
     expect(evidence.checks.auth.pass).toBe(true);
     expect(evidence.checks.auth.signals.claude).toMatchObject({
-      apiKeyPresent: true,
+      apiKeyPresent: false,
       configDirPresent: false,
     });
     expect(evidence.checks.auth.signals.codex).toMatchObject({
@@ -266,7 +265,7 @@ describe("two-job smoke contract", () => {
     ]) {
       mkdirSync(made);
     }
-    for (const command of ["claude", "codex"]) {
+    for (const command of ["codex"]) {
       const commandPath = join(fakeBin, command);
       writeFileSync(commandPath, "#!/bin/sh\nexit 0\n");
       chmodSync(commandPath, 0o755);
@@ -288,7 +287,6 @@ describe("two-job smoke contract", () => {
         {
           env: {
             ...process.env,
-            CLAUDE_CONFIG_DIR: claudeDir,
             CODEX_HOME: codexDir,
             HOME: homeDir,
             PANDO_CONFIG_DIR: configDir,
@@ -332,7 +330,7 @@ describe("two-job smoke contract", () => {
     expect(evidence.checks.auth.pass).toBe(false);
     expect(evidence.checks.auth.signals.claude).toEqual({
       apiKeyPresent: false,
-      configDirPresent: true,
+      configDirPresent: false,
       configFilePresent: false,
       configFileNonEmpty: false,
     });
@@ -342,14 +340,12 @@ describe("two-job smoke contract", () => {
       configDirWritable: false,
     });
     expect(evidence.blockers).toEqual(
-      expect.arrayContaining([
-        "Claude authentication is not configured",
-        "Codex authentication is not configured",
-      ]),
+      expect.arrayContaining(["Codex authentication is not configured"]),
     );
+    expect(evidence.blockers).not.toContain("Claude authentication is not configured");
   });
 
-  it("does not treat an empty Claude config file as auth-ready", () => {
+  it("records an empty Claude config file without making it a Codex readiness blocker", () => {
     const dir = mkdtempSync(join(tmpdir(), "pando-docker-empty-claude-config-"));
     const evidencePath = join(dir, "readiness.json");
     const fakeBin = join(dir, "bin");
@@ -427,14 +423,14 @@ describe("two-job smoke contract", () => {
       };
     };
 
-    expect(evidence.checks.auth.pass).toBe(false);
+    expect(evidence.checks.auth.pass).toBe(true);
     expect(evidence.checks.auth.signals.claude).toEqual({
       apiKeyPresent: false,
       configDirPresent: true,
       configFileNonEmpty: false,
       configFilePresent: true,
     });
-    expect(evidence.blockers).toContain("Claude authentication is not configured");
+    expect(evidence.blockers).not.toContain("Claude authentication is not configured");
   });
 
   it("records a git-credentials readiness signal without making it a hard live blocker", () => {
@@ -531,11 +527,9 @@ describe("two-job smoke contract", () => {
     expect(evidence.fallback.reason).toBe("live smoke prerequisites missing");
     expect(evidence.readiness.blockers).toContain("PANDO_GLOBAL_CONCURRENCY must be 2 or 3");
     expect(evidence.readiness.blockers).toEqual(
-      expect.arrayContaining([
-        "Claude authentication is not configured",
-        "Codex authentication is not configured",
-      ]),
+      expect.arrayContaining(["Codex authentication is not configured"]),
     );
+    expect(evidence.readiness.blockers).not.toContain("Claude authentication is not configured");
   });
 
   it("runs two live worker probes when readiness passes", () => {
@@ -556,9 +550,21 @@ describe("two-job smoke contract", () => {
     mkdirSync(reposDir);
     mkdirSync(skillsDir);
     mkdirSync(worktreesDir);
-    for (const command of ["claude", "codex"]) {
+    for (const command of ["codex"]) {
       const commandPath = join(fakeBin, command);
-      writeFileSync(commandPath, "#!/bin/sh\nprintf '%s ok\\n' \"$0\"\n");
+      writeFileSync(
+        commandPath,
+        [
+          "#!/bin/sh",
+          'args=" $* "',
+          'case "$args" in *" --ephemeral "*) ;; *) echo "missing --ephemeral" >&2; exit 20;; esac',
+          'case "$args" in *" --cd "*) ;; *) echo "missing --cd" >&2; exit 21;; esac',
+          'case "$args" in *" approval_policy=\\"never\\" "*) ;; *) echo "missing approval_policy never" >&2; exit 22;; esac',
+          'case "$args" in *" --json "*) ;; *) echo "missing --json" >&2; exit 23;; esac',
+          'case "$args" in *" --sandbox workspace-write "*) ;; *) echo "missing workspace sandbox" >&2; exit 24;; esac',
+          "printf '%s ok\\n' \"$0\"",
+        ].join("\n"),
+      );
       chmodSync(commandPath, 0o755);
     }
 
@@ -576,7 +582,6 @@ describe("two-job smoke contract", () => {
       {
         env: {
           ...process.env,
-          ANTHROPIC_API_KEY: "redacted",
           HOME: homeDir,
           OPENAI_API_KEY: "redacted",
           PANDO_CONFIG_DIR: configDir,
@@ -614,9 +619,13 @@ describe("two-job smoke contract", () => {
 
     expect(evidence.mode).toBe("live");
     expect(evidence.readiness.blockers).toEqual([]);
-    expect(evidence.jobs.map((job) => job.id)).toEqual(["SMOKE-LIVE-CLAUDE", "SMOKE-LIVE-CODEX"]);
+    expect(evidence.jobs.map((job) => job.id)).toEqual([
+      "SMOKE-LIVE-CODEX-1",
+      "SMOKE-LIVE-CODEX-2",
+    ]);
     expect(new Set(evidence.jobs.map((job) => job.worktreePath)).size).toBe(2);
     expect(evidence.jobs.map((job) => job.worker.exitCode)).toEqual([0, 0]);
+    expect(evidence.jobs.map((job) => job.worker.engine)).toEqual(["codex", "codex"]);
     expect(evidence.jobs.map((job) => job.gateEvidence[0]?.evidence)).toEqual([
       '{"exitCode":0,"timedOut":false}',
       '{"exitCode":0,"timedOut":false}',
@@ -630,8 +639,8 @@ describe("two-job smoke contract", () => {
     expect(JSON.stringify(evidence)).not.toContain("redacted");
   });
 
-  it("classifies a Docker Claude auth live failure without recording worker output", () => {
-    const dir = mkdtempSync(join(tmpdir(), "pando-docker-claude-live-blocker-"));
+  it("classifies a Docker Codex live failure without recording worker output", () => {
+    const dir = mkdtempSync(join(tmpdir(), "pando-docker-codex-live-blocker-"));
     const evidencePath = join(dir, "live.json");
     const fakeBin = join(dir, "bin");
     const claudeDir = join(dir, "claude");
@@ -657,11 +666,9 @@ describe("two-job smoke contract", () => {
       mkdirSync(made);
     }
     writeFileSync(
-      join(fakeBin, "claude"),
-      "#!/bin/sh\nprintf 'Not logged in secret-like text\\n'\nexit 1\n",
+      join(fakeBin, "codex"),
+      "#!/bin/sh\ncase \"$PWD\" in *codex-1) printf 'Codex auth secret-like text\\n'; exit 1;; *) printf 'codex ok\\n'; exit 0;; esac\n",
     );
-    writeFileSync(join(fakeBin, "codex"), "#!/bin/sh\nprintf 'codex ok\\n'\n");
-    chmodSync(join(fakeBin, "claude"), 0o755);
     chmodSync(join(fakeBin, "codex"), 0o755);
     mkdirSync(join(homeDir, ".claude"));
     writeFileSync(join(homeDir, ".claude.json"), "{}");
@@ -696,7 +703,7 @@ describe("two-job smoke contract", () => {
 
     const evidence = JSON.parse(readFileSync(evidencePath, "utf8")) as {
       blockers: Array<{
-        evidence: { authMode: string; exitCode: number; timedOut: boolean };
+        evidence: { exitCode: number; timedOut: boolean };
         jobId: string;
         kind: string;
         nextCommands: string[];
@@ -709,21 +716,21 @@ describe("two-job smoke contract", () => {
 
     expect(evidence.mode).toBe("live");
     expect(evidence.jobs.map((job) => [job.id, job.worker.exitCode])).toEqual([
-      ["SMOKE-LIVE-CLAUDE", 1],
-      ["SMOKE-LIVE-CODEX", 0],
+      ["SMOKE-LIVE-CODEX-1", 1],
+      ["SMOKE-LIVE-CODEX-2", 0],
     ]);
     expect(evidence.checks.gateEvidence.pass).toBe(false);
     expect(evidence.blockers).toEqual([
       expect.objectContaining({
-        evidence: { authMode: "host-file-signal", exitCode: 1, timedOut: false },
-        jobId: "SMOKE-LIVE-CLAUDE",
-        kind: "docker-claude-auth",
+        evidence: { exitCode: 1, timedOut: false },
+        jobId: "SMOKE-LIVE-CODEX-1",
+        kind: "codex-live-worker",
         nextCommands: expect.arrayContaining([
-          expect.stringContaining("ANTHROPIC_API_KEY"),
-          expect.stringContaining("claude /login"),
+          expect.stringContaining("OPENAI_API_KEY"),
+          expect.stringContaining("Codex auth"),
         ]),
       }),
     ]);
-    expect(JSON.stringify(evidence)).not.toContain("Not logged in secret-like text");
+    expect(JSON.stringify(evidence)).not.toContain("Codex auth secret-like text");
   });
 });

@@ -14,10 +14,11 @@ describe("README.md — local run getting-started section", () => {
     expect(readme).toMatch(/##\s+Local run/i);
   });
 
-  it("lists prerequisites: pnpm install, claude, gh, git", async () => {
+  it("lists prerequisites: pnpm install, codex, gh, git", async () => {
     const readme = await readDoc("README.md");
     expect(readme).toContain("pnpm install");
-    expect(readme).toMatch(/`claude`|claude CLI/);
+    expect(readme).toMatch(/`codex`|Codex CLI/);
+    expect(readme).toMatch(/OPENAI_API_KEY|OpenAI auth|OpenAI API/i);
     expect(readme).toMatch(/`gh`/);
     expect(readme).toMatch(/`git`/);
   });
@@ -27,10 +28,10 @@ describe("README.md — local run getting-started section", () => {
     expect(readme).toContain("docs/runbooks/local-pando-runner.md");
   });
 
-  it("states Claude Code is required for all pipeline stages (post-PR #33)", async () => {
+  it("states Codex is required for the default OpenAI pipeline", async () => {
     const readme = await readDoc("README.md");
-    // AC #3: Claude Code required for all pipeline stages post-PR #33
-    expect(readme).toMatch(/Claude Code.*all.*stage|all.*stage.*Claude Code/is);
+    expect(readme).toMatch(/default pipeline.*Codex|Codex.*default pipeline/is);
+    expect(readme).toMatch(/gpt-5\.5/);
   });
 
   it("states gh is required for the PR creation stage", async () => {
@@ -46,26 +47,26 @@ describe("README.md — local run getting-started section", () => {
   });
 });
 
-describe("docs/runbooks/local-pando-runner.md — all-Claude profile accuracy", () => {
-  it("lists claude as a required CLI", async () => {
+describe("docs/runbooks/local-pando-runner.md — OpenAI default profile accuracy", () => {
+  it("lists codex as a required CLI", async () => {
     const runbook = await readDoc("docs/runbooks/local-pando-runner.md");
-    expect(runbook).toMatch(/`claude`/);
+    expect(runbook).toMatch(/`codex`/);
+    expect(runbook).toMatch(/OPENAI_API_KEY|OpenAI auth|OpenAI API/i);
   });
 
-  it("does not present codex as required for the default pipeline", async () => {
+  it("does not present claude as required for the default pipeline", async () => {
     const runbook = await readDoc("docs/runbooks/local-pando-runner.md");
-    // codex may appear but must not be a hard requirement in Preconditions;
+    // claude may appear but must not be a hard requirement in Preconditions;
     // accept: absent entirely, or present only with an "optional"/"alternative" qualifier
     const preconditionsBlock =
       runbook.match(/##\s+Preconditions([\s\S]*?)(?=\n##\s|\s*$)/i)?.[1] ?? "";
-    const codePresent = preconditionsBlock.includes("`codex`");
-    const markedOptional = /codex.*optional|optional.*codex/i.test(preconditionsBlock);
-    expect(codePresent && !markedOptional).toBe(false);
+    const claudePresent = preconditionsBlock.includes("`claude`");
+    const markedOptional = /claude.*optional|optional.*claude/i.test(preconditionsBlock);
+    expect(claudePresent && !markedOptional).toBe(false);
   });
 
-  it("mentions that auth is via Claude (not Codex-only)", async () => {
+  it("mentions that auth is via OpenAI or Codex", async () => {
     const runbook = await readDoc("docs/runbooks/local-pando-runner.md");
-    // auth line should reference Claude auth
-    expect(runbook).toMatch(/Claude.*auth|auth.*Claude/i);
+    expect(runbook).toMatch(/OpenAI.*auth|auth.*OpenAI|Codex.*auth|auth.*Codex/i);
   });
 });

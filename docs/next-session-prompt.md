@@ -15,8 +15,9 @@ CLAUDE.md, docs/handoff.md, docs/practical-adoption-roadmap.md, docs/runbooks/lo
 - Stacked PR Roadmap PR 1~10은 모두 develop에 들어왔다.
 - 통합 `pandoctl` 바이너리(`pandoctl start` + ops 서브커맨드)가 있고, `packages/pandoctl`는 esbuild로 번들된 실제 publish 후보 `pandoctl@0.1.0`이다.
 - `pandoctl` release workflow가 있다. `npm i -g pandoctl`은 임시 `--prefix`로 검증됐지만 실제 npm publish는 아직 하지 않는다.
+- 기본 stage runtime은 전 단계 `codex` + `gpt-5.5`다. Claude Code adapter는 legacy/custom profile용으로만 유지한다.
 - Host worker readiness, host live worker 2-job probe, host full-daemon live dogfood는 완료됐다.
-- Docker live worker smoke는 시도 완료. post-CA rerun에서 Codex exit 0, Claude는 managed connector 비상속으로 auth blocker가 남아 있다.
+- Docker live worker smoke는 시도 완료. post-CA rerun에서 Codex exit 0을 확인했고, Claude managed connector 비상속 blocker는 legacy/custom profile 범위로 남아 있다.
 - PR #62로 `pnpm pando start`가 source checkout의 `dashboard/dist`를 기본 dashboard root로 쓰고, accidental local DB/evidence artifact는 repo root가 아니라 `/tmp`로 가게 됐다.
 
 W6 실행 순서:
@@ -24,7 +25,7 @@ W6 실행 순서:
 2. 3~5 job soak/nightly 운영화: 반복 실행 가능한 soak/nightly 루틴과 `/tmp` structured JSON summary를 만든다.
 3. Dashboard failure/readiness analytics: soak/nightly 결과, terminal failure reason, readiness/auth blocker를 dashboard에서 바로 읽게 한다.
 4. Provider backoff/retry policy: timeout/rate-limit/auth/transient failure를 deterministic failure kind로 나누고 retry/backoff를 정교화한다.
-5. Docker Claude live worker smoke: `ANTHROPIC_API_KEY` 또는 container-local `claude /login` credential로 Docker Claude blocker를 재검증한다.
+5. Docker/OpenAI live worker smoke: 기본 Codex/OpenAI pipeline을 Docker/host에서 재검증한다. Claude live smoke는 legacy/custom profile을 쓸 때만 `ANTHROPIC_API_KEY` 또는 container-local `claude /login` credential로 별도 재검증한다.
 6. `pandoctl@0.1.0` 실제 npm publish: release workflow dry-run → publish → global install/update smoke는 마지막에 수행한다.
 
 다음 세션에서는 #2부터 시작한다. 그 뒤에도 위 순서에서 아직 끝나지 않은 가장 앞 항목 하나만 골라 작게 진행한다. notifications, GitHub Issue/Jira write-back, auth hardening, Docker egress policy, split containers/TUI는 위 1~6 이후로 미룬다.
@@ -54,4 +55,4 @@ W6 실행 순서:
 
 ## Why This Is Next
 
-설치/배포 경로(`pandoctl` 번들 + release workflow + `npm i -g pandoctl` 검증)까지 대부분 닫혔지만, 실제 publish는 마지막 순서다. 먼저 운영 신뢰성을 쌓는다: docs sync, soak/nightly 반복 실행, dashboard failure/readiness analytics, provider backoff를 닫은 뒤 Docker Claude credential smoke와 npm publish를 진행한다. 모두 deterministic evidence와 작은 PR 단위로 진행한다.
+설치/배포 경로(`pandoctl` 번들 + release workflow + `npm i -g pandoctl` 검증)까지 대부분 닫혔지만, 실제 publish는 마지막 순서다. 먼저 운영 신뢰성을 쌓는다: docs sync, soak/nightly 반복 실행, dashboard failure/readiness analytics, provider backoff를 닫은 뒤 기본 Codex/OpenAI Docker live smoke와 npm publish를 진행한다. 모두 deterministic evidence와 작은 PR 단위로 진행한다.

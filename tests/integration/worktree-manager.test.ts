@@ -4,7 +4,12 @@ import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import { promisify } from "node:util";
 import { afterEach, describe, expect, it } from "vitest";
-import { branchSlug, ensureWorktree, worktreePathFor } from "../../src/worktree/manager";
+import {
+  branchSlug,
+  ensureWorktree,
+  pruneWorktrees,
+  worktreePathFor,
+} from "../../src/worktree/manager";
 
 const execFileAsync = promisify(execFile);
 const roots: string[] = [];
@@ -146,6 +151,32 @@ describe("ensureWorktree", { timeout: 30_000 }, () => {
         lockRetryMs: 5,
       }),
     ).rejects.toThrow(/lock timeout/i);
+  });
+});
+
+// ADR-012: gc reaps a run-root with `rm -rf`, which leaves the worktree
+// registration dangling in the source repo. pruneWorktrees clears it.
+describe("pruneWorktrees", { timeout: 30_000 }, () => {
+  it("clears registrations whose worktree directory was deleted out from under git", async () => {
+    const repo = await createRepo();
+    const created = await ensureWorktree({
+      repoPath: repo.path,
+      branch: "feat/DEMO-1234",
+      baseBranch: "develop",
+      worktreeRoot: repo.worktreeRoot,
+    });
+
+    await rm(created.path, { recursive: true, force: true });
+    expect(await git(repo.path, ["worktree", "list"])).toContain(created.path);
+
+    await pruneWorktrees({ repoPath: repo.path });
+
+    expect(await git(repo.path, ["worktree", "list"])).not.toContain(created.path);
+  });
+
+  it("is a safe no-op when there is nothing to prune", async () => {
+    const repo = await createRepo();
+    await expect(pruneWorktrees({ repoPath: repo.path })).resolves.toBeUndefined();
   });
 });
 
