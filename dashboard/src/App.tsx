@@ -3,10 +3,13 @@ import {
   Ban,
   Copy,
   Loader2,
+  Monitor,
+  Moon,
   RefreshCw,
   RotateCcw,
   Send,
   ShieldCheck,
+  Sun,
   Trash2,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
@@ -48,6 +51,8 @@ import { TabsList, TabsTrigger } from "./components/ui/tabs";
 import { Textarea } from "./components/ui/textarea";
 import { Timeline, TimelineItem } from "./components/ui/timeline";
 import { Text } from "./components/ui/typography";
+import { MagicCard } from "./components/magicui/magic-card";
+import { ShineBorder } from "./components/magicui/shine-border";
 import "./styles.css";
 
 interface DashboardAppProps {
@@ -56,6 +61,7 @@ interface DashboardAppProps {
 
 type StatusFilter = "ALL" | JobStatus;
 type LoadState = "idle" | "loading" | "ready" | "error";
+type ThemePreference = "dark" | "light" | "system";
 
 const STATUS_TABS: Array<{ label: string; value: StatusFilter }> = [
   { label: "All", value: "ALL" },
@@ -69,6 +75,7 @@ const STATUS_TABS: Array<{ label: string; value: StatusFilter }> = [
 const RETRY_STAGES: readonly StageName[] = ["SPEC", "PLAN", "TEST", "IMPL", "REVIEW", "PR"];
 
 const POLL_INTERVAL_MS = 4000;
+const THEME_STORAGE_KEY = "pando-dashboard-theme";
 const TERMINAL_STATUSES = new Set<JobStatus>(["DONE", "FAILED", "ESCALATED", "CANCELED"]);
 
 function isActiveStatus(status: JobStatus): boolean {
@@ -76,6 +83,7 @@ function isActiveStatus(status: JobStatus): boolean {
 }
 
 export function DashboardApp({ client }: DashboardAppProps) {
+  const [themePreference, setThemePreference] = useState<ThemePreference>(readThemePreference);
   const [health, setHealth] = useState<ApiHealth | null>(null);
   const [analytics, setAnalytics] = useState<ApiAnalyticsResponse | null>(null);
   const [repos, setRepos] = useState<ApiRepoSummary[]>([]);
@@ -90,6 +98,11 @@ export function DashboardApp({ client }: DashboardAppProps) {
   const [actionBusy, setActionBusy] = useState<string | null>(null);
 
   const listInput = useMemo(() => (filter === "ALL" ? undefined : { status: filter }), [filter]);
+
+  useEffect(() => {
+    applyThemePreference(themePreference);
+    writeThemePreference(themePreference);
+  }, [themePreference]);
 
   const loadHealth = useCallback(async () => {
     const next = await client.health();
@@ -186,7 +199,12 @@ export function DashboardApp({ client }: DashboardAppProps) {
 
   return (
     <main className="dashboard-shell">
-      <HealthStrip health={health} onRefresh={() => void refresh()} />
+      <HealthStrip
+        health={health}
+        onRefresh={() => void refresh()}
+        onThemeChange={setThemePreference}
+        themePreference={themePreference}
+      />
       {error === null ? null : (
         <Alert className="error-banner" variant="destructive">
           {error}
@@ -537,7 +555,17 @@ function ReadinessSection({ readiness }: { readiness: ApiAnalyticsResponse["read
   );
 }
 
-function HealthStrip({ health, onRefresh }: { health: ApiHealth | null; onRefresh: () => void }) {
+function HealthStrip({
+  health,
+  onRefresh,
+  onThemeChange,
+  themePreference,
+}: {
+  health: ApiHealth | null;
+  onRefresh: () => void;
+  onThemeChange: (preference: ThemePreference) => void;
+  themePreference: ThemePreference;
+}) {
   return (
     <Card className="health-strip" aria-label="Daemon health">
       <div className="health-main">
@@ -551,11 +579,56 @@ function HealthStrip({ health, onRefresh }: { health: ApiHealth | null; onRefres
       <Badge className="auth-note" variant="warning">
         Private network boundary; no built-in auth
       </Badge>
-      <Button className="health-refresh" variant="ghost" type="button" onClick={onRefresh}>
-        <RefreshCw size={15} aria-hidden="true" />
-        Refresh
-      </Button>
+      <div className="health-actions">
+        <ThemeControl onChange={onThemeChange} value={themePreference} />
+        <Button className="health-refresh" variant="ghost" type="button" onClick={onRefresh}>
+          <RefreshCw size={15} aria-hidden="true" />
+          Refresh
+        </Button>
+      </div>
     </Card>
+  );
+}
+
+function ThemeControl({
+  onChange,
+  value,
+}: {
+  onChange: (preference: ThemePreference) => void;
+  value: ThemePreference;
+}) {
+  const options: Array<{
+    icon: typeof Monitor;
+    label: string;
+    value: ThemePreference;
+  }> = [
+    { icon: Monitor, label: "Use system theme", value: "system" },
+    { icon: Sun, label: "Use light theme", value: "light" },
+    { icon: Moon, label: "Use dark theme", value: "dark" },
+  ];
+
+  return (
+    <div className="theme-control" role="group" aria-label="Color theme">
+      {options.map((option) => {
+        const Icon = option.icon;
+        return (
+          <Button
+            aria-label={option.label}
+            className={
+              value === option.value ? "theme-control__button active" : "theme-control__button"
+            }
+            key={option.value}
+            onClick={() => onChange(option.value)}
+            size="icon"
+            title={option.label}
+            type="button"
+            variant="ghost"
+          >
+            <Icon size={15} aria-hidden="true" />
+          </Button>
+        );
+      })}
+    </div>
   );
 }
 
@@ -620,12 +693,11 @@ function JobsTable({
                 </Text>
               </TableCell>
               <TableCell>
-                <span className="status-cell">
-                  {isActiveStatus(job.status) ? (
-                    <Loader2 className="spin" size={13} aria-label="in progress" />
-                  ) : null}
-                  <StatusBadge status={job.status} />
-                </span>
+                <StatusSignal
+                  active={isActiveStatus(job.status)}
+                  status={job.status}
+                  testId={`job-status-${job.jobId}`}
+                />
               </TableCell>
               <TableCell>{job.repo}</TableCell>
               <TableCell>{job.source}</TableCell>
@@ -690,7 +762,7 @@ function JobDetailPanel({
           <Text variant="description">{job.title}</Text>
         </div>
         <div className="detail-status">
-          <StatusBadge status={job.status} />
+          <StatusSignal active={isActiveStatus(job.status)} status={job.status} />
           {cancelPending ? (
             <Badge className="live-badge" variant="warning">
               <Loader2 className="spin" size={12} aria-hidden="true" />
@@ -989,8 +1061,124 @@ function BriefSubmitPanel({
   );
 }
 
-function StatusBadge({ status }: { status: JobStatus }) {
-  return <Badge className={`status-badge ${status.toLowerCase()}`}>{status}</Badge>;
+interface StatusSignalProps {
+  active: boolean;
+  status: JobStatus;
+  testId?: string;
+}
+
+const STATUS_SIGNAL_META: Record<
+  JobStatus,
+  {
+    label: string;
+    progress: number;
+    tone: "danger" | "neutral" | "success" | "warning";
+  }
+> = {
+  CANCELED: {
+    label: "Canceled",
+    progress: 0,
+    tone: "neutral",
+  },
+  DONE: {
+    label: "Completed",
+    progress: 100,
+    tone: "success",
+  },
+  ESCALATED: {
+    label: "Needs review",
+    progress: 25,
+    tone: "warning",
+  },
+  FAILED: {
+    label: "Failed",
+    progress: 0,
+    tone: "danger",
+  },
+  IMPL: {
+    label: "Implementing",
+    progress: 66,
+    tone: "neutral",
+  },
+  PLAN: {
+    label: "Planning",
+    progress: 33,
+    tone: "neutral",
+  },
+  PR: {
+    label: "Preparing PR",
+    progress: 92,
+    tone: "neutral",
+  },
+  QUEUED: {
+    label: "Queued",
+    progress: 8,
+    tone: "warning",
+  },
+  REVIEW: {
+    label: "Reviewing",
+    progress: 82,
+    tone: "neutral",
+  },
+  SPEC: {
+    label: "Specifying",
+    progress: 18,
+    tone: "neutral",
+  },
+  TEST: {
+    label: "Testing",
+    progress: 50,
+    tone: "neutral",
+  },
+};
+
+function StatusSignal({ active, status, testId }: StatusSignalProps) {
+  const meta = STATUS_SIGNAL_META[status];
+  return (
+    <MagicCard className={`status-signal status-signal--${meta.tone}`} data-testid={testId}>
+      <ShineBorder data-testid="status-shine-border" />
+      <span className="status-signal__heading">
+        {active ? <Loader2 className="spin" size={13} aria-label="in progress" /> : null}
+        <strong>{status}</strong>
+      </span>
+      <span className="status-signal__label">{meta.label}</span>
+      <span className="status-signal__meter" aria-label={`progress ${meta.progress}%`}>
+        <span className={`status-signal__meter-fill status-signal__meter-fill--${meta.progress}`} />
+      </span>
+    </MagicCard>
+  );
+}
+
+function isThemePreference(value: string): value is ThemePreference {
+  return value === "dark" || value === "light" || value === "system";
+}
+
+function readThemePreference(): ThemePreference {
+  try {
+    const stored = window.localStorage.getItem(THEME_STORAGE_KEY);
+    return stored !== null && isThemePreference(stored) ? stored : "system";
+  } catch {
+    return "system";
+  }
+}
+
+function writeThemePreference(preference: ThemePreference) {
+  try {
+    window.localStorage.setItem(THEME_STORAGE_KEY, preference);
+  } catch {
+    // localStorage can be unavailable in constrained browser contexts.
+  }
+}
+
+function applyThemePreference(preference: ThemePreference) {
+  document.documentElement.dataset.themePreference = preference;
+  if (preference === "system") {
+    delete document.documentElement.dataset.theme;
+    document.documentElement.style.colorScheme = "light dark";
+    return;
+  }
+  document.documentElement.dataset.theme = preference;
+  document.documentElement.style.colorScheme = preference;
 }
 
 function optionalField(value: string): string | undefined {
