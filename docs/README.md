@@ -63,6 +63,8 @@ write-back, public auth hardening, Docker egress policy, split containers, TUI.
   [runbooks/pandoctl-release.md](./runbooks/pandoctl-release.md)
 - Core architecture, module boundaries, or type contracts:
   [repo-structure.md](./repo-structure.md)
+- Development planning, improvement roadmap, or dashboard redesign:
+  [development-plan/README.md](./development-plan/README.md)
 - Development discipline, test shape, or verification:
   [engineering-standards.md](./engineering-standards.md)
 
