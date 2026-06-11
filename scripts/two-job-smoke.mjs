@@ -32,8 +32,8 @@ async function liveOrFallbackEvidence(env, target) {
 
 function readinessEvidence(env, target) {
   const globalConcurrency = globalConcurrencyCheck(env);
-  const workerCli = workerCliCheck(env);
   const auth = workerAuthCheck(env);
+  const workerCli = workerCliCheck(env);
   const gitCreds = gitCredentialsCheck(env, target);
   const mounts = mountContractCheck(env, target);
   // gitCreds is recorded but does NOT contribute to blockers. The worker probe
