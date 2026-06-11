@@ -1,0 +1,76 @@
+{
+  "schemaVersion": 1,
+  "jobs": {
+    "requiredCount": 2,
+    "acceptedSources": ["brief", "jira"]
+  },
+  "limits": {
+    "globalConcurrency": {
+      "min": 2,
+      "max": 3
+    }
+  },
+  "live": {
+    "requiredEnv": [
+      "PANDO_LIVE_SMOKE=1",
+      "PANDO_GLOBAL_CONCURRENCY=2 or 3",
+      "Codex/OpenAI authentication or API key mode"
+    ],
+    "requiredMounts": ["/data", "/repos", "/worktrees", "/config", "/skills"],
+    "workerProbe": {
+      "requiredJobIds": ["SMOKE-LIVE-CODEX-1", "SMOKE-LIVE-CODEX-2"],
+      "gateName": "worker-exit-code",
+      "deterministicEvidence": ["exitCode", "timedOut", "signal"]
+    }
+  },
+  "readiness": {
+    "requiredChecks": [
+      "global-concurrency",
+      "worker-cli",
+      "worker-auth",
+      "git-credentials",
+      "mount-contract"
+    ],
+    "workerCommands": ["codex"],
+    "authSignals": [
+      "ANTHROPIC_API_KEY",
+      "CLAUDE_CONFIG_DIR",
+      "CLAUDE_CONFIG_FILE",
+      "Claude config file present",
+      "Claude config file non-empty",
+      "OPENAI_API_KEY",
+      "CODEX_HOME",
+      "Codex config dir writable"
+    ],
+    "gitCredentialSignals": [
+      "PANDO_DEPLOY_KEY",
+      "PANDO_SSH_KNOWN_HOSTS",
+      "PANDO_GIT_CREDENTIALS",
+      "PANDO_GITCONFIG",
+      "GH_TOKEN",
+      "GITHUB_TOKEN"
+    ]
+  },
+  "checks": [
+    {
+      "id": "two-jobs-recorded",
+      "evidence": "two distinct job ids appear in the smoke evidence"
+    },
+    {
+      "id": "worktree-collision",
+      "evidence": "the two jobs use distinct worktree paths"
+    },
+    {
+      "id": "provider-cap",
+      "evidence": "provider usage never exceeds configured max_concurrent values"
+    },
+    {
+      "id": "gate-evidence",
+      "evidence": "each job records deterministic gate evidence"
+    }
+  ],
+  "fallback": {
+    "allowed": true,
+    "recordReason": true
+  }
+}

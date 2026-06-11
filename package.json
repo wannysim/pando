@@ -1,6 +1,6 @@
 {
   "name": "pando",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "description": "Multi-repo background coding agent orchestrator — one root system, many trunks.",
   "homepage": "https://github.com/wannysim/pando#readme",
@@ -12,39 +12,63 @@
     "type": "git",
     "url": "git+https://github.com/wannysim/pando.git"
   },
+  "bin": {
+    "pando": "./bin/pando.mjs",
+    "pandoctl": "./bin/pandoctl.mjs"
+  },
+  "workspaces": [
+    "dashboard"
+  ],
   "type": "module",
   "scripts": {
-    "test": "vitest run",
-    "test:watch": "vitest",
-    "coverage": "vitest run --coverage",
+    "start": "bun src/server.ts",
+    "pando": "bun src/cli/pando.ts",
+    "pandoctl": "bun src/cli/pandoctl.ts",
+    "test": "bun test tests dashboard/src --preload ./dashboard/src/test/setup.ts --timeout 30000",
+    "test:watch": "bun test tests dashboard/src --preload ./dashboard/src/test/setup.ts --timeout 30000 --watch",
+    "coverage": "bun test tests dashboard/src --preload ./dashboard/src/test/setup.ts --timeout 30000 --coverage --coverage-reporter=text --coverage-reporter=lcov && bun scripts/check-coverage.ts",
     "lint": "oxlint .",
     "lint:fix": "oxlint --fix .",
     "format": "oxfmt --write .",
     "format:check": "oxfmt --check .",
     "types": "tsc --noEmit",
-    "verify": "pnpm coverage && pnpm lint && pnpm types",
+    "verify:core": "bun run coverage && bun run lint && bun run types",
+    "verify": "bun run verify:core && bun --filter=@pando/dashboard run verify",
+    "build:pandoctl": "bun packages/pandoctl/build.mjs",
+    "smoke:pandoctl-pack": "bun scripts/pandoctl-pack-smoke.mjs",
+    "smoke:full-daemon": "bun scripts/full-daemon-smoke.ts",
+    "smoke:two-job": "bun scripts/two-job-smoke.mjs",
+    "soak:nightly": "bun scripts/soak-nightly.ts",
+    "benchmark:self": "bun scripts/self-benchmark.ts",
+    "benchmark:comment": "bun scripts/comment-self-benchmark.ts",
     "prepare": "husky"
   },
   "dependencies": {
     "better-sqlite3": "^12.10.0",
+    "hono": "^4.12.25",
     "yaml": "^2.9.0"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.13",
-    "@types/node": "^22.19.19",
-    "@vitest/coverage-v8": "^4.1.8",
+    "@types/bun": "^1.3.14",
+    "@types/node": "^22.19.21",
+    "esbuild": "^0.28.0",
     "husky": "^9.1.7",
     "lint-staged": "^17.0.7",
-    "oxfmt": "^0.53.0",
-    "oxlint": "^1.68.0",
-    "typescript": "^6.0.3",
-    "vitest": "^4.1.8"
+    "oxfmt": "^0.54.0",
+    "oxlint": "^1.69.0",
+    "typescript": "^6.0.3"
   },
   "lint-staged": {
-    "*.{js,jsx,ts,tsx,mjs,cjs,mts,cts,json,jsonc,json5,yml,yaml,md,mdx,html,css,scss,less,toml,graphql}": "oxfmt --write"
+    "*.{js,jsx,ts,tsx,mjs,cjs,mts,cts,json,jsonc,json5,yml,yaml,md,mdx,html,css,scss,less,toml,graphql}": "oxfmt --write --no-error-on-unmatched-pattern"
   },
   "engines": {
+    "bun": ">=1.3.5",
     "node": ">=22.13.0"
   },
-  "packageManager": "pnpm@11.5.2"
+  "packageManager": "bun@1.3.5",
+  "trustedDependencies": [
+    "better-sqlite3",
+    "esbuild"
+  ]
 }

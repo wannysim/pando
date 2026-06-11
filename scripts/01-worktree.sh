@@ -29,6 +29,7 @@ fi
 if [ -f "$REPO_PATH/.env.local" ]; then cp "$REPO_PATH/.env.local" "$WT_PATH/"; fi
 ( cd "$WT_PATH"
   if   [ -f yarn.lock ];         then yarn install
+  elif [ -f bun.lock ];          then bun install
   elif [ -f pnpm-lock.yaml ];    then pnpm install
   elif [ -f package-lock.json ]; then npm install
   else echo "no lockfile detected; skipping install"; fi )

@@ -3,8 +3,13 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import { promisify } from "node:util";
-import { afterEach, describe, expect, it } from "vitest";
-import { branchSlug, ensureWorktree, worktreePathFor } from "../../src/worktree/manager";
+import { afterEach, describe, expect, it } from "bun:test";
+import {
+  branchSlug,
+  ensureWorktree,
+  pruneWorktrees,
+  worktreePathFor,
+} from "../../src/worktree/manager";
 
 const execFileAsync = promisify(execFile);
 const roots: string[] = [];
@@ -27,6 +32,8 @@ describe("worktree path helpers", () => {
   });
 });
 
+// Real-git integration: bare repo init + clone + worktree add can exceed the
+// 5s default under parallel coverage load, so give this suite a wider timeout.
 describe("ensureWorktree", () => {
   it("creates a daemon-mode worktree from the origin base without touching the source checkout", async () => {
     const repo = await createRepo();
@@ -144,6 +151,32 @@ describe("ensureWorktree", () => {
         lockRetryMs: 5,
       }),
     ).rejects.toThrow(/lock timeout/i);
+  });
+});
+
+// ADR-012: gc reaps a run-root with `rm -rf`, which leaves the worktree
+// registration dangling in the source repo. pruneWorktrees clears it.
+describe("pruneWorktrees", () => {
+  it("clears registrations whose worktree directory was deleted out from under git", async () => {
+    const repo = await createRepo();
+    const created = await ensureWorktree({
+      repoPath: repo.path,
+      branch: "feat/DEMO-1234",
+      baseBranch: "develop",
+      worktreeRoot: repo.worktreeRoot,
+    });
+
+    await rm(created.path, { recursive: true, force: true });
+    expect(await git(repo.path, ["worktree", "list"])).toContain(created.path);
+
+    await pruneWorktrees({ repoPath: repo.path });
+
+    expect(await git(repo.path, ["worktree", "list"])).not.toContain(created.path);
+  });
+
+  it("is a safe no-op when there is nothing to prune", async () => {
+    const repo = await createRepo();
+    await expect(pruneWorktrees({ repoPath: repo.path })).resolves.toBeUndefined();
   });
 });
 

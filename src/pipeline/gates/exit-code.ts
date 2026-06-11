@@ -59,7 +59,12 @@ export function createPackageActionGate(
         }) ?? packageCommand(ctx.profile.packageManager, action);
       const result = await runner(command, { cwd: ctx.worktree });
 
-      if (result.exitCode === 0) return { pass: true };
+      if (result.exitCode === 0) {
+        return {
+          evidence: JSON.stringify({ command, exitCode: 0 }),
+          pass: true,
+        };
+      }
 
       return fail(
         `${gateName} gate failed with exit code ${result.exitCode}`,

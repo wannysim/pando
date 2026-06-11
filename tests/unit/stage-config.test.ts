@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "bun:test";
 import {
   loadStageConfigFromYaml,
   resolveStageAllowedTools,
@@ -8,33 +8,32 @@ import {
 const YAML = `
 stages:
   spec:
-    engine: claude-code
-    model: sonnet
+    engine: codex
+    model: gpt-5.5
     skills:
       jira: jira-context-gatherer
       brief: brief-intake
-    allowed_tools_by_source:
-      jira: [Read, Glob, Grep, Task, mcp__claude_ai_Atlassian]
-      brief: [Read, Glob, Grep]
   plan:
-    engine: claude-code
-    model: opus
+    engine: codex
+    model: gpt-5.5
     skill: implement-jira
-    allowed_tools: [Read, Glob, Grep, Write, "Bash(git *)", Task, mcp__claude_ai_Atlassian]
     env:
       IMPLEMENT_JIRA_BATCH: "1"
   test:
     engine: codex
-    model: gpt-5-codex
+    model: gpt-5.5
     skill: test-writer
   impl:
     engine: codex
-    model: gpt-5-codex
+    model: gpt-5.5
   review:
-    engine: claude-code
-    model: opus
+    engine: codex
+    model: gpt-5.5
     skill: verifier
-    allowed_tools: [Read, Glob, Grep, "Bash(git *)"]
+  pr:
+    engine: codex
+    model: gpt-5.5
+    skill: create-pr
 
 defaults:
   retry_budget: 10
@@ -47,30 +46,17 @@ describe("loadStageConfigFromYaml", () => {
 
     expect(config.defaults).toEqual({ retryBudget: 10, timeoutMinutes: 30 });
     expect(config.stages.spec).toEqual({
-      allowedToolsBySource: {
-        brief: ["Read", "Glob", "Grep"],
-        jira: ["Read", "Glob", "Grep", "Task", "mcp__claude_ai_Atlassian"],
-      },
-      engine: "claude-code",
-      model: "sonnet",
+      engine: "codex",
+      model: "gpt-5.5",
       skills: {
         brief: "brief-intake",
         jira: "jira-context-gatherer",
       },
     });
     expect(config.stages.plan).toEqual({
-      allowedTools: [
-        "Read",
-        "Glob",
-        "Grep",
-        "Write",
-        "Bash(git *)",
-        "Task",
-        "mcp__claude_ai_Atlassian",
-      ],
-      engine: "claude-code",
+      engine: "codex",
       env: { IMPLEMENT_JIRA_BATCH: "1" },
-      model: "opus",
+      model: "gpt-5.5",
       skill: "implement-jira",
     });
   });
@@ -87,9 +73,11 @@ describe("loadStageConfigFromYaml", () => {
   it("resolves source-specific allowed tools before falling back to stage tools", () => {
     const config = loadStageConfigFromYaml(YAML);
 
-    expect(resolveStageAllowedTools(config, "spec", "brief")).toEqual(["Read", "Glob", "Grep"]);
-    expect(resolveStageAllowedTools(config, "spec", "jira")).toContain("mcp__claude_ai_Atlassian");
-    expect(resolveStageAllowedTools(config, "plan", "brief")).toContain("Bash(git *)");
+    expect(resolveStageAllowedTools(config, "spec", "brief")).toBeUndefined();
+    expect(resolveStageAllowedTools(config, "spec", "jira")).toBeUndefined();
+    expect(resolveStageAllowedTools(config, "plan", "brief")).toBeUndefined();
+    expect(resolveStageAllowedTools(config, "test", "brief")).toBeUndefined();
+    expect(resolveStageAllowedTools(config, "impl", "brief")).toBeUndefined();
   });
 
   it("fails fast when a required worker stage is missing", () => {
@@ -99,12 +87,18 @@ describe("loadStageConfigFromYaml", () => {
   });
 
   it("rejects invalid engines and malformed allowed_tools with field paths", () => {
-    expect(() => loadStageConfigFromYaml(YAML.replace("engine: codex", "engine: aider"))).toThrow(
-      /stages\.test\.engine/i,
-    );
     expect(() =>
-      loadStageConfigFromYaml(YAML.replace("brief: [Read, Glob, Grep]", "brief: Read")),
-    ).toThrow(/stages\.spec\.allowed_tools_by_source\.brief/i);
+      loadStageConfigFromYaml(
+        YAML.replace("  test:\n    engine: codex", "  test:\n    engine: aider"),
+      ),
+    ).toThrow(/stages\.test\.engine/i);
+    const withMalformedAllowedTools = YAML.replace(
+      "  impl:\n    engine: codex\n    model: gpt-5.5",
+      "  impl:\n    engine: codex\n    model: gpt-5.5\n    allowed_tools: nope",
+    );
+    expect(() => loadStageConfigFromYaml(withMalformedAllowedTools)).toThrow(
+      /stages\.impl\.allowed_tools/i,
+    );
   });
 
   it("rejects ambiguous skill declarations", () => {

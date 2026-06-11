@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "bun:test";
 import {
   hasBlockingOpenQuestions,
   parsePlanArtifact,
@@ -92,6 +92,17 @@ describe("validatePlanArtifact", () => {
       "PLAN.md must contain an Open Questions section",
       "PLAN.md must contain at least one Acceptance Criteria item",
     ]);
+  });
+
+  it("does not require a ticket key when requireTicketKey is false (brief-source jobs)", () => {
+    const briefPlan = fixture("plan-valid-commit-roadmap.md").replace("[DEMO-1234] ", "");
+
+    const withoutKey = validatePlanArtifact(briefPlan, { requireTicketKey: false });
+    const withKey = validatePlanArtifact(briefPlan);
+
+    expect(withoutKey.valid).toBe(true);
+    expect(withoutKey.errors).toEqual([]);
+    expect(withKey.errors).toContain("PLAN.md title must include a ticket key like [AP-1234]");
   });
 });
 

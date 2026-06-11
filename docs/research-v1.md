@@ -1,8 +1,12 @@
 # 에이전트 드리븐 개발 워크플로우 시스템 — 리서치 리포트 + 설계안
 
+> Archive note: 현재 작업 큐와 문서 라우팅은 `docs/README.md`를 따른다. 이
+> 문서는 초기 리서치 기록이다. 지속되는 결정은 `docs/adr/`에만 남기고,
+> 모델명·가격·도구 현황 같은 휘발성 정보는 사용 전에 재확인한다.
+
 > 작성일: 2026-06-06 · 대상: Jira 티켓 → 자율 개발 파이프라인 구축 (TS 풀스택, OpenAI 우선, 멀티모델 교체 가능)
 > 조사 방법: 5개 앵글 병렬 웹 리서치 + 핵심 주장 10건 1차 소스 교차 검증
-> 현재 구현 기준은 ADR과 `docs/handoff.md`가 우선한다. 이 문서는 초기 리서치 기록이라 BullMQ/TUI 같은 대안이 남아 있을 수 있으며, 이후 결정으로 SQLite-only(ADR-001), 웹 대시보드(ADR-003), MCP connector 상속(ADR-004)이 확정됐다.
+> 현재 구현 기준은 ADR과 `docs/README.md`가 우선한다. 이 문서는 초기 리서치 기록이라 BullMQ/TUI 같은 대안이 남아 있을 수 있으며, 이후 결정으로 SQLite-only(ADR-001), 웹 대시보드(ADR-003), MCP connector 상속(ADR-004)이 확정됐다.
 
 ---
 
@@ -44,7 +48,7 @@
 
 | 에이전트 | 모델 자유도 | 헤드리스 구동 | 샌드박스 내장 | 라이선스 |
 |---|---|---|---|---|
-| **Codex CLI/SDK** (OpenAI) | OpenAI 기본 + **서드파티 가능** (`model_providers` config, 검증됨) | `codex exec --json` + `@openai/codex-sdk` | read-only 기본, `--sandbox workspace-write` 프리셋 | 오픈소스 (github.com/openai/codex) |
+| **Codex CLI/SDK** (OpenAI) | OpenAI 기본 + **서드파티 가능** (`model_providers` config, 검증됨) | `codex exec --ephemeral --json` + `@openai/codex-sdk` | read-only 기본, `--sandbox workspace-write` 프리셋 | 오픈소스 (github.com/openai/codex) |
 | **Claude Code / Agent SDK** | Anthropic 전용 (+Bedrock/Vertex) | `claude -p --output-format stream-json` + `@anthropic-ai/claude-agent-sdk` | OS 레벨 권한 모드 | 독점 |
 | **Aider** | 100+ 프로바이더 (LiteLLM 기반) | `aider --yes-always --message "..."` — PTY 불필요, subprocess로 가장 단순 | 없음 (직접 Docker) | Apache 2.0 |
 | **OpenHands** | LiteLLM 기반 전체 | `openhands --headless` + Python SDK | Docker/Local/K8s 런타임 | MIT |
@@ -57,7 +61,7 @@ Codex 헤드리스 사용 예:
 
 ```bash
 # 단발 실행, NDJSON 이벤트 스트림
-codex exec --json --sandbox workspace-write \
+codex exec --ephemeral --cd "$PWD" --config 'approval_policy="never"' --json --sandbox workspace-write \
   --output-schema ./gate-result.schema.json \
   -o ./result.json \
   "SPEC.md를 읽고 acceptance criteria에 대응하는 실패하는 테스트를 작성해"

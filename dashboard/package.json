@@ -1,0 +1,32 @@
+{
+  "name": "@pando/dashboard",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1",
+    "build": "tsc --noEmit && vite build",
+    "test": "bun test src --preload ./src/test/setup.ts --timeout 30000",
+    "test:ci": "bun test src --preload ./src/test/setup.ts --timeout 30000",
+    "test:watch": "bun test src --preload ./src/test/setup.ts --timeout 30000 --watch",
+    "smoke": "playwright test",
+    "types": "tsc --noEmit",
+    "verify": "bun run test:ci && bun run types && bun run build"
+  },
+  "dependencies": {
+    "lucide-react": "^1.17.0",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7"
+  },
+  "devDependencies": {
+    "@happy-dom/global-registrator": "^20.10.2",
+    "@playwright/test": "^1.60.0",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
+    "@testing-library/user-event": "^14.6.1",
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^6.0.2",
+    "vite": "^8.0.16"
+  }
+}

@@ -18,12 +18,14 @@ export interface CommandRunnerOptions {
   cwd: string;
   env: NodeJS.ProcessEnv;
   timeoutMs: number;
+  signal?: AbortSignal;
 }
 
 export interface CommandResult {
   exitCode: number;
   stdout: string;
   stderr: string;
+  timedOut?: boolean;
 }
 
 export type CommandRunner = (
@@ -69,12 +71,15 @@ export class ClaudeCodeEngine implements WorkerEngine {
     const result = await this.runner(this.command, buildClaudeCodeArgs(opts), {
       cwd: opts.cwd,
       env: { ...process.env, ...opts.env },
+      signal: opts.signal,
       timeoutMs: opts.timeoutMs,
     });
 
     return {
+      exitCode: result.exitCode,
       ok: result.exitCode === 0,
       output: `${result.stdout}${result.stderr}`,
+      timedOut: result.timedOut ?? false,
     };
   }
 }
@@ -88,19 +93,23 @@ async function execFileRunner(
     const { stdout, stderr } = await execFileAsync(command, args, {
       cwd: opts.cwd,
       env: opts.env,
+      signal: opts.signal,
       timeout: opts.timeoutMs,
     });
     return { exitCode: 0, stdout: asText(stdout), stderr: asText(stderr) };
   } catch (error) {
     const failure = error as Partial<{
       code: number | string;
+      killed: boolean;
+      signal: string;
       stdout: string | Buffer;
       stderr: string | Buffer;
     }>;
     return {
       exitCode: typeof failure.code === "number" ? failure.code : 1,
-      stdout: asText(failure.stdout),
       stderr: asText(failure.stderr),
+      stdout: asText(failure.stdout),
+      timedOut: failure.killed === true || failure.signal === "SIGTERM",
     };
   }
 }

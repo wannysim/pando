@@ -1,19 +1,18 @@
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
+import { spawn } from "node:child_process";
 import type { WorkerEngine, WorkerResult, WorkerRunOptions } from "../core/types";
-
-const execFileAsync = promisify(execFile);
 
 export interface CommandRunnerOptions {
   cwd: string;
   env: NodeJS.ProcessEnv;
   timeoutMs: number;
+  signal?: AbortSignal;
 }
 
 export interface CommandResult {
   exitCode: number;
   stdout: string;
   stderr: string;
+  timedOut?: boolean;
 }
 
 export interface CodexStreamSummary {
@@ -41,7 +40,20 @@ export function buildCodexArgs(opts: WorkerRunOptions): string[] {
     throw new Error("Codex CLI does not accept allowedTools");
   }
 
-  return ["exec", "--json", "--sandbox", "workspace-write", "--model", opts.model, opts.prompt];
+  return [
+    "exec",
+    "--ephemeral",
+    "--cd",
+    opts.cwd,
+    "--config",
+    'approval_policy="never"',
+    "--json",
+    "--sandbox",
+    "workspace-write",
+    "--model",
+    opts.model,
+    opts.prompt,
+  ];
 }
 
 export function parseCodexJsonStream(stream: string): CodexStreamSummary {
@@ -81,50 +93,75 @@ export class CodexEngine implements WorkerEngine {
 
   constructor(opts: CodexEngineOptions = {}) {
     this.command = opts.command ?? "codex";
-    this.runner = opts.runner ?? execFileRunner;
+    this.runner = opts.runner ?? spawnRunner;
   }
 
   async run(opts: WorkerRunOptions): Promise<WorkerResult> {
     const result = await this.runner(this.command, buildCodexArgs(opts), {
       cwd: opts.cwd,
       env: { ...process.env, ...opts.env },
+      signal: opts.signal,
       timeoutMs: opts.timeoutMs,
     });
     const parsed = parseCodexJsonStream(result.stdout);
 
     return {
+      costUsd: parsed.costUsd,
+      exitCode: result.exitCode,
       ok: result.exitCode === 0,
       output: combineOutput(parsed.output, result.stderr),
       sessionId: parsed.sessionId,
-      costUsd: parsed.costUsd,
+      timedOut: result.timedOut ?? false,
     };
   }
 }
 
-async function execFileRunner(
+async function spawnRunner(
   command: string,
   args: string[],
   opts: CommandRunnerOptions,
 ): Promise<CommandResult> {
-  try {
-    const { stdout, stderr } = await execFileAsync(command, args, {
+  return await new Promise<CommandResult>((resolve) => {
+    const child = spawn(command, args, {
       cwd: opts.cwd,
       env: opts.env,
-      timeout: opts.timeoutMs,
+      stdio: ["ignore", "pipe", "pipe"],
     });
-    return { exitCode: 0, stdout: asText(stdout), stderr: asText(stderr) };
-  } catch (error) {
-    const failure = error as Partial<{
-      code: number | string;
-      stdout: string | Buffer;
-      stderr: string | Buffer;
-    }>;
-    return {
-      exitCode: typeof failure.code === "number" ? failure.code : 1,
-      stdout: asText(failure.stdout),
-      stderr: asText(failure.stderr),
-    };
-  }
+    let stderr = "";
+    let stdout = "";
+    let settled = false;
+    let timedOut = false;
+    const maxBuffer = 10 * 1024 * 1024;
+    const timer = setTimeout(() => {
+      timedOut = true;
+      child.kill("SIGTERM");
+    }, opts.timeoutMs);
+
+    const onAbort = () => child.kill("SIGTERM");
+    if (opts.signal?.aborted === true) child.kill("SIGTERM");
+    else opts.signal?.addEventListener("abort", onAbort, { once: true });
+
+    child.stdout?.on("data", (chunk) => {
+      if (stdout.length < maxBuffer) stdout += asText(chunk);
+    });
+    child.stderr?.on("data", (chunk) => {
+      if (stderr.length < maxBuffer) stderr += asText(chunk);
+    });
+    child.on("error", (error) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      opts.signal?.removeEventListener("abort", onAbort);
+      resolve({ exitCode: 1, stderr: error.message, stdout });
+    });
+    child.on("close", (code) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      opts.signal?.removeEventListener("abort", onAbort);
+      resolve({ exitCode: typeof code === "number" ? code : 1, stderr, stdout, timedOut });
+    });
+  });
 }
 
 function parseJsonObject(line: string): Record<string, unknown> | undefined {

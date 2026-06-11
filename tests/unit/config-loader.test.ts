@@ -1,4 +1,5 @@
-import { describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
+import { describe, expect, it } from "bun:test";
 import { loadRepoProfilesFromYaml, packageCommand, type FileProbe } from "../../src/core/config";
 
 const YAML = `
@@ -34,7 +35,7 @@ repos:
     context:
       providers: []
     conventions: repo-local
-    package_manager: pnpm
+    package_manager: bun
     setup: install
     gates:
       test: test
@@ -90,9 +91,50 @@ describe("loadRepoProfilesFromYaml", () => {
       files: probe(["/Users/me/Github/web/yarn.lock"]),
     });
 
-    expect(profiles["personal-site"]?.packageManager).toBe("pnpm");
+    expect(profiles["personal-site"]?.packageManager).toBe("bun");
     expect(profiles["personal-site"]?.intake.sources).toEqual(["brief", "github_issue"]);
     expect(profiles["personal-site"]?.workItemSource).toBe("brief");
+  });
+
+  it("allows repo profiles without a test gate", async () => {
+    const profiles = await loadRepoProfilesFromYaml(
+      YAML.replace("      test: test\n      types: typecheck", "      lint: lint"),
+      {
+        homeDir: "/Users/me",
+        files: probe(["/Users/me/Github/web/yarn.lock"]),
+      },
+    );
+
+    expect(profiles["personal-site"]?.gates).toEqual({ lint: "lint" });
+  });
+
+  it("parses an optional release_branch_template onto releaseBranchTemplate", async () => {
+    const withTemplate = YAML.replace(
+      "base_branch: develop\n    intake:\n      sources: [jira]",
+      "base_branch: develop\n    release_branch_template: release/{fixVersion}\n    intake:\n      sources: [jira]",
+    );
+
+    const profiles = await loadRepoProfilesFromYaml(withTemplate, {
+      homeDir: "/Users/me",
+      files: probe(["/Users/me/Github/web/yarn.lock"]),
+    });
+
+    expect(profiles.web?.releaseBranchTemplate).toBe("release/{fixVersion}");
+    expect(profiles["personal-site"]?.releaseBranchTemplate).toBeUndefined();
+  });
+
+  it("rejects a non-string release_branch_template with the repo name and field", async () => {
+    const badTemplate = YAML.replace(
+      "base_branch: develop\n    intake:\n      sources: [jira]",
+      "base_branch: develop\n    release_branch_template: 42\n    intake:\n      sources: [jira]",
+    );
+
+    await expect(
+      loadRepoProfilesFromYaml(badTemplate, {
+        homeDir: "/Users/me",
+        files: probe(["/Users/me/Github/web/yarn.lock"]),
+      }),
+    ).rejects.toThrow(/web.*release_branch_template/i);
   });
 
   it("fails fast with the repo name when both lockfile and fallback are missing", async () => {
@@ -159,7 +201,7 @@ repos:
     work_item_source: brief
     context_providers: [atlassian-mcp, figma-mcp]
     conventions: repo-local
-    package_manager: pnpm
+    package_manager: bun
     setup: install
     gates:
       test: test
@@ -182,14 +224,40 @@ repos:
       workItemSource: "brief",
     });
   });
+
+  it("loads the checked-in pando self-profile as a brief-only target", async () => {
+    const profiles = await loadRepoProfilesFromYaml(readFileSync("config/repos.yaml", "utf8"), {
+      homeDir: "/Users/me",
+      files: probe(["/Users/me/Github/web/yarn.lock", "/Users/me/Github/pando/bun.lock"]),
+    });
+
+    expect(profiles.pando).toMatchObject({
+      baseBranch: "develop",
+      concurrency: 2,
+      context: { policyRefs: [], providers: [] },
+      contextProviders: [],
+      conventions: "repo-local",
+      gates: { lint: "lint", test: "test", types: "typecheck" },
+      guards: {
+        forbidTestEditInImpl: true,
+        protectedBranches: ["main", "develop", "release/*"],
+      },
+      intake: { sources: ["brief"] },
+      packageManager: "bun",
+      path: "/Users/me/Github/pando",
+      scope: "external",
+      setup: "install",
+      workItemSource: "brief",
+    });
+  });
 });
 
 describe("packageCommand", () => {
   it("converts PM-agnostic actions into executable commands", () => {
     expect(packageCommand("yarn", "install")).toBe("yarn install");
     expect(packageCommand("yarn", "typecheck")).toBe("yarn tsc --noEmit");
-    expect(packageCommand("pnpm", "test")).toBe("pnpm test");
+    expect(packageCommand("bun", "test")).toBe("bun run test");
     expect(packageCommand("npm", "lint")).toBe("npm run lint");
-    expect(packageCommand("pnpm", "typecheck")).toBe("pnpm exec tsc --noEmit");
+    expect(packageCommand("bun", "typecheck")).toBe("bun x tsc --noEmit");
   });
 });

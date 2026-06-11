@@ -1,0 +1,120 @@
+import {
+  aggregateFailureReasons,
+  type FailureReasonCount,
+  type TerminalRunSummary,
+} from "./failure-analytics";
+import type { FullDaemonSmokeMode } from "./full-daemon-smoke";
+
+export interface SoakIterationInput {
+  iteration: number;
+  runId: string;
+  evidencePath: string;
+  failureSummaryPath: string;
+  summary: TerminalRunSummary;
+}
+
+export interface AggregateSoakRunsInput {
+  generatedAt: string;
+  mode: FullDaemonSmokeMode;
+  jobsPerIteration: number;
+  iterations: readonly SoakIterationInput[];
+}
+
+export type SoakFailureReasonCount = FailureReasonCount;
+
+export interface SoakIterationBreakdown {
+  iteration: number;
+  runId: string;
+  evidencePath: string;
+  failureSummaryPath: string;
+  totals: TerminalRunSummary["totals"];
+  totalJobs: number;
+  passRate: number;
+}
+
+export interface SoakNightlySummary {
+  schemaVersion: 1;
+  generatedAt: string;
+  mode: FullDaemonSmokeMode;
+  iterations: number;
+  jobsPerIteration: number;
+  totalJobs: number;
+  totals: TerminalRunSummary["totals"];
+  passRate: number;
+  ok: boolean;
+  failureReasons: SoakFailureReasonCount[];
+  iterationsBreakdown: SoakIterationBreakdown[];
+}
+
+export function aggregateSoakRuns(input: AggregateSoakRunsInput): SoakNightlySummary {
+  const totals = emptyTotals();
+  const allJobs = input.iterations.flatMap((iteration) => iteration.summary.jobs);
+  const iterationsBreakdown: SoakIterationBreakdown[] = [];
+
+  for (const iteration of input.iterations) {
+    const iterationTotals = emptyTotals();
+    for (const job of iteration.summary.jobs) {
+      totals[job.terminalStatus] += 1;
+      iterationTotals[job.terminalStatus] += 1;
+      if (job.retryCount > 0) {
+        totals.retried += 1;
+        iterationTotals.retried += 1;
+      }
+    }
+
+    const iterationJobs = iteration.summary.jobs.length;
+    iterationsBreakdown.push({
+      evidencePath: iteration.evidencePath,
+      failureSummaryPath: iteration.failureSummaryPath,
+      iteration: iteration.iteration,
+      passRate: passRate(iterationTotals.success, iterationJobs),
+      runId: iteration.runId,
+      totalJobs: iterationJobs,
+      totals: iterationTotals,
+    });
+  }
+
+  const totalJobs = totalTerminalJobs(totals);
+
+  return {
+    failureReasons: aggregateFailureReasons(allJobs),
+    generatedAt: input.generatedAt,
+    iterations: input.iterations.length,
+    iterationsBreakdown,
+    jobsPerIteration: input.jobsPerIteration,
+    mode: input.mode,
+    ok: totalJobs > 0 && totals.success === totalJobs,
+    passRate: passRate(totals.success, totalJobs),
+    schemaVersion: 1,
+    totalJobs,
+    totals,
+  };
+}
+
+function emptyTotals(): TerminalRunSummary["totals"] {
+  return {
+    cancel: 0,
+    escalated: 0,
+    failure: 0,
+    retried: 0,
+    running: 0,
+    success: 0,
+    timeout: 0,
+  };
+}
+
+function totalTerminalJobs(totals: TerminalRunSummary["totals"]): number {
+  return (
+    totals.cancel +
+    totals.escalated +
+    totals.failure +
+    totals.running +
+    totals.success +
+    totals.timeout
+  );
+}
+
+function passRate(success: number, total: number): number {
+  if (total <= 0) return 0;
+  return Math.round((success / total) * 10_000) / 10_000;
+}

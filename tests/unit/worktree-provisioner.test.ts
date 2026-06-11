@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "bun:test";
 import { createWorktreeProvisioner } from "../../src/daemon/worktree-provisioner";
 import type { EnsureWorktreeOptions, EnsureWorktreeResult } from "../../src/worktree/manager";
 import type { RepoProfile, WorkItem } from "../../src/core/types";
@@ -24,8 +24,21 @@ describe("createWorktreeProvisioner", () => {
       profile: repoProfile(),
     });
 
+    const isolation = result.isolation;
+    expect(isolation).toBeDefined();
     expect(result).toEqual({
       branch: "feat/DEMO-4001",
+      isolation: {
+        cacheDir: "/worktrees/.cache/web/feat-DEMO-4001",
+        env: {
+          PANDO_ASSIGNED_PORT: expect.any(String),
+          PANDO_CACHE_DIR: "/worktrees/.cache/web/feat-DEMO-4001",
+          PANDO_JOB_ID: "DEMO-4001",
+          PORT: expect.any(String),
+          XDG_CACHE_HOME: "/worktrees/.cache/web/feat-DEMO-4001",
+        },
+        port: expect.any(Number),
+      },
       path: "/worktrees/web/feat-DEMO-4001",
       reused: false,
     });
@@ -35,10 +48,52 @@ describe("createWorktreeProvisioner", () => {
         branch: "feat/DEMO-4001",
         envFiles: [".env.local"],
         repoPath: "/repo",
-        setupCommand: "pnpm install",
+        setupEnv: isolation?.env,
+        setupCommand: "bun install",
         worktreeRoot: "/worktrees",
       },
     ]);
+    expect(isolation?.port).toBeGreaterThanOrEqual(3000);
+    expect(isolation?.port).toBeLessThanOrEqual(3099);
+    expect(isolation?.env.PORT).toBe(String(isolation?.port));
+  });
+
+  it("branches from the resolved base branch for a release-routed Jira item", async () => {
+    const calls: EnsureWorktreeOptions[] = [];
+    const provisioner = createWorktreeProvisioner({
+      ensureWorktree: async (opts) => {
+        calls.push(opts);
+        return { branch: opts.branch, path: "/worktrees/web/feat-DEMO-4001", reused: false };
+      },
+      worktreeRoot: "/worktrees",
+    });
+
+    await provisioner.ensure({
+      branch: "feat/DEMO-4001",
+      item: { ...workItem(), payload: { fixVersion: "1.0", kind: "jira", ticketKey: "DEMO-4001" } },
+      profile: { ...repoProfile(), releaseBranchTemplate: "release/{fixVersion}" },
+    });
+
+    expect(calls[0]?.baseBranch).toBe("release/1.0");
+  });
+
+  it("honors an explicit WorkItem.baseBranch override", async () => {
+    const calls: EnsureWorktreeOptions[] = [];
+    const provisioner = createWorktreeProvisioner({
+      ensureWorktree: async (opts) => {
+        calls.push(opts);
+        return { branch: opts.branch, path: "/worktrees/web/feat-DEMO-4001", reused: false };
+      },
+      worktreeRoot: "/worktrees",
+    });
+
+    await provisioner.ensure({
+      branch: "feat/DEMO-4001",
+      item: { ...workItem(), baseBranch: "release/9.9" },
+      profile: { ...repoProfile(), releaseBranchTemplate: "release/{fixVersion}" },
+    });
+
+    expect(calls[0]?.baseBranch).toBe("release/9.9");
   });
 
   it("fails fast when the repo profile has no detected package manager", async () => {
@@ -79,7 +134,7 @@ function repoProfile(): RepoProfile {
     envFiles: [".env.local"],
     gates: { test: "test" },
     guards: { forbidTestEditInImpl: true, protectedBranches: ["develop"] },
-    packageManager: "pnpm",
+    packageManager: "bun",
     path: "/repo",
     portRange: [3000, 3099],
     scope: "external",

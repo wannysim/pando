@@ -12,7 +12,15 @@ export interface LoadRepoProfilesOptions {
   files: FileProbe;
 }
 
-const PACKAGE_MANAGERS = ["yarn", "pnpm", "npm"] as const;
+export interface OrchestratorConfig {
+  globalConcurrency: number;
+  providerConcurrency: Partial<Record<ContextProvider, number>>;
+  worktreeRoot: string;
+  skillsRoot: string;
+  db: string;
+}
+
+const PACKAGE_MANAGERS = ["yarn", "pnpm", "npm", "bun"] as const;
 const PACKAGE_ACTIONS = ["install", "test", "lint", "typecheck"] as const;
 const SCOPES = ["acme", "external"] as const;
 const INTAKE_SOURCES = ["jira", "brief", "github_issue"] as const;
@@ -24,6 +32,7 @@ const LEGACY_CONTEXT_PROVIDER_ALIASES: Record<string, ContextProvider> = {
 
 const LOCKFILES: readonly { file: string; manager: PackageManager }[] = [
   { file: "yarn.lock", manager: "yarn" },
+  { file: "bun.lock", manager: "bun" },
   { file: "pnpm-lock.yaml", manager: "pnpm" },
   { file: "package-lock.json", manager: "npm" },
 ];
@@ -63,6 +72,11 @@ export async function loadRepoProfilesFromYaml(
       workItemSource: primaryIntakeSource(intake.sources, name),
       contextProviders: context.providers,
       conventions: requiredString(repo.conventions, name, "conventions"),
+      releaseBranchTemplate: optionalString(
+        repo.release_branch_template,
+        name,
+        "release_branch_template",
+      ),
       packageManager,
       setup: requiredEnum(repo.setup, PACKAGE_ACTIONS, name, "setup"),
       gates: parseGates(repo.gates, name),
@@ -74,6 +88,17 @@ export async function loadRepoProfilesFromYaml(
   }
 
   return profiles;
+}
+
+export function loadOrchestratorConfigFromYaml(yaml: string): OrchestratorConfig {
+  const root = asRecord(parse(yaml), "orchestrator");
+  return {
+    db: requiredRootString(root.db, "db"),
+    globalConcurrency: requiredRootPositiveInteger(root.global_concurrency, "global_concurrency"),
+    providerConcurrency: parseProviderConcurrency(root.providers),
+    skillsRoot: requiredRootString(root.skills_root, "skills_root"),
+    worktreeRoot: requiredRootString(root.worktree_root, "worktree_root"),
+  };
 }
 
 function parseIntake(repo: Record<string, unknown>, name: string): RepoProfile["intake"] {
@@ -104,6 +129,37 @@ function parseContext(repo: Record<string, unknown>, name: string): RepoProfile[
   };
 }
 
+function parseProviderConcurrency(value: unknown): OrchestratorConfig["providerConcurrency"] {
+  if (value === undefined) return {};
+  const providers = asRecord(value, "providers");
+  const concurrency: OrchestratorConfig["providerConcurrency"] = {};
+
+  for (const [provider, config] of Object.entries(providers)) {
+    const canonical = contextProvider(provider, "providers", provider);
+    const providerConfig = asRecord(config, `providers.${provider}`);
+    concurrency[canonical] = requiredRootPositiveInteger(
+      providerConfig.max_concurrent,
+      `providers.${provider}.max_concurrent`,
+    );
+  }
+
+  return concurrency;
+}
+
+function requiredRootString(value: unknown, field: string): string {
+  if (typeof value !== "string" || value.length === 0) {
+    throw new Error(`${field}: expected non-empty string`);
+  }
+  return value;
+}
+
+function requiredRootPositiveInteger(value: unknown, field: string): number {
+  if (typeof value !== "number" || !Number.isInteger(value) || value <= 0) {
+    throw new Error(`${field}: expected positive integer`);
+  }
+  return value;
+}
+
 function primaryIntakeSource(
   sources: readonly RepoProfile["workItemSource"][],
   name: string,
@@ -120,9 +176,11 @@ export function packageCommand(manager: PackageManager, action: PackageAction): 
   if (action === "typecheck") {
     if (manager === "npm") return "npx tsc --noEmit";
     if (manager === "yarn") return "yarn tsc --noEmit";
+    if (manager === "bun") return "bun x tsc --noEmit";
     return `${manager} exec tsc --noEmit`;
   }
   if (manager === "npm") return `npm run ${action}`;
+  if (manager === "bun") return `bun run ${action}`;
   return `${manager} ${action}`;
 }
 
@@ -148,7 +206,7 @@ function expandHome(value: string, homeDir: string): string {
 function parseGates(value: unknown, repo: string): RepoProfile["gates"] {
   const gates = asRecord(value, `${repo}.gates`);
   return {
-    test: requiredEnum(gates.test, PACKAGE_ACTIONS, repo, "gates.test"),
+    test: optionalEnum(gates.test, PACKAGE_ACTIONS, repo, "gates.test"),
     lint: optionalEnum(gates.lint, PACKAGE_ACTIONS, repo, "gates.lint"),
     types: optionalEnum(gates.types, PACKAGE_ACTIONS, repo, "gates.types"),
   };
@@ -182,6 +240,11 @@ function requiredString(value: unknown, repo: string, field: string): string {
     throw new Error(`${repo}.${field}: expected non-empty string`);
   }
   return value;
+}
+
+function optionalString(value: unknown, repo: string, field: string): string | undefined {
+  if (value === undefined) return undefined;
+  return requiredString(value, repo, field);
 }
 
 function requiredBoolean(value: unknown, repo: string, field: string): boolean {

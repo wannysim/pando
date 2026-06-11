@@ -1,40 +1,50 @@
 # 단계별 엔진·모델 매핑 — docs/design-v2-multi-repo.md §4
 # 전역 기본값. 레포별 오버라이드는 repos.yaml의 stages 키로 (추후).
-# 모델명은 구축 시점 리더보드 확인 후 확정할 것 (research-v1 §5 주의사항)
+# Claude API/CLI credit exhaustion에 대비해 기본 runtime은 OpenAI/Codex로 둔다.
 
 stages:
   spec:
-    engine: claude-code
-    model: sonnet
+    engine: codex
+    model: gpt-5.5
     skills:
       jira: jira-context-gatherer
       brief: brief-intake
-    allowed_tools_by_source:
-      jira: [Read, Glob, Grep, Task, mcp__claude_ai_Atlassian]
-      brief: [Read, Glob, Grep]
 
   plan:
-    engine: claude-code
-    model: opus
+    engine: codex
+    model: gpt-5.5
     skill: implement-jira
-    allowed_tools: [Read, Glob, Grep, Write, "Bash(git *)", Task, mcp__claude_ai_Atlassian]
     env:
       IMPLEMENT_JIRA_BATCH: "1"
 
   test:
     engine: codex
-    model: gpt-5-codex
+    model: gpt-5.5
     skill: test-writer
 
   impl:
     engine: codex
-    model: gpt-5-codex
+    model: gpt-5.5
 
   review:
-    engine: claude-code
-    model: opus
+    engine: codex
+    model: gpt-5.5
     skill: verifier
-    allowed_tools: [Read, Glob, Grep, "Bash(git *)"]
+
+  pr:
+    engine: codex
+    model: gpt-5.5
+    skill: create-pr
+    # The pr-draft gate verdict is deterministic: it reads pr.json only.
+    # The prompt MUST create a draft PR and write that structured artifact.
+    prompt: |
+      Create the pull request as a DRAFT. You MUST pass --draft to gh:
+        gh pr create --draft --base <base> --title "<title>" --body "<body>"
+      After creating the PR, write a deterministic artifact the gate reads.
+      Run from the worktree root and capture the structured JSON verbatim:
+        gh pr view --json isDraft,number,url > pr.json
+      Do not hand-edit pr.json; it must be the exact gh output. The pr-draft
+      gate fails the stage unless pr.json reports isDraft true.
 
 defaults:
   retry_budget: 10

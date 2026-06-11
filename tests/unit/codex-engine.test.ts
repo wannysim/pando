@@ -1,7 +1,7 @@
 import { chmod, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "bun:test";
 import {
   buildCodexArgs,
   CodexEngine,
@@ -16,7 +16,7 @@ afterEach(async () => {
 });
 
 describe("buildCodexArgs", () => {
-  it("forces codex exec JSON stream mode and the workspace-write sandbox", () => {
+  it("forces codex exec JSON stream mode with headless-safe execution", () => {
     expect(
       buildCodexArgs({
         cwd: "/worktree",
@@ -26,6 +26,11 @@ describe("buildCodexArgs", () => {
       }),
     ).toEqual([
       "exec",
+      "--ephemeral",
+      "--cd",
+      "/worktree",
+      "--config",
+      'approval_policy="never"',
       "--json",
       "--sandbox",
       "workspace-write",
@@ -103,9 +108,11 @@ describe("CodexEngine", () => {
 
     expect(result).toEqual({
       costUsd: 1.5,
+      exitCode: 0,
       ok: true,
       output: "done\nwarn\n",
       sessionId: "sess-1",
+      timedOut: false,
     });
     expect(calls[0]?.[0]).toBe("codex-test");
     expect(calls[0]?.[2]).toMatchObject({
@@ -115,7 +122,7 @@ describe("CodexEngine", () => {
     });
   });
 
-  it("preserves successful and failed output through the default execFile runner", async () => {
+  it("preserves successful and failed output through the default process runner", async () => {
     const success = new CodexEngine({
       command: await fakeExecutable("process.stdout.write(JSON.stringify({text:'ok'}) + '\\n');"),
     });
@@ -140,7 +147,71 @@ describe("CodexEngine", () => {
         prompt: "Implement",
         timeoutMs: 30_000,
       }),
-    ).resolves.toEqual({ ok: false, output: "out\nerr\n" });
+    ).resolves.toEqual({
+      costUsd: undefined,
+      exitCode: 9,
+      ok: false,
+      output: "out\nerr\n",
+      sessionId: undefined,
+      timedOut: false,
+    });
+  });
+
+  it("closes stdin for the default runner so codex exec does not wait for input", async () => {
+    const command = await fakeExecutable(`
+      const timeout = setTimeout(() => {
+        process.stderr.write('stdin still open\\n');
+        process.exit(7);
+      }, 100);
+      process.stdin.resume();
+      process.stdin.on('end', () => {
+        clearTimeout(timeout);
+        process.stdout.write(JSON.stringify({ text: 'stdin closed' }) + '\\n');
+      });
+    `);
+    const engine = new CodexEngine({ command });
+
+    await expect(
+      engine.run({
+        cwd: "/tmp",
+        model: "gpt-5-codex",
+        prompt: "Implement",
+        timeoutMs: 1_000,
+      }),
+    ).resolves.toMatchObject({ ok: true, output: "stdin closed" });
+  });
+
+  it("returns deterministic failure output when the default runner cannot spawn codex", async () => {
+    const engine = new CodexEngine({ command: "/tmp/pando-missing-codex-command" });
+
+    await expect(
+      engine.run({
+        cwd: "/tmp",
+        model: "gpt-5-codex",
+        prompt: "Implement",
+        timeoutMs: 1_000,
+      }),
+    ).resolves.toMatchObject({
+      ok: false,
+      output: expect.stringContaining("ENOENT"),
+    });
+  });
+
+  it("terminates the default runner when the command exceeds the stage timeout", async () => {
+    const command = await fakeExecutable(`
+      process.stdout.write('started\\n');
+      setInterval(() => {}, 1000);
+    `);
+    const engine = new CodexEngine({ command });
+
+    await expect(
+      engine.run({
+        cwd: "/tmp",
+        model: "gpt-5-codex",
+        prompt: "Implement",
+        timeoutMs: 50,
+      }),
+    ).resolves.toMatchObject({ ok: false });
   });
 });
 

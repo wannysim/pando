@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "bun:test";
 import { createSqliteJobStore } from "../../src/db/index";
 import type { RepoProfile, WorkItem } from "../../src/core/types";
 
@@ -24,6 +24,67 @@ describe("SqliteJobStore", () => {
     store.close();
   });
 
+  it("skips excluded in-flight jobs when claiming the next runnable job", () => {
+    const store = createSqliteJobStore({
+      path: ":memory:",
+      now: fixedClock(["2026-06-06T00:00:00.000Z", "2026-06-06T00:00:01.000Z"]),
+    });
+
+    store.enqueueJob({ item: workItem("DEMO-1001"), retryBudget: 3 });
+    store.enqueueJob({ item: workItem("DEMO-1002"), retryBudget: 3 });
+
+    expect(store.claimNextRunnable()?.item.id).toBe("DEMO-1001");
+    expect(store.claimNextRunnable({ excludeJobIds: ["DEMO-1001"] })?.item.id).toBe("DEMO-1002");
+
+    store.close();
+  });
+
+  it("skips deferred active jobs until their retry backoff is due", () => {
+    const store = createSqliteJobStore({
+      path: ":memory:",
+      now: fixedClock([
+        "2026-06-06T00:00:00.000Z",
+        "2026-06-06T00:00:01.000Z",
+        "2026-06-06T00:00:02.000Z",
+        "2026-06-06T00:00:03.000Z",
+        "2026-06-06T00:00:03.500Z",
+        "2026-06-06T00:00:04.000Z",
+        "2026-06-06T00:00:04.500Z",
+        "2026-06-06T00:00:04.900Z",
+        "2026-06-06T00:00:05.000Z",
+        "2026-06-06T00:00:05.500Z",
+      ]),
+    });
+
+    store.enqueueJob({ item: workItem("DEMO-1001"), retryBudget: 3 });
+    store.enqueueJob({ item: workItem("DEMO-1002"), retryBudget: 3 });
+    store.updateJobStatus({ attemptsLeft: 2, jobId: "DEMO-1001", status: "SPEC" });
+    store.deferJob({
+      delayMs: 2_000,
+      jobId: "DEMO-1001",
+      reason: "transient provider failure",
+      stage: "SPEC",
+    });
+
+    expect(store.getJob("DEMO-1001")?.deferredUntil).toBe("2026-06-06T00:00:05.000Z");
+    expect(store.claimNextRunnable()?.item.id).toBe("DEMO-1002");
+    expect(store.claimNextRunnable({ excludeJobIds: ["DEMO-1002"] })).toBeUndefined();
+    expect(store.claimNextRunnable({ excludeJobIds: ["DEMO-1002"] })?.item.id).toBe("DEMO-1001");
+    expect(store.getJob("DEMO-1001")?.deferredUntil).toBeUndefined();
+    expect(store.listEvents("DEMO-1001").at(-1)).toMatchObject({
+      payload: {
+        backoffMs: 2_000,
+        deferredUntil: "2026-06-06T00:00:05.000Z",
+        reason: "transient provider failure",
+      },
+      stage: "SPEC",
+      status: "SPEC",
+      type: "retry-deferred",
+    });
+
+    store.close();
+  });
+
   it("returns undefined when no queued or active jobs exist", () => {
     const store = createSqliteJobStore({
       path: ":memory:",
@@ -34,6 +95,29 @@ describe("SqliteJobStore", () => {
     expect(store.getJob("missing")).toBeUndefined();
     expect(store.getRepoProfile("missing")).toBeUndefined();
     expect(store.listEvents("missing")).toEqual([]);
+
+    store.close();
+  });
+
+  it("lists jobs by updated time with deterministic status filtering", () => {
+    const store = createSqliteJobStore({
+      path: ":memory:",
+      now: fixedClock([
+        "2026-06-06T00:00:00.000Z",
+        "2026-06-06T00:01:00.000Z",
+        "2026-06-06T00:02:00.000Z",
+        "2026-06-06T00:03:00.000Z",
+        "2026-06-06T00:04:00.000Z",
+      ]),
+    });
+
+    store.enqueueJob({ item: workItem("DEMO-1012"), retryBudget: 1 });
+    store.enqueueJob({ item: workItem("DEMO-1013"), retryBudget: 1 });
+    store.updateJobStatus({ attemptsLeft: 0, jobId: "DEMO-1012", status: "FAILED" });
+    store.updateJobStatus({ attemptsLeft: 1, jobId: "DEMO-1013", status: "DONE" });
+
+    expect(store.listJobs().map((job) => job.item.id)).toEqual(["DEMO-1013", "DEMO-1012"]);
+    expect(store.listJobs({ status: "FAILED" }).map((job) => job.item.id)).toEqual(["DEMO-1012"]);
 
     store.close();
   });
@@ -69,6 +153,60 @@ describe("SqliteJobStore", () => {
         stage: "IMPL",
         status: undefined,
         type: "gate-fail",
+      },
+    ]);
+
+    store.close();
+  });
+
+  it("round-trips telemetry cost duration and failure payloads through event payload_json", () => {
+    const store = createSqliteJobStore({
+      path: ":memory:",
+      now: fixedClock([
+        "2026-06-06T00:00:00.000Z",
+        "2026-06-06T00:00:01.000Z",
+        "2026-06-06T00:00:02.000Z",
+        "2026-06-06T00:00:03.000Z",
+      ]),
+    });
+
+    store.enqueueJob({ item: workItem("DEMO-1011"), retryBudget: 2 });
+    store.appendEvent({
+      jobId: "DEMO-1011",
+      payload: { durationMs: 250, engine: "codex", model: "impl-model" },
+      stage: "IMPL",
+      type: "stage-completed",
+    });
+    store.appendEvent({
+      jobId: "DEMO-1011",
+      payload: { costUsd: 0.125, engine: "codex", model: "impl-model" },
+      stage: "IMPL",
+      type: "worker-cost",
+    });
+    store.appendEvent({
+      evidence: '{"changed":["src/example.test.ts"]}',
+      jobId: "DEMO-1011",
+      payload: {
+        durationMs: 40,
+        evidence: '{"changed":["src/example.test.ts"]}',
+        failureKind: "gate-fail",
+        gateName: "checksum",
+        reason: "test checksum changed",
+      },
+      reason: "test checksum changed",
+      stage: "IMPL",
+      type: "stage-failed",
+    });
+
+    expect(store.listEvents("DEMO-1011").map((event) => event.payload)).toEqual([
+      { durationMs: 250, engine: "codex", model: "impl-model" },
+      { costUsd: 0.125, engine: "codex", model: "impl-model" },
+      {
+        durationMs: 40,
+        evidence: '{"changed":["src/example.test.ts"]}',
+        failureKind: "gate-fail",
+        gateName: "checksum",
+        reason: "test checksum changed",
       },
     ]);
 
@@ -132,12 +270,263 @@ describe("SqliteJobStore", () => {
     store.close();
   });
 
+  it("cancels queued jobs as terminal records with structured events", () => {
+    const store = createSqliteJobStore({
+      path: ":memory:",
+      now: fixedClock([
+        "2026-06-06T00:00:00.000Z",
+        "2026-06-06T00:00:01.000Z",
+        "2026-06-06T00:00:02.000Z",
+        "2026-06-06T00:00:03.000Z",
+      ]),
+    });
+
+    store.enqueueJob({ item: workItem("DEMO-1005"), retryBudget: 2 });
+
+    const canceled = store.cancelJob({
+      jobId: "DEMO-1005",
+      reason: "operator requested",
+      requestedBy: "agentctl",
+    });
+
+    expect(canceled).toMatchObject({
+      attemptsLeft: 2,
+      status: "CANCELED",
+      item: { id: "DEMO-1005" },
+    });
+    expect(canceled.finishedAt).toBeDefined();
+    expect(store.claimNextRunnable()).toBeUndefined();
+    expect(store.listEvents("DEMO-1005")).toEqual([
+      expect.objectContaining({
+        payload: {
+          previousStatus: "QUEUED",
+          reason: "operator requested",
+          requestedBy: "agentctl",
+        },
+        status: "QUEUED",
+        type: "cancel-requested",
+      }),
+      expect.objectContaining({
+        payload: {
+          previousStatus: "QUEUED",
+          reason: "operator requested",
+          requestedBy: "agentctl",
+        },
+        status: "CANCELED",
+        type: "canceled",
+      }),
+    ]);
+
+    store.close();
+  });
+
+  it("stores running cancel requests and excludes them from runnable claims", () => {
+    const store = createSqliteJobStore({
+      path: ":memory:",
+      now: fixedClock([
+        "2026-06-06T00:00:00.000Z",
+        "2026-06-06T00:00:01.000Z",
+        "2026-06-06T00:00:02.000Z",
+        "2026-06-06T00:00:03.000Z",
+        "2026-06-06T00:00:04.000Z",
+      ]),
+    });
+
+    store.enqueueJob({ item: workItem("DEMO-1006"), retryBudget: 3 });
+    expect(store.claimNextRunnable()?.status).toBe("SPEC");
+
+    const requested = store.cancelJob({
+      jobId: "DEMO-1006",
+      requestedBy: "agentctl",
+    });
+
+    expect(requested).toMatchObject({
+      status: "SPEC",
+    });
+    expect(requested.cancelRequestedAt).toBeDefined();
+    expect(store.claimNextRunnable()).toBeUndefined();
+    expect(store.listCancelRequestedJobs().map((job) => job.item.id)).toEqual(["DEMO-1006"]);
+
+    const completed = store.completeJobCancellation({
+      jobId: "DEMO-1006",
+      stoppedBy: "daemon",
+    });
+
+    expect(completed).toMatchObject({
+      status: "CANCELED",
+    });
+    expect(completed.cancelRequestedAt).toBe(requested.cancelRequestedAt);
+    expect(store.listEvents("DEMO-1006").map((event) => event.type)).toEqual([
+      "cancel-requested",
+      "canceled",
+    ]);
+
+    store.close();
+  });
+
+  it("cleans up terminal jobs with worktree paths and records completion events", () => {
+    const store = createSqliteJobStore({
+      path: ":memory:",
+      now: fixedClock([
+        "2026-06-06T00:00:00.000Z",
+        "2026-06-06T00:00:01.000Z",
+        "2026-06-06T00:00:02.000Z",
+        "2026-06-06T00:00:03.000Z",
+      ]),
+    });
+
+    store.enqueueJob({ item: workItem("DEMO-1007"), retryBudget: 1 });
+    store.updateJobStatus({
+      attemptsLeft: 1,
+      jobId: "DEMO-1007",
+      status: "DONE",
+      worktreePath: "/worktrees/web/feat-DEMO-1007",
+    });
+
+    const request = store.requestJobCleanup({
+      jobId: "DEMO-1007",
+      requestedBy: "agentctl",
+    });
+    const cleaned = store.completeJobCleanup({
+      jobId: "DEMO-1007",
+      worktreePath: request.worktreePath,
+    });
+
+    expect(request.worktreePath).toBe("/worktrees/web/feat-DEMO-1007");
+    expect(cleaned).toMatchObject({
+      status: "DONE",
+      worktreePath: undefined,
+    });
+    expect(store.listEvents("DEMO-1007")).toEqual([
+      expect.objectContaining({
+        payload: {
+          requestedBy: "agentctl",
+          status: "DONE",
+          worktreePath: "/worktrees/web/feat-DEMO-1007",
+        },
+        status: "DONE",
+        type: "cleanup-requested",
+      }),
+      expect.objectContaining({
+        payload: { worktreePath: "/worktrees/web/feat-DEMO-1007" },
+        status: "DONE",
+        type: "cleanup-completed",
+      }),
+    ]);
+
+    store.close();
+  });
+
+  it("records cleanup failures without clearing the worktree path", () => {
+    const store = createSqliteJobStore({
+      path: ":memory:",
+      now: fixedClock([
+        "2026-06-06T00:00:00.000Z",
+        "2026-06-06T00:00:01.000Z",
+        "2026-06-06T00:00:02.000Z",
+        "2026-06-06T00:00:03.000Z",
+      ]),
+    });
+
+    store.enqueueJob({ item: workItem("DEMO-1008"), retryBudget: 1 });
+    store.updateJobStatus({
+      attemptsLeft: 0,
+      jobId: "DEMO-1008",
+      status: "FAILED",
+      worktreePath: "/worktrees/web/feat-DEMO-1008",
+    });
+
+    const request = store.requestJobCleanup({ jobId: "DEMO-1008" });
+    const failed = store.failJobCleanup({
+      evidence: "permission denied",
+      jobId: "DEMO-1008",
+      reason: "git worktree remove failed",
+      worktreePath: request.worktreePath,
+    });
+
+    expect(failed.worktreePath).toBe("/worktrees/web/feat-DEMO-1008");
+    expect(store.listEvents("DEMO-1008").at(-1)).toMatchObject({
+      evidence: "permission denied",
+      payload: { worktreePath: "/worktrees/web/feat-DEMO-1008" },
+      reason: "git worktree remove failed",
+      status: "FAILED",
+      type: "cleanup-failed",
+    });
+
+    store.close();
+  });
+
+  it("rejects cleanup for non-terminal jobs and terminal jobs without worktree paths", () => {
+    const store = createSqliteJobStore({
+      path: ":memory:",
+      now: fixedClock(["2026-06-06T00:00:00.000Z", "2026-06-06T00:00:01.000Z"]),
+    });
+
+    store.enqueueJob({ item: workItem("DEMO-1009"), retryBudget: 1 });
+    expect(() => store.requestJobCleanup({ jobId: "DEMO-1009" })).toThrow(/not terminal/i);
+
+    store.updateJobStatus({ attemptsLeft: 0, jobId: "DEMO-1009", status: "FAILED" });
+    expect(() => store.requestJobCleanup({ jobId: "DEMO-1009" })).toThrow(/worktree path/i);
+
+    store.close();
+  });
+
+  it("allows canceled and cleaned up terminal jobs to be retried", () => {
+    const store = createSqliteJobStore({
+      path: ":memory:",
+      now: fixedClock([
+        "2026-06-06T00:00:00.000Z",
+        "2026-06-06T00:00:01.000Z",
+        "2026-06-06T00:00:02.000Z",
+        "2026-06-06T00:00:03.000Z",
+        "2026-06-06T00:00:04.000Z",
+        "2026-06-06T00:00:05.000Z",
+      ]),
+    });
+
+    store.enqueueJob({ item: workItem("DEMO-1010"), retryBudget: 1 });
+    store.cancelJob({ jobId: "DEMO-1010", requestedBy: "agentctl" });
+    const retriedCanceled = store.retryJob({
+      attemptsLeft: 2,
+      from: "TEST",
+      jobId: "DEMO-1010",
+    });
+
+    expect(retriedCanceled).toMatchObject({
+      cancelRequestedAt: undefined,
+      status: "TEST",
+    });
+
+    store.updateJobStatus({
+      attemptsLeft: 0,
+      jobId: "DEMO-1010",
+      status: "FAILED",
+      worktreePath: "/worktrees/web/feat-DEMO-1010",
+    });
+    const cleanup = store.requestJobCleanup({ jobId: "DEMO-1010" });
+    store.completeJobCleanup({ jobId: "DEMO-1010", worktreePath: cleanup.worktreePath });
+    const retriedCleaned = store.retryJob({
+      attemptsLeft: 3,
+      from: "IMPL",
+      jobId: "DEMO-1010",
+    });
+
+    expect(retriedCleaned).toMatchObject({
+      status: "IMPL",
+      worktreePath: undefined,
+    });
+
+    store.close();
+  });
+
   it("round-trips brief jobs with branches and dependencies", () => {
     const store = createSqliteJobStore({
       path: ":memory:",
       now: fixedClock(["2026-06-06T00:00:00.000Z"]),
     });
     const item: WorkItem = {
+      baseBranch: "release/1.0",
+      baseSha: "abc123",
       branch: "feat/personal",
       dependsOn: ["DEMO-1001"],
       id: "personal-site-20260606-a",

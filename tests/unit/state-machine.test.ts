@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "bun:test";
 import {
   initialState,
   STAGE_ORDER,
@@ -31,7 +31,7 @@ describe("happy path", () => {
 
   it("moves through SPEC, PLAN, TEST, IMPL, REVIEW, PR, and DONE on GATE_PASS", () => {
     let state = at("SPEC");
-    const expected = [...STAGE_ORDER.slice(1), "DONE"];
+    const expected: MachineState["status"][] = [...STAGE_ORDER.slice(1), "DONE"];
     for (const want of expected) {
       state = transition(state, { type: "GATE_PASS" }, BUDGET);
       expect(state.status).toBe(want);
@@ -94,6 +94,17 @@ describe("escalation", () => {
       /invalid/i,
     );
   });
+
+  it("NON_RETRYABLE: any stage → ESCALATED without consuming the budget", () => {
+    for (const stage of STAGE_ORDER) {
+      const next = transition(at(stage, 2), { type: "NON_RETRYABLE" }, BUDGET);
+      expect(next).toEqual({ attemptsLeft: 2, status: "ESCALATED" });
+    }
+  });
+
+  it("rejects NON_RETRYABLE from QUEUED", () => {
+    expect(() => transition(at("QUEUED"), { type: "NON_RETRYABLE" }, BUDGET)).toThrow(/invalid/i);
+  });
 });
 
 describe("invalid transitions", () => {
@@ -115,8 +126,9 @@ describe("invalid transitions", () => {
       { type: "GATE_FAIL" },
       { type: "CHANGES_REQUESTED" },
       { type: "BLOCKING_QUESTIONS" },
+      { type: "NON_RETRYABLE" },
     ] as const;
-    for (const status of ["DONE", "FAILED", "ESCALATED"] as const) {
+    for (const status of ["DONE", "FAILED", "ESCALATED", "CANCELED"] as const) {
       for (const event of events) {
         expect(() => transition(at(status), event, BUDGET)).toThrow(/terminal/i);
       }

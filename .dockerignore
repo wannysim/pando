@@ -1,0 +1,12 @@
+.git
+.github
+node_modules
+dashboard/node_modules
+coverage
+dist
+dashboard/dist
+.env
+.env.*
+*.sqlite
+*.sqlite-*
+smoke/evidence

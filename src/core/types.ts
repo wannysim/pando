@@ -5,7 +5,7 @@
 
 export type StageName = "SPEC" | "PLAN" | "TEST" | "IMPL" | "REVIEW" | "PR";
 
-export type JobStatus = StageName | "QUEUED" | "DONE" | "FAILED" | "ESCALATED";
+export type JobStatus = StageName | "QUEUED" | "DONE" | "FAILED" | "ESCALATED" | "CANCELED";
 
 export type WorkItemSource = "jira" | "brief" | "github_issue";
 
@@ -19,9 +19,13 @@ export interface WorkItem {
   source: WorkItemSource;
   title: string;
   branch?: string;
+  /** Explicit base-branch override. Highest precedence in resolveBaseBranch (ADR-011). */
+  baseBranch?: string;
+  /** Immutable base commit snapshot used by daemon gates when available. */
+  baseSha?: string;
   dependsOn?: string[];
   payload:
-    | { kind: "jira"; ticketKey: string }
+    | { kind: "jira"; ticketKey: string; fixVersion?: string }
     | { kind: "brief"; briefPath: string; assets?: string[] }
     | { kind: "github_issue"; owner: string; repo: string; issueNumber: number };
 }
@@ -37,16 +41,21 @@ export interface RepoProfile {
   /** Backward-compatible provider list for W2 callers. Prefer context.providers. */
   contextProviders: ContextProvider[];
   conventions: string; // 스킬 이름 또는 "repo-local"
+  /**
+   * Optional template that maps a Jira fixVersion onto a base branch (ADR-011).
+   * `{fixVersion}` is substituted with the ticket's fixVersion, e.g. "release/{fixVersion}".
+   */
+  releaseBranchTemplate?: string;
   packageManager?: PackageManager;
   setup: PackageAction;
-  gates: { test: PackageAction; lint?: PackageAction; types?: PackageAction };
+  gates: { test?: PackageAction; lint?: PackageAction; types?: PackageAction };
   concurrency: number;
   portRange: [number, number];
   envFiles?: string[];
   guards: { protectedBranches: string[]; forbidTestEditInImpl: boolean };
 }
 
-export type PackageManager = "yarn" | "pnpm" | "npm";
+export type PackageManager = "yarn" | "pnpm" | "npm" | "bun";
 
 export type PackageAction = "install" | "test" | "lint" | "typecheck";
 
@@ -60,6 +69,7 @@ export interface WorkerRunOptions {
   outputSchema?: object;
   timeoutMs: number;
   env?: Record<string, string>; // IMPLEMENT_JIRA_BATCH=1 등
+  signal?: AbortSignal; // 취소 시 워커 프로세스를 중단하기 위한 신호
 }
 
 export interface WorkerResult {
@@ -71,6 +81,13 @@ export interface WorkerResult {
    * Hyrum's Law 방어: Gate 컨텍스트에는 의도적으로 노출하지 않는다 (ADR-002).
    */
   output: string;
+  /**
+   * 결정적 실패 신호 — retry/backoff 분류 전용 (LLM 텍스트 아님).
+   * exitCode/timedOut/errorCode는 프로세스/구조화 JSON에서만 채운다.
+   */
+  exitCode?: number;
+  timedOut?: boolean;
+  errorCode?: string;
 }
 
 export interface WorkerEngine {
@@ -89,7 +106,7 @@ export interface GateResult {
   pass: boolean;
   reason?: string;
   evidence?: string; // 명령 출력, 체크섬 diff 등
-  failureKind?: "gate-fail" | "blocking-questions";
+  failureKind?: "gate-fail" | "blocking-questions" | "non-retryable";
 }
 
 export interface Gate {

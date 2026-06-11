@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "bun:test";
 import { loadRepoProfilesFromYaml, type FileProbe } from "../../src/core/config";
 import { loadStageConfigFromYaml } from "../../src/core/stage-config";
 import type { WorkerEngine, WorkerRunOptions, WorkerResult } from "../../src/core/types";
@@ -91,7 +91,8 @@ describe("personal-site brief SPEC path", () => {
     expect(result.final.status).toBe("DONE");
     expect(profile.intake.sources).toContain("brief");
     expect(profile.context.providers).toEqual([]);
-    expect(engineCalls[0]?.allowedTools).toEqual(["Read", "Glob", "Grep"]);
+    expect(engineCalls[0]?.allowedTools).toBeUndefined();
+    expect(engineCalls[0]?.model).toBe("gpt-5.5");
   });
 });
 

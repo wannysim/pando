@@ -14,6 +14,7 @@ export interface EnsureWorktreeOptions {
   worktreeRoot: string;
   envFiles?: string[];
   setupCommand?: string;
+  setupEnv?: Record<string, string>;
   lockTimeoutMs?: number;
   lockRetryMs?: number;
 }
@@ -28,6 +29,12 @@ export interface WorktreePathOptions {
   repoPath: string;
   branch: string;
   worktreeRoot: string;
+}
+
+export interface RemoveWorktreeOptions {
+  repoPath: string;
+  worktreePath: string;
+  force?: boolean;
 }
 
 export function branchSlug(branch: string): string {
@@ -68,12 +75,30 @@ export async function ensureWorktree(opts: EnsureWorktreeOptions): Promise<Ensur
       await copyEnvFiles(opts.repoPath, path, opts.envFiles ?? []);
 
       if (opts.setupCommand !== undefined) {
-        await execAsync(opts.setupCommand, { cwd: path });
+        await execAsync(opts.setupCommand, {
+          cwd: path,
+          env: { ...process.env, ...opts.setupEnv },
+        });
       }
 
       return { path, branch: opts.branch, reused: false };
     },
   );
+}
+
+export interface PruneWorktreesOptions {
+  repoPath: string;
+}
+
+export async function pruneWorktrees(opts: PruneWorktreesOptions): Promise<void> {
+  await git(opts.repoPath, ["worktree", "prune"]);
+}
+
+export async function removeWorktree(opts: RemoveWorktreeOptions): Promise<void> {
+  const args = ["worktree", "remove"];
+  if (opts.force ?? true) args.push("--force");
+  args.push(opts.worktreePath);
+  await git(opts.repoPath, args);
 }
 
 async function assertWorktreeBranch(path: string, expectedBranch: string): Promise<void> {
