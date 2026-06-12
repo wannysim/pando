@@ -45,7 +45,7 @@ jobs:
               --baseline-branch "${{ github.base_ref }}" \
               --pr "${{ github.event.pull_request.number }}"
           fi
-      - uses: actions/upload-artifact@v6
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: pando-self-benchmark-${{ github.run_id }}-${{ github.run_attempt }}
