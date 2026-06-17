@@ -53,7 +53,17 @@ describe("pandoctl npm package contract", () => {
     expect(workflow).toContain("bun run verify");
     expect(workflow).toContain("bun run build:pandoctl");
     expect(workflow).toContain("bun run smoke:pandoctl-pack");
-    expect(workflow).toContain("npm publish --provenance --access public");
-    expect(workflow).toContain("NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}");
+    expect(workflow).toContain("npm publish --access public");
+  });
+
+  it("publishes via OIDC trusted publishing without an npm token", () => {
+    const workflow = readFileSync(releaseWorkflowPath, "utf8");
+
+    // OIDC requires id-token write and a token-free publish step.
+    expect(workflow).toContain("id-token: write");
+    expect(workflow).not.toContain("NODE_AUTH_TOKEN");
+    expect(workflow).not.toContain("secrets.NPM_TOKEN");
+    // Trusted publishing OIDC support needs npm >= 11.5.1.
+    expect(workflow).toContain("npm install -g npm@latest");
   });
 });
