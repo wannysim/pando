@@ -18,20 +18,26 @@ The workflow performs:
 
 ## Publish
 
+Authentication uses npm **trusted publishing (OIDC)** — no `NPM_TOKEN` secret is
+involved. The npm `pandoctl` package must list this repo's
+`pandoctl-release.yml` workflow as a trusted publisher (npm package → Settings →
+Trusted Publisher: GitHub Actions, `wannysim/pando`, `pandoctl-release.yml`).
+
 Before publishing:
 
-- Confirm `packages/pandoctl/package.json` has the intended version.
-- Confirm repository secret `NPM_TOKEN` is configured for npm publish.
-- Prefer running the workflow from the release branch or `main`.
+- Confirm `packages/pandoctl/package.json` has the intended version (npm rejects
+  a republish of an existing version).
+- Confirm the trusted publisher is still registered on the npm package.
 
-Run the same workflow with `publish=true`. The publish step uses:
+Run the workflow with `publish=true`. The publish step uses:
 
 ```bash
-npm publish --provenance --access public
+npm publish --access public
 ```
 
-The workflow passes only `NODE_AUTH_TOKEN` from `secrets.NPM_TOKEN`; it never
-prints the token value.
+The job upgrades npm to a version that supports OIDC (`npm install -g
+npm@latest`) and authenticates via `id-token: write`; provenance is attached
+automatically. No token is read or printed.
 
 ## User Update Command
 
@@ -40,3 +46,11 @@ After publish, users with a global install update with:
 ```bash
 npm update -g pandoctl
 ```
+
+## Release Log
+
+- **0.1.0** (2026-06-17) — first real publish over the reserved `0.0.1`
+  placeholder. Workflow run `27707613701` (ref `ci/pandoctl-trusted-publishing`)
+  green through verify → build → pack-smoke → publish via OIDC. Verified
+  `npm view pandoctl version` → `0.1.0`, `dist-tags.latest` → `0.1.0`, and a
+  clean temp-dir `npm i pandoctl@0.1.0` + `pandoctl --help` (exit 0).
