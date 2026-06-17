@@ -41,8 +41,10 @@ document.
       with current smoke code mounted into the runtime image. Evidence:
       `/tmp/pando-docker-openai-live-smoke-docker-openai-20260610-185532`.
       Claude live smoke remains legacy/custom only and credential-gated.
-- [ ] `pandoctl@0.1.0` npm publish: run release workflow dry-run, publish, then
-      global install/update smoke.
+- [x] `pandoctl@0.1.0` npm publish: published via OIDC trusted publishing
+      (run `27707613701`); verified `npm view pandoctl version` → `0.1.0` and a
+      clean temp-dir install smoke. Evidence: `runbooks/pandoctl-release.md`
+      Release Log.
 
 Deferred until the queue above is closed: notifications, GitHub Issue/Jira
 write-back, public auth hardening, Docker egress policy, split containers, TUI.
