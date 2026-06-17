@@ -96,6 +96,52 @@ describe("ClaudeCodeEngine", () => {
     });
   });
 
+  it("extracts costUsd, sessionId, and result text from the claude JSON envelope", async () => {
+    const envelope = JSON.stringify({
+      type: "result",
+      subtype: "success",
+      is_error: false,
+      result: "applied the change",
+      session_id: "sess-claude-1",
+      total_cost_usd: 0.0123,
+      usage: { input_tokens: 100, output_tokens: 50 },
+    });
+    const engine = new ClaudeCodeEngine({
+      runner: async () => ({ exitCode: 0, stderr: "", stdout: `${envelope}\n` }),
+    });
+
+    await expect(
+      engine.run({
+        cwd: "/worktree",
+        model: "opus",
+        prompt: "/implement-jira DEMO-1234 --batch",
+        timeoutMs: 30_000,
+      }),
+    ).resolves.toEqual({
+      costUsd: 0.0123,
+      exitCode: 0,
+      ok: true,
+      output: "applied the change",
+      sessionId: "sess-claude-1",
+      timedOut: false,
+    });
+  });
+
+  it("falls back to raw output when stdout is not a claude result envelope", async () => {
+    const engine = new ClaudeCodeEngine({
+      runner: async () => ({ exitCode: 0, stderr: "warn\n", stdout: '{"ok":true}\n' }),
+    });
+
+    await expect(
+      engine.run({ cwd: "/worktree", model: "opus", prompt: "plan", timeoutMs: 30_000 }),
+    ).resolves.toEqual({
+      exitCode: 0,
+      ok: true,
+      output: '{"ok":true}\nwarn\n',
+      timedOut: false,
+    });
+  });
+
   it("returns ok=false instead of throwing on non-zero exit code", async () => {
     const engine = new ClaudeCodeEngine({
       runner: async () => ({ exitCode: 2, stderr: "failed\n", stdout: "" }),

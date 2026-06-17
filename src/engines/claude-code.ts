@@ -75,13 +75,67 @@ export class ClaudeCodeEngine implements WorkerEngine {
       timeoutMs: opts.timeoutMs,
     });
 
+    const telemetry = parseClaudeJsonResult(result.stdout);
+    if (telemetry === undefined) {
+      return {
+        exitCode: result.exitCode,
+        ok: result.exitCode === 0,
+        output: `${result.stdout}${result.stderr}`,
+        timedOut: result.timedOut ?? false,
+      };
+    }
+
     return {
       exitCode: result.exitCode,
       ok: result.exitCode === 0,
-      output: `${result.stdout}${result.stderr}`,
+      output: combineOutput(telemetry.result, result.stderr),
       timedOut: result.timedOut ?? false,
+      ...(telemetry.sessionId === undefined ? {} : { sessionId: telemetry.sessionId }),
+      ...(telemetry.costUsd === undefined ? {} : { costUsd: telemetry.costUsd }),
     };
   }
+}
+
+interface ClaudeJsonResult {
+  result: string;
+  sessionId?: string;
+  costUsd?: number;
+}
+
+/**
+ * claude `--output-format json` 봉투에서 결정적 텔레메트리를 추출한다.
+ * 봉투(`type: "result"` + 문자열 `result`)가 아니면 undefined를 반환해
+ * 호출부가 원본 stdout 폴백을 유지하게 한다. usage/model은 ADR-013 후 별도.
+ */
+export function parseClaudeJsonResult(stdout: string): ClaudeJsonResult | undefined {
+  const trimmed = stdout.trim();
+  if (trimmed.length === 0) return undefined;
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(trimmed);
+  } catch {
+    return undefined;
+  }
+
+  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return undefined;
+  const record = parsed as Record<string, unknown>;
+  if (record.type !== "result" || typeof record.result !== "string") return undefined;
+
+  const sessionId = typeof record.session_id === "string" ? record.session_id : undefined;
+  const costUsd = typeof record.total_cost_usd === "number" ? record.total_cost_usd : undefined;
+
+  return {
+    result: record.result,
+    ...(sessionId === undefined ? {} : { sessionId }),
+    ...(costUsd === undefined ? {} : { costUsd }),
+  };
+}
+
+function combineOutput(primary: string, stderr: string): string {
+  if (stderr.length === 0) return primary;
+  if (primary.length === 0) return stderr;
+  return primary.endsWith("\n") ? `${primary}${stderr}` : `${primary}\n${stderr}`;
 }
 
 async function execFileRunner(
